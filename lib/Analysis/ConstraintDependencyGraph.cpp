@@ -120,8 +120,16 @@ void SourceRefAnalysis::visitCallControlFlowTransfer(
     // before the call to after the call, since the external call won't invalidate
     // any of that information. It also, conservatively, makes no assumptions about
     // external calls and their computation, so CDG edges will not be computed over
-    // input arguments to external functions.
-    join(after, before);
+    // input arguments to external functions. However, the results of the external
+    // call still act like fresh allocation sites, so give them stable SourceRef roots.
+    ChangeResult updated = after->join(before);
+    for (Value result : call->getResults()) {
+      auto resultRef = SourceRefLattice::getSourceRef(result);
+      if (succeeded(resultRef)) {
+        updated |= after->setValue(result, *resultRef);
+      }
+    }
+    propagateIfChanged(after, updated);
   }
 }
 
@@ -169,21 +177,26 @@ LogicalResult SourceRefAnalysis::visitOperation(
     // Covers read/write/extract/insert array ops
     arraySubdivisionOpUpdate(arrayAccessOp, operandVals, before, after);
   } else if (auto createArray = llvm::dyn_cast<CreateArrayOp>(op)) {
+    auto createArrayRes = createArray.getResult();
+    const auto &elements = createArray.getElements();
+
+    // Treat uninitialized arrays as fresh roots so later array accesses can derive SourceRefs from
+    // the array.new result.
+    if (elements.empty()) {
+      res |= after->setValue(createArrayRes, SourceRef(createArray->getResult(0)));
+      propagateIfChanged(after, res);
+      LLVM_DEBUG(llvm::dbgs().indent(4) << "lattice is of size " << after->size() << '\n');
+      return success();
+    }
+
     // Create an array using the operand values, if they exist.
     // Currently, the new array must either be fully initialized or uninitialized.
     SourceRefLatticeValue newArrayVal(createArray.getType().getShape());
-    // If the array is statically initialized, iterate through all operands and initialize the array
-    // value.
-    const auto &elements = createArray.getElements();
-    if (!elements.empty()) {
-      for (unsigned i = 0; i < elements.size(); i++) {
-        auto currentOp = elements[i];
-        auto &opVals = operandVals[currentOp];
-        (void)newArrayVal.getElemFlatIdx(i).setValue(opVals);
-      }
+    for (unsigned i = 0; i < elements.size(); i++) {
+      auto currentOp = elements[i];
+      auto &opVals = operandVals[currentOp];
+      (void)newArrayVal.getElemFlatIdx(i).setValue(opVals);
     }
-
-    auto createArrayRes = createArray.getResult();
 
     res |= after->setValue(createArrayRes, newArrayVal);
   } else if (auto structNewOp = llvm::dyn_cast<CreateStructOp>(op)) {

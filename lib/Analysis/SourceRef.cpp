@@ -18,6 +18,8 @@
 #include "llzk/Util/SymbolHelper.h"
 #include "llzk/Util/SymbolLookup.h"
 
+#include <mlir/IR/AsmState.h>
+
 using namespace mlir;
 
 namespace llzk {
@@ -146,6 +148,9 @@ SourceRef::SortCategory SourceRef::getSortCategory() const {
   if (isNonDetOp()) {
     return SortCategory::NonDet;
   }
+  if (isRooted()) {
+    return SortCategory::RootResult;
+  }
   if (isTemplateConstant()) {
     return SortCategory::TemplateConstant;
   }
@@ -182,7 +187,8 @@ SourceRef::compareWithinCategory(const SourceRef &rhs, SortCategory category) co
     return compareSourceRefPaths(getPath(), rhs.getPath());
   }
   case SortCategory::CreateStruct:
-  case SortCategory::NonDet: {
+  case SortCategory::NonDet:
+  case SortCategory::RootResult: {
     if (auto cmp = getAsOpaquePointer() <=> rhs.getAsOpaquePointer();
         cmp != std::strong_ordering::equal) {
       return cmp;
@@ -283,17 +289,28 @@ std::vector<SourceRef> SourceRef::getAllSourceRefs(StructDefOp structDef, Member
 
 Type SourceRef::getType() const {
   auto pathRef = getPath();
-  int array_derefs = 0;
-  int idx = llzk::checkedCast<int>(pathRef.size()) - 1;
-  while (idx >= 0 && pathRef[idx].isIndex()) {
-    array_derefs++;
+  size_t arrayDerefs = 0;
+  size_t idx = pathRef.size();
+  while (idx > 0 && (pathRef[idx - 1].isIndex() || pathRef[idx - 1].isIndexRange())) {
+    arrayDerefs++;
     idx--;
   }
 
-  Type currTy = idx >= 0 ? pathRef[idx].getMember().getType() : value.getType();
-  while (array_derefs > 0) {
-    currTy = dyn_cast<ArrayType>(currTy).getElementType();
-    array_derefs--;
+  Type currTy = idx > 0 ? pathRef[idx - 1].getMember().getType() : value.getType();
+  if (arrayDerefs > 0) {
+    auto arrTy = dyn_cast<ArrayType>(currTy);
+    ensure(static_cast<bool>(arrTy), "SourceRef array indices require an array-typed base");
+    ensure(
+        arrayDerefs <= arrTy.getDimensionSizes().size(),
+        "SourceRef indexes more array dimensions than exist in the base type"
+    );
+
+    if (arrayDerefs == arrTy.getDimensionSizes().size()) {
+      currTy = arrTy.getElementType();
+    } else {
+      currTy =
+          ArrayType::get(arrTy.getElementType(), arrTy.getDimensionSizes().drop_front(arrayDerefs));
+    }
   }
   return currTy;
 }
@@ -415,11 +432,27 @@ void SourceRef::print(raw_ostream &os) const {
   } else {
     if (isCreateStructOp()) {
       os << "%self";
+    } else if (isBlockArgument()) {
+      os << "%arg" << *getInputNum();
     } else if (isNonDetOp()) {
       os << '<' << *getNonDetOp() << '>';
+    } else if (isCallResult()) {
+      auto callOp = *getCallOp();
+      os << "<call " << callOp.getCallee();
+      os << ' ';
+      Operation *printScope = callOp.getOperation();
+      if (auto funcOp = callOp->getParentOfType<FuncDefOp>()) {
+        printScope = funcOp.getOperation();
+      }
+      // Allows us to print the SSA result value of the call to disambiguate
+      // repeated calls in the same function.
+      AsmState state(printScope);
+      value.printAsOperand(os, state);
+      os << '>';
     } else {
-      ensure(isBlockArgument(), "unhandled print case");
-      os << "%arg" << *getInputNum();
+      ensure(isRooted(), "unhandled print case");
+      OpPrintingFlags flags;
+      value.printAsOperand(os, flags);
     }
 
     for (const auto &f : getPath()) {
@@ -454,7 +487,7 @@ size_t SourceRef::Hash::operator()(const SourceRef &val) const {
     return llvm::hash_value(val.getAsOpaquePointer());
   } else {
     ensure(
-        val.isBlockArgument() || val.isCreateStructOp() || val.isNonDetOp(),
+        val.isBlockArgument() || val.isCreateStructOp() || val.isNonDetOp() || val.isRooted(),
         "unhandled SourceRef hash case"
     );
 
