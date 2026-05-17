@@ -148,11 +148,7 @@ INSTANTIATE_TEST_SUITE_P(
 struct DynamicAPIntShiftTest : public testing::TestWithParam<std::pair<DynamicAPInt, unsigned>> {
   static const std::vector<std::pair<DynamicAPInt, unsigned>> &TestingValues() {
     static std::vector<std::pair<DynamicAPInt, unsigned>> vals = {
-        {DynamicAPInt(-1), 0},
-        {bn254, 0},
-        {bn254, 32},
-        {bn254, 100},
-        {DynamicAPInt(100), 32},
+        {DynamicAPInt(-1), 0},    {bn254, 0}, {bn254, 32}, {bn254, 100}, {DynamicAPInt(100), 32},
         {DynamicAPInt(100), 100},
     };
     return vals;
