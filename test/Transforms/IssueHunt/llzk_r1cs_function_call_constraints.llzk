@@ -1,0 +1,27 @@
+﻿// RUN: llzk-opt -llzk-full-r1cs-lowering %s 2>&1 | FileCheck %s
+
+module attributes {llzk.lang} {
+  function.def @check_zero(%x: !felt.type) attributes {function.allow_constraint} {
+    %zero = felt.const 0
+    constrain.eq %x, %zero : !felt.type
+    function.return
+  }
+  struct.def @Main {
+    struct.member @out : !felt.type {llzk.pub}
+    function.def @compute(%x: !felt.type) -> !struct.type<@Main> {
+      %self = struct.new : !struct.type<@Main>
+      struct.writem %self[@out] = %x : !struct.type<@Main>, !felt.type
+      function.return %self : !struct.type<@Main>
+    }
+    function.def @constrain(%self: !struct.type<@Main>, %x: !felt.type) attributes {function.allow_constraint} {
+      %out = struct.readm %self[@out] : !struct.type<@Main>, !felt.type
+      constrain.eq %out, %x : !felt.type
+      function.call @check_zero(%x) : (!felt.type) -> ()
+      function.return
+    }
+  }
+}
+
+// CHECK: r1cs.circuit @Main
+// CHECK: r1cs.constrain
+// CHECK: r1cs.constrain
