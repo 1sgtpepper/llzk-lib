@@ -1852,6 +1852,7 @@ LogicalResult StructIntervals::computeIntervals(
         }
 
         SourceRefRemappings identityTranslations;
+        llvm::MapVector<SourceRef, Interval> callOperandIntervals;
         for (unsigned i = 0; i < calledFn.getNumArguments(); i++) {
           SourceRef prefix(calledFn.getArgument(i));
           Value operand = fnCall.getOperand(i);
@@ -1859,6 +1860,15 @@ LogicalResult StructIntervals::computeIntervals(
               getIdentitySourceRefState(solver, operand);
           if (identityVal.has_value()) {
             identityTranslations.push_back({prefix, *identityVal});
+          }
+
+          if (!llvm::isa<ArrayType, StructType>(operand.getType())) {
+            const IntervalAnalysisLattice *lattice =
+                solver.lookupState<IntervalAnalysisLattice>(operand);
+            if (lattice != nullptr) {
+              const ExpressionValue &expr = lattice->getValue().getScalarValue();
+              callOperandIntervals[prefix] = expr.getInterval();
+            }
           }
         }
 
@@ -1904,6 +1914,18 @@ LogicalResult StructIntervals::computeIntervals(
 
           for (auto memberIt = directEqRefs.member_begin(leaderIt);
                memberIt != directEqRefs.member_end(); ++memberIt) {
+            Interval memberInterval = Interval::Entire(ctx.getField());
+            if (auto childIntervalIt = childIntervals.getConstrainIntervals().find(*memberIt);
+                childIntervalIt != childIntervals.getConstrainIntervals().end()) {
+              memberInterval = memberInterval.intersect(childIntervalIt->second);
+            }
+            if (auto callOperandIt = callOperandIntervals.find(*memberIt);
+                callOperandIt != callOperandIntervals.end()) {
+              memberInterval = memberInterval.intersect(callOperandIt->second);
+              contextualInterval = contextualInterval.intersect(memberInterval);
+              hasInterval = true;
+            }
+
             auto translatedRefs = translateRef(*memberIt, identityTranslations);
             if (failed(translatedRefs)) {
               continue;
@@ -1923,11 +1945,6 @@ LogicalResult StructIntervals::computeIntervals(
               continue;
             }
 
-            Interval memberInterval = Interval::Entire(ctx.getField());
-            if (auto childIntervalIt = childIntervals.getConstrainIntervals().find(*memberIt);
-                childIntervalIt != childIntervals.getConstrainIntervals().end()) {
-              memberInterval = memberInterval.intersect(childIntervalIt->second);
-            }
             if (auto parentIntervalIt = memberRanges.find(translatedRef);
                 parentIntervalIt != memberRanges.end()) {
               memberInterval = memberInterval.intersect(parentIntervalIt->second);
@@ -1938,7 +1955,7 @@ LogicalResult StructIntervals::computeIntervals(
             hasInterval = true;
           }
 
-          if (ambiguousTranslation || !hasInterval || translatedEqRefs.size() < 2) {
+          if (ambiguousTranslation || !hasInterval || translatedEqRefs.empty()) {
             continue;
           }
 
