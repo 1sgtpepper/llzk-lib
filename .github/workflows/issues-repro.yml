@@ -31,7 +31,8 @@ jobs:
           git rev-parse HEAD | tee repro-out/head.sha
           git rev-parse upstream/main | tee repro-out/upstream-main.sha
           git status --short --branch | tee repro-out/git-status.txt
-          test "$(git rev-parse HEAD)" = "$(git rev-parse upstream/main)"
+          git diff --name-only upstream/main...HEAD | tee repro-out/diff-from-upstream.txt
+          test "$(cat repro-out/diff-from-upstream.txt)" = ".github/workflows/issues-repro.yml"
           nix --print-build-logs build '.#llzk'
           ./result/bin/llzk-opt --version 2>&1 | tee repro-out/llzk-opt-version.txt || true
           ./result/bin/llzk-witgen --help > repro-out/llzk-witgen-help.txt 2>&1 || true
