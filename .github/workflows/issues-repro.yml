@@ -5,6 +5,10 @@ on:
     branches: [ issues-repro ]
   workflow_dispatch:
 
+permissions:
+  actions: write
+  contents: read
+
 jobs:
   repro:
     runs-on: ubuntu-24.04
@@ -17,6 +21,8 @@ jobs:
         with:
           install_url: https://releases.nixos.org/nix/nix-2.23.3/install
           github_access_token: "${{ secrets.GITHUB_TOKEN }}"
+      - name: Enable Nix cache
+        uses: DeterminateSystems/magic-nix-cache-action@908b263ff629f4cc17666315b7fd3ec127c6244d
       - name: Set Git credentials
         run: |
           git config --global 'url.https://api@github.com/'.insteadOf 'https://github.com/'
@@ -33,7 +39,18 @@ jobs:
           git status --short --branch | tee repro-out/git-status.txt
           git diff --name-only upstream/main...HEAD | tee repro-out/diff-from-upstream.txt
           test "$(cat repro-out/diff-from-upstream.txt)" = ".github/workflows/issues-repro.yml"
-          nix --print-build-logs build '.#llzk'
+          sha256sum flake.lock .github/workflows/issues-repro.yml | tee repro-out/build-input-sha256.txt
+          nix flake metadata --json > repro-out/flake-metadata.json 2> repro-out/flake-metadata.stderr || true
+          {
+            echo "nix_cache_action=DeterminateSystems/magic-nix-cache-action@908b263ff629f4cc17666315b7fd3ec127c6244d"
+            echo "runner_os=${RUNNER_OS:-unknown}"
+            echo "github_sha=${GITHUB_SHA:-unknown}"
+            echo "github_ref=${GITHUB_REF:-unknown}"
+          } | tee repro-out/build-cache-context.txt
+          nix --print-build-logs build '.#llzk' 2>&1 | tee repro-out/nix-build.log
+          readlink result | tee repro-out/result-store-path.txt
+          nix path-info --recursive ./result > repro-out/result-closure.txt 2> repro-out/result-closure.stderr || true
+          nix path-info --closure-size ./result > repro-out/result-closure-size.txt 2> repro-out/result-closure-size.stderr || true
           ./result/bin/llzk-opt --version 2>&1 | tee repro-out/llzk-opt-version.txt || true
           ./result/bin/llzk-witgen --help > repro-out/llzk-witgen-help.txt 2>&1 || true
           ./result/bin/llzk-opt --help > repro-out/llzk-opt-help.txt 2>&1 || true
@@ -173,6 +190,7 @@ jobs:
           {
             echo "head=$(cat "$OUT/head.sha")"
             echo "upstream_main=$(cat "$OUT/upstream-main.sha")"
+            cat "$OUT/build-cache-context.txt"
             for f in "$OUT"/*.exit; do echo "$(basename "$f" .exit)=$(cat "$f")"; done
             if [ -f "$OUT/r1cs_helper_call_dropped.constraint_count" ]; then
               echo "r1cs_helper_call_dropped_constraints=$(cat "$OUT/r1cs_helper_call_dropped.constraint_count")"
