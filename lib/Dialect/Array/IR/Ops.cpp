@@ -482,15 +482,16 @@ LogicalResult ArrayLengthOp::verifySymbolUses(SymbolTableCollection &tables) {
   }
 
   std::optional<int64_t> idx = dim.trySExtValue();
-  if (!idx || *idx < 0 || static_cast<size_t>(*idx) >= getArrRefType().getDimensionSizes().size()) {
+  size_t rank = getArrRefType().getDimensionSizes().size();
+  if (!idx || *idx < 0 || llzk::checkedCast<size_t>(*idx) >= rank) {
     InFlightDiagnostic diag = emitOpError("dimension index ");
     if (idx) {
       diag << *idx;
     } else {
       diag << "outside the supported index range";
     }
-    return diag << " is out of bounds for array rank "
-                << getArrRefType().getDimensionSizes().size();
+    diag << " is out of bounds for array rank " << rank;
+    return diag.attachNote(getArrRef().getLoc()).append("array defined here");
   }
   return success();
 }
