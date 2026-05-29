@@ -79,9 +79,14 @@
                 NIX_CFLAGS_COMPILE = (attrs.NIX_CFLAGS_COMPILE or "") + " -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=0";
               });
 
-          mlir-with-python = final.mlir.override {
+          mlir-with-python = (final.mlir.override {
             enablePythonBindings = true;
-          };
+          }).overrideAttrs
+            (attrs: {
+              nativeBuildInputs = (attrs.nativeBuildInputs or [ ]) ++ [
+                final.python3Packages.nanobind
+              ];
+            });
           llzk-with-python = final.llzk.override {
             mlir_pkg = final.mlir-with-python;
           };

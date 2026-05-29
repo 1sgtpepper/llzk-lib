@@ -218,7 +218,7 @@ jobs:
           path: repro-out/03-array-new-cse
 
   r1cs-constrain-in:
-    name: "04 R1CS constrain.in drop"
+    name: "04 R1CS constrain.in unsupported"
     needs: array-new-cse
     if: ${{ always() }}
     runs-on: ubuntu-24.04
@@ -268,11 +268,15 @@ jobs:
             }
           }
           EOF
-          ./result/bin/llzk-opt "$OUT/fixtures/r1cs_constrain_in.llzk" --llzk-full-r1cs-lowering > "$OUT/lowering.stdout" 2> "$OUT/lowering.stderr"; echo $? > "$OUT/lowering.exit"
+          set +e
+          ./result/bin/llzk-opt "$OUT/fixtures/r1cs_constrain_in.llzk" --llzk-full-r1cs-lowering > "$OUT/lowering.stdout" 2> "$OUT/lowering.stderr"
+          ec=$?
+          set -e
+          echo "$ec" > "$OUT/lowering.exit"
           grep -c "r1cs.constrain" "$OUT/lowering.stdout" > "$OUT/r1cs-constrain-count.txt" || true
           sha256sum "$OUT"/fixtures/*.llzk > "$OUT/fixture-sha256.txt"
           {
-            echo "issue=R1CS lowering silently drops constrain.in"
+            echo "issue=R1CS lowering rejects constrain.in as unsupported"
             echo "priority=4"
             echo "head=$(cat "$OUT/head.sha")"
             echo "upstream_main=$(cat "$OUT/upstream-main.sha")"
@@ -376,13 +380,13 @@ jobs:
           ./result/bin/llzk-opt --version 2>&1 | tee "$OUT/llzk-opt-version.txt" || true
           cat > "$OUT/fixtures/uintdiv_noncanonical.llzk" <<'EOF'
           module attributes {llzk.lang = "llzk"} {
-            function.def @direct() -> !felt.type<"babybear"> attributes {allow_non_native_field_ops} {
+            function.def @direct() -> !felt.type<"babybear"> attributes {function.allow_non_native_field_ops} {
               %x = felt.const 2013265922 <"babybear">
               %two = felt.const 2 <"babybear">
               %q = felt.uintdiv %x, %two : !felt.type<"babybear">, !felt.type<"babybear">
               function.return %q : !felt.type<"babybear">
             }
-            function.def @via_identity() -> !felt.type<"babybear"> attributes {allow_non_native_field_ops} {
+            function.def @via_identity() -> !felt.type<"babybear"> attributes {function.allow_non_native_field_ops} {
               %x = felt.const 2013265922 <"babybear">
               %zero = felt.const 0 <"babybear">
               %x_norm = felt.add %x, %zero : !felt.type<"babybear">, !felt.type<"babybear">
@@ -392,7 +396,11 @@ jobs:
             }
           }
           EOF
-          ./result/bin/llzk-opt "$OUT/fixtures/uintdiv_noncanonical.llzk" --canonicalize > "$OUT/canonicalize.stdout" 2> "$OUT/canonicalize.stderr"; echo $? > "$OUT/canonicalize.exit"
+          set +e
+          ./result/bin/llzk-opt "$OUT/fixtures/uintdiv_noncanonical.llzk" --canonicalize > "$OUT/canonicalize.stdout" 2> "$OUT/canonicalize.stderr"
+          ec=$?
+          set -e
+          echo "$ec" > "$OUT/canonicalize.exit"
           sha256sum "$OUT"/fixtures/*.llzk > "$OUT/fixture-sha256.txt"
           {
             echo "issue=felt.uintdiv constant folding uses unreduced representatives"
