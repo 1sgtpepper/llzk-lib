@@ -1,0 +1,153 @@
+name: Issues Repro
+
+on:
+  push:
+    branches: [ issues-repro ]
+  workflow_dispatch:
+
+jobs:
+  repro:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: cachix/install-nix-action@d1ca217b388ee87b2507a9a93bf01368bde7cec2
+        with:
+          install_url: https://releases.nixos.org/nix/nix-2.23.3/install
+          github_access_token: "${{ secrets.GITHUB_TOKEN }}"
+      - name: Set Git credentials
+        run: |
+          git config --global 'url.https://api@github.com/'.insteadOf 'https://github.com/'
+          git config --global 'url.https://ssh@github.com/'.insteadOf 'ssh://git@github.com/'
+          git config --global 'url.https://git@github.com/'.insteadOf 'git@github.com:'
+      - name: Build LLZK
+        run: |
+          set -euxo pipefail
+          mkdir -p repro-out
+          git remote add upstream https://github.com/project-llzk/llzk-lib.git || true
+          git fetch upstream main
+          git rev-parse HEAD | tee repro-out/head.sha
+          git rev-parse upstream/main | tee repro-out/upstream-main.sha
+          git status --short --branch | tee repro-out/git-status.txt
+          test "$(git rev-parse HEAD)" = "$(git rev-parse upstream/main)"
+          nix --print-build-logs build '.#llzk'
+          ./result/bin/llzk-opt --version 2>&1 | tee repro-out/llzk-opt-version.txt || true
+          ./result/bin/llzk-witgen --help > repro-out/llzk-witgen-help.txt 2>&1 || true
+          ./result/bin/llzk-opt --help > repro-out/llzk-opt-help.txt 2>&1 || true
+      - name: Run repros
+        shell: bash
+        run: |
+          set -u
+          ROOT="$PWD"; BIN="$ROOT/result/bin"; OUT="$ROOT/repro-out"
+          mkdir -p "$OUT/fixtures"
+          log_run() {
+            local name="$1"; shift
+            echo "===== $name =====" | tee "$OUT/$name.log"
+            echo "+ $*" | tee -a "$OUT/$name.log"
+            set +e
+            "$@" >"$OUT/$name.stdout" 2>"$OUT/$name.stderr"
+            local ec=$?
+            set -e
+            echo "$ec" > "$OUT/$name.exit"
+            echo "exit_code=$ec" | tee -a "$OUT/$name.log"
+            echo "--- stdout ---" | tee -a "$OUT/$name.log"
+            cat "$OUT/$name.stdout" | tee -a "$OUT/$name.log" || true
+            echo "--- stderr ---" | tee -a "$OUT/$name.log"
+            cat "$OUT/$name.stderr" | tee -a "$OUT/$name.log" || true
+          }
+          grep -E "r1cs|zklean|cse|canonical|duplicate|witgen" "$OUT/llzk-opt-help.txt" > "$OUT/pass-help-filtered.txt" || true
+          cat > "$OUT/fixtures/tofelt_backend_divergence.llzk" <<'EOF'
+module attributes {llzk.lang = "llzk", llzk.main = !struct.type<@Main>} {
+  struct.def @Main {
+    struct.member @out : !felt.type<"babybear"> {llzk.pub}
+    function.def @compute() -> !struct.type<@Main> {
+      %self = struct.new : !struct.type<@Main>
+      %p_minus_one = arith.constant 2013265920 : index
+      %one = arith.constant 1 : index
+      %p = arith.addi %p_minus_one, %one : index
+      %out = cast.tofelt %p : index, !felt.type<"babybear">
+      struct.writem %self[@out] = %out : !struct.type<@Main>, !felt.type<"babybear">
+      function.return %self : !struct.type<@Main>
+    }
+    function.def @constrain(%self: !struct.type<@Main>) { function.return }
+  }
+}
+EOF
+          printf '[]\n' > "$OUT/fixtures/empty.json"
+          log_run tofelt_interpreter "$BIN/llzk-witgen" "$OUT/fixtures/tofelt_backend_divergence.llzk" --inputs "$OUT/fixtures/empty.json" --backend=interpreter
+          log_run tofelt_execution_engine "$BIN/llzk-witgen" "$OUT/fixtures/tofelt_backend_divergence.llzk" --inputs "$OUT/fixtures/empty.json" --backend=execution-engine
+          log_run tofelt_execution_engine_dump "$BIN/llzk-witgen" "$OUT/fixtures/tofelt_backend_divergence.llzk" --inputs "$OUT/fixtures/empty.json" --backend=execution-engine --dump-jit-core
+          cat > "$OUT/fixtures/array_new_cse.llzk" <<'EOF'
+module attributes {llzk.lang = "llzk"} {
+  function.def @array_cse(%a: !felt.type<"babybear">, %b: !felt.type<"babybear">) -> !felt.type<"babybear"> {
+    %i = arith.constant 0 : index
+    %x = array.new %a : !array.type<1 x !felt.type<"babybear">>
+    %y = array.new %a : !array.type<1 x !felt.type<"babybear">>
+    array.write %x[%i] = %b : !array.type<1 x !felt.type<"babybear">>, !felt.type<"babybear">
+    %r = array.read %y[%i] : !array.type<1 x !felt.type<"babybear">>, !felt.type<"babybear">
+    function.return %r : !felt.type<"babybear">
+  }
+}
+EOF
+          log_run array_cse "$BIN/llzk-opt" "$OUT/fixtures/array_new_cse.llzk" --cse
+          log_run array_canonical_cse "$BIN/llzk-opt" "$OUT/fixtures/array_new_cse.llzk" --canonicalize --cse
+          cat > "$OUT/fixtures/r1cs_constrain_in.llzk" <<'EOF'
+module attributes {llzk.lang = "llzk"} {
+  struct.def @Main {
+    struct.member @out : !felt.type<"babybear"> {llzk.pub}
+    function.def @compute(%x: !felt.type<"babybear">) -> !struct.type<@Main> {
+      %self = struct.new : !struct.type<@Main>
+      struct.writem %self[@out] = %x : !struct.type<@Main>, !felt.type<"babybear">
+      function.return %self : !struct.type<@Main>
+    }
+    function.def @constrain(%self: !struct.type<@Main>, %x: !felt.type<"babybear">) attributes {function.allow_constraint} {
+      %out = struct.readm %self[@out] : !struct.type<@Main>, !felt.type<"babybear">
+      %a = array.new %out, %x : !array.type<2 x !felt.type<"babybear">>
+      constrain.in %a, %x : !array.type<2 x !felt.type<"babybear">>, !felt.type<"babybear">
+      function.return
+    }
+  }
+}
+EOF
+          log_run r1cs_constrain_in "$BIN/llzk-opt" "$OUT/fixtures/r1cs_constrain_in.llzk" --llzk-full-r1cs-lowering
+          cat > "$OUT/fixtures/zklean_constrain_in.llzk" <<'EOF'
+module attributes {llzk.lang = "llzk"} {
+  function.def @contains(%xs: !array.type<2 x !felt.type<"babybear">>, %x: !felt.type<"babybear">) attributes {function.allow_constraint} {
+    constrain.in %xs, %x : !array.type<2 x !felt.type<"babybear">>, !felt.type<"babybear">
+    function.return
+  }
+}
+EOF
+          log_run zklean_constrain_in "$BIN/llzk-opt" "$OUT/fixtures/zklean_constrain_in.llzk" --convert-llzk-to-zklean
+          cat > "$OUT/fixtures/uintdiv_noncanonical.llzk" <<'EOF'
+module attributes {llzk.lang = "llzk"} {
+  function.def @direct() -> !felt.type<"babybear"> attributes {allow_non_native_field_ops} {
+    %x = felt.const 2013265922 <"babybear">
+    %two = felt.const 2 <"babybear">
+    %q = felt.uintdiv %x, %two : !felt.type<"babybear">, !felt.type<"babybear">
+    function.return %q : !felt.type<"babybear">
+  }
+  function.def @via_identity() -> !felt.type<"babybear"> attributes {allow_non_native_field_ops} {
+    %x = felt.const 2013265922 <"babybear">
+    %zero = felt.const 0 <"babybear">
+    %x_norm = felt.add %x, %zero : !felt.type<"babybear">, !felt.type<"babybear">
+    %two = felt.const 2 <"babybear">
+    %q = felt.uintdiv %x_norm, %two : !felt.type<"babybear">, !felt.type<"babybear">
+    function.return %q : !felt.type<"babybear">
+  }
+}
+EOF
+          log_run uintdiv_canonicalize "$BIN/llzk-opt" "$OUT/fixtures/uintdiv_noncanonical.llzk" --canonicalize
+          sha256sum "$OUT"/fixtures/*.llzk > "$OUT/fixture-sha256.txt"
+          {
+            echo "head=$(cat "$OUT/head.sha")"
+            echo "upstream_main=$(cat "$OUT/upstream-main.sha")"
+            for f in "$OUT"/*.exit; do echo "$(basename "$f" .exit)=$(cat "$f")"; done
+          } > "$OUT/SUMMARY.txt"
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: issues-repro-output
+          path: repro-out
