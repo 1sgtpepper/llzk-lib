@@ -44,7 +44,7 @@ jobs:
           grep -n "constrainFunc.walk" backends/r1cs/lib/r1cs/Transforms/R1CSLoweringPass.cpp > "$OUT/r1cs-lowering-walk-sites.txt" || true
 
           cat > "$OUT/fixtures/helper_call.llzk" <<'EOF'
-          module attributes {llzk.lang = "llzk"} {
+          module attributes {llzk.lang} {
             function.def @force_zero(%x: !felt.type) attributes {function.allow_constraint} {
               %zero = felt.const 0
               constrain.eq %x, %zero : !felt.type
@@ -57,7 +57,7 @@ jobs:
                 struct.writem %self[@out] = %x : !struct.type<@Main>, !felt.type
                 function.return %self : !struct.type<@Main>
               }
-              function.def @constrain(%self: !struct.type<@Main>, %x: !felt.type) attributes {function.allow_constraint} {
+              function.def @constrain(%self: !struct.type<@Main>, %x: !felt.type) {
                 function.call @force_zero(%x) : (!felt.type) -> ()
                 %out = struct.readm %self[@out] : !struct.type<@Main>, !felt.type
                 constrain.eq %out, %x : !felt.type
@@ -68,7 +68,7 @@ jobs:
           EOF
 
           cat > "$OUT/fixtures/inline_control.llzk" <<'EOF'
-          module attributes {llzk.lang = "llzk"} {
+          module attributes {llzk.lang} {
             struct.def @Main {
               struct.member @out : !felt.type {llzk.pub}
               function.def @compute(%x: !felt.type) -> !struct.type<@Main> {
@@ -76,7 +76,7 @@ jobs:
                 struct.writem %self[@out] = %x : !struct.type<@Main>, !felt.type
                 function.return %self : !struct.type<@Main>
               }
-              function.def @constrain(%self: !struct.type<@Main>, %x: !felt.type) attributes {function.allow_constraint} {
+              function.def @constrain(%self: !struct.type<@Main>, %x: !felt.type) {
                 %zero = felt.const 0
                 constrain.eq %x, %zero : !felt.type
                 %out = struct.readm %self[@out] : !struct.type<@Main>, !felt.type
@@ -187,6 +187,7 @@ jobs:
             cat "$OUT/RESULT.txt"
             echo "full_helper_print_after_exit=$(cat "$OUT/full-helper-print-after.exit")"
           } > "$OUT/SUMMARY.txt"
+          grep -q '^result=accepted_r1cs_omits_helper_call_constraint$' "$OUT/RESULT.txt"
       - uses: actions/upload-artifact@v7
         if: always()
         with:
