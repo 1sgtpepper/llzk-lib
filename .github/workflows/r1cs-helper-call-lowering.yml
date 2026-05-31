@@ -54,10 +54,9 @@ jobs:
               struct.member @out : !felt.type {llzk.pub}
               function.def @compute(%x: !felt.type) -> !struct.type<@Main> {
                 %self = struct.new : !struct.type<@Main>
-                struct.writem %self[@out] = %x : !struct.type<@Main>, !felt.type
                 function.return %self : !struct.type<@Main>
               }
-              function.def @constrain(%self: !struct.type<@Main>, %x: !felt.type) {
+              function.def @constrain(%self: !struct.type<@Main>, %x: !felt.type {llzk.pub}) {
                 function.call @force_zero(%x) : (!felt.type) -> ()
                 %out = struct.readm %self[@out] : !struct.type<@Main>, !felt.type
                 constrain.eq %out, %x : !felt.type
@@ -73,10 +72,9 @@ jobs:
               struct.member @out : !felt.type {llzk.pub}
               function.def @compute(%x: !felt.type) -> !struct.type<@Main> {
                 %self = struct.new : !struct.type<@Main>
-                struct.writem %self[@out] = %x : !struct.type<@Main>, !felt.type
                 function.return %self : !struct.type<@Main>
               }
-              function.def @constrain(%self: !struct.type<@Main>, %x: !felt.type) {
+              function.def @constrain(%self: !struct.type<@Main>, %x: !felt.type {llzk.pub}) {
                 %zero = felt.const 0
                 constrain.eq %x, %zero : !felt.type
                 %out = struct.readm %self[@out] : !struct.type<@Main>, !felt.type
