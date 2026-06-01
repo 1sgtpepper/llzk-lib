@@ -21,19 +21,19 @@ module attributes {llzk.lang} {
   }
 }
 
-// CHECK-LABEL: function.def @branch_dominated_write(
+// CHECK-LABEL: function.def @branch_dominated_write(%[[FORWARDED:[0-9a-zA-Z_\.]+]]: !felt.type
 // CHECK-NOT: array.
 // CHECK: scf.if
 // CHECK-NOT: array.read
 // CHECK-NOT: array.write
 // CHECK: %[[THEN_SUM:[0-9a-zA-Z_\.]+]] = felt.add
-// CHECK-NEXT: %[[THEN_OUT:[0-9a-zA-Z_\.]+]] = felt.add %[[THEN_SUM]], %arg0
+// CHECK-NEXT: %[[THEN_OUT:[0-9a-zA-Z_\.]+]] = felt.add %[[THEN_SUM]], %[[FORWARDED]]
 // CHECK-NEXT: scf.yield %[[THEN_OUT]]
 // CHECK: } else {
 // CHECK-NOT: array.read
 // CHECK-NOT: array.write
 // CHECK: %[[ELSE_SUM:[0-9a-zA-Z_\.]+]] = felt.add
-// CHECK-NEXT: %[[ELSE_OUT:[0-9a-zA-Z_\.]+]] = felt.add %[[ELSE_SUM]], %arg0
+// CHECK-NEXT: %[[ELSE_OUT:[0-9a-zA-Z_\.]+]] = felt.add %[[ELSE_SUM]], %[[FORWARDED]]
 // CHECK-NEXT: scf.yield %[[ELSE_OUT]]
 
 // -----
