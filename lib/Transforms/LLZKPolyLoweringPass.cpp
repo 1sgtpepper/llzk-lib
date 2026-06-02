@@ -121,6 +121,66 @@ private:
       return val;
     }
 
+    if (auto addOp = val.getDefiningOp<AddFeltOp>()) {
+      Value lhs = lowerExpression(
+          addOp.getLhs(), structDef, constrainFunc, degreeMemo, rewrites, auxAssignments
+      );
+      Value rhs = lowerExpression(
+          addOp.getRhs(), structDef, constrainFunc, degreeMemo, rewrites, auxAssignments
+      );
+
+      if (lhs == addOp.getLhs() && rhs == addOp.getRhs()) {
+        degreeMemo[val] = std::max(getDegree(lhs, degreeMemo), getDegree(rhs, degreeMemo));
+        rewrites[val] = val;
+        return val;
+      }
+
+      OpBuilder builder(addOp.getOperation()->getBlock(), ++Block::iterator(addOp));
+      Value addVal = builder.create<AddFeltOp>(addOp.getLoc(), addOp.getType(), lhs, rhs);
+      degreeMemo[addVal] = std::max(getDegree(lhs, degreeMemo), getDegree(rhs, degreeMemo));
+      rewrites[val] = addVal;
+      return addVal;
+    }
+
+    if (auto subOp = val.getDefiningOp<SubFeltOp>()) {
+      Value lhs = lowerExpression(
+          subOp.getLhs(), structDef, constrainFunc, degreeMemo, rewrites, auxAssignments
+      );
+      Value rhs = lowerExpression(
+          subOp.getRhs(), structDef, constrainFunc, degreeMemo, rewrites, auxAssignments
+      );
+
+      if (lhs == subOp.getLhs() && rhs == subOp.getRhs()) {
+        degreeMemo[val] = std::max(getDegree(lhs, degreeMemo), getDegree(rhs, degreeMemo));
+        rewrites[val] = val;
+        return val;
+      }
+
+      OpBuilder builder(subOp.getOperation()->getBlock(), ++Block::iterator(subOp));
+      Value subVal = builder.create<SubFeltOp>(subOp.getLoc(), subOp.getType(), lhs, rhs);
+      degreeMemo[subVal] = std::max(getDegree(lhs, degreeMemo), getDegree(rhs, degreeMemo));
+      rewrites[val] = subVal;
+      return subVal;
+    }
+
+    if (auto negOp = val.getDefiningOp<NegFeltOp>()) {
+      Value operand = lowerExpression(
+          negOp.getOperand(), structDef, constrainFunc, degreeMemo, rewrites, auxAssignments
+      );
+
+      if (operand == negOp.getOperand()) {
+        degreeMemo[val] = getDegree(operand, degreeMemo);
+        rewrites[val] = val;
+        return val;
+      }
+
+      OpBuilder builder(negOp.getOperation()->getBlock(), ++Block::iterator(negOp));
+      Value negVal = builder.create<NegFeltOp>(negOp.getLoc(), negOp.getType(), operand);
+      degreeMemo[negVal] = getDegree(operand, degreeMemo);
+      rewrites[val] = negVal;
+      return negVal;
+    }
+
     if (auto mulOp = val.getDefiningOp<MulFeltOp>()) {
       // Recursively lower operands first
       Value lhs = lowerExpression(
@@ -206,7 +266,7 @@ private:
       return mulVal;
     }
 
-    // For non-mul ops, leave untouched (they're degree-1 safe)
+    // Unsupported roots are left unchanged.
     rewrites[val] = val;
     return val;
   }
@@ -297,6 +357,21 @@ private:
               Value loweredArg = lowerExpression(
                   arg, structDef, constrainFunc, degreeMemo, rewrites, auxAssignments
               );
+              if (getDegree(loweredArg, degreeMemo) > 1) {
+                OpBuilder builder(callOp);
+                std::string auxName =
+                    AUXILIARY_MEMBER_PREFIX + std::to_string(this->auxCounter++);
+                MemberDefOp auxMember = addAuxMember(structDef, auxName);
+                Value selfVal = constrainFunc.getSelfValueFromConstrain();
+                auto auxVal = builder.create<MemberReadOp>(
+                    loweredArg.getLoc(), loweredArg.getType(), selfVal, auxMember.getNameAttr()
+                );
+                Location loc = builder.getFusedLoc({auxVal.getLoc(), loweredArg.getLoc()});
+                builder.create<EmitEqualityOp>(loc, auxVal, loweredArg);
+                auxAssignments.push_back({auxName, loweredArg});
+                degreeMemo[auxVal] = 1;
+                loweredArg = auxVal;
+              }
               arg = loweredArg;
               modified = true;
             }
