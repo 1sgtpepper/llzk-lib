@@ -1,0 +1,453 @@
+name: Issues Repro
+
+on:
+  push:
+    branches: [ current-main-repros ]
+  workflow_dispatch:
+
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  cast-tofelt:
+    name: "01 cast.tofelt backend divergence"
+    runs-on: ubuntu-24.04
+    timeout-minutes: 105
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: cachix/install-nix-action@d1ca217b388ee87b2507a9a93bf01368bde7cec2
+        with:
+          install_url: https://releases.nixos.org/nix/nix-2.23.3/install
+          github_access_token: "${{ secrets.GITHUB_TOKEN }}"
+      - uses: DeterminateSystems/magic-nix-cache-action@908b263ff629f4cc17666315b7fd3ec127c6244d
+      - uses: cachix/cachix-action@v17
+        continue-on-error: true
+        with:
+          name: veridise-public
+      - name: Run priority repro
+        run: |
+          set -euxo pipefail
+          OUT="repro-out/01-cast-tofelt"; mkdir -p "$OUT/fixtures"
+          git remote add upstream https://github.com/project-llzk/llzk-lib.git || true
+          git fetch upstream main
+          git rev-parse HEAD | tee "$OUT/head.sha"
+          git rev-parse upstream/main | tee "$OUT/upstream-main.sha"
+          git diff --name-only upstream/main...HEAD | tee "$OUT/diff-from-upstream.txt"
+          printf '%s\n' '.github/workflows/issues-repro.yml' | diff -u - <(sort "$OUT/diff-from-upstream.txt")
+          sha256sum flake.lock flake.nix .github/workflows/issues-repro.yml | tee "$OUT/build-input-sha256.txt"
+          timeout 90m bash -c "nix --print-build-logs build '.#llzk' 2>&1 | tee '$OUT/nix-build.log'"
+          readlink result | tee "$OUT/result-store-path.txt"
+          ./result/bin/llzk-opt --version 2>&1 | tee "$OUT/llzk-opt-version.txt" || true
+          ./result/bin/llzk-witgen --help > "$OUT/llzk-witgen-help.txt" 2>&1 || true
+          cat > "$OUT/fixtures/tofelt_backend_divergence.llzk" <<'EOF'
+          module attributes {llzk.lang = "llzk", llzk.main = !struct.type<@Main>} {
+            struct.def @Main {
+              struct.member @out : !felt.type<"babybear"> {llzk.pub}
+              function.def @compute() -> !struct.type<@Main> {
+                %self = struct.new : !struct.type<@Main>
+                %p_minus_one = arith.constant 2013265920 : index
+                %one = arith.constant 1 : index
+                %p = arith.addi %p_minus_one, %one : index
+                %out = cast.tofelt %p : index, !felt.type<"babybear">
+                struct.writem %self[@out] = %out : !struct.type<@Main>, !felt.type<"babybear">
+                function.return %self : !struct.type<@Main>
+              }
+              function.def @constrain(%self: !struct.type<@Main>) { function.return }
+            }
+          }
+          EOF
+          printf '[]\n' > "$OUT/fixtures/empty.json"
+          ./result/bin/llzk-witgen "$OUT/fixtures/tofelt_backend_divergence.llzk" --inputs "$OUT/fixtures/empty.json" --backend=interpreter > "$OUT/interpreter.stdout" 2> "$OUT/interpreter.stderr"; echo $? > "$OUT/interpreter.exit"
+          ./result/bin/llzk-witgen "$OUT/fixtures/tofelt_backend_divergence.llzk" --inputs "$OUT/fixtures/empty.json" --backend=execution-engine > "$OUT/execution-engine.stdout" 2> "$OUT/execution-engine.stderr"; echo $? > "$OUT/execution-engine.exit"
+          ./result/bin/llzk-witgen "$OUT/fixtures/tofelt_backend_divergence.llzk" --inputs "$OUT/fixtures/empty.json" --backend=execution-engine --dump-jit-core > "$OUT/execution-engine-dump.stdout" 2> "$OUT/execution-engine-dump.stderr"; echo $? > "$OUT/execution-engine-dump.exit"
+          sha256sum "$OUT"/fixtures/*.llzk > "$OUT/fixture-sha256.txt"
+          {
+            echo "issue=cast.tofelt execution-engine lowering bypasses field reduction"
+            echo "priority=1"
+            echo "head=$(cat "$OUT/head.sha")"
+            echo "upstream_main=$(cat "$OUT/upstream-main.sha")"
+            echo "interpreter_exit=$(cat "$OUT/interpreter.exit")"
+            echo "execution_engine_exit=$(cat "$OUT/execution-engine.exit")"
+          } > "$OUT/SUMMARY.txt"
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: principal-01-cast-tofelt
+          path: repro-out/01-cast-tofelt
+
+  r1cs-helper-call:
+    name: "02 R1CS helper-call omission"
+    needs: cast-tofelt
+    if: ${{ always() }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 105
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: cachix/install-nix-action@d1ca217b388ee87b2507a9a93bf01368bde7cec2
+        with:
+          install_url: https://releases.nixos.org/nix/nix-2.23.3/install
+          github_access_token: "${{ secrets.GITHUB_TOKEN }}"
+      - uses: DeterminateSystems/magic-nix-cache-action@908b263ff629f4cc17666315b7fd3ec127c6244d
+      - uses: cachix/cachix-action@v17
+        continue-on-error: true
+        with:
+          name: veridise-public
+      - name: Run priority repro
+        run: |
+          set -euxo pipefail
+          OUT="repro-out/02-r1cs-helper-call"; mkdir -p "$OUT/fixtures"
+          git remote add upstream https://github.com/project-llzk/llzk-lib.git || true
+          git fetch upstream main
+          git rev-parse HEAD | tee "$OUT/head.sha"
+          git rev-parse upstream/main | tee "$OUT/upstream-main.sha"
+          git diff --name-only upstream/main...HEAD | tee "$OUT/diff-from-upstream.txt"
+          printf '%s\n' '.github/workflows/issues-repro.yml' | diff -u - <(sort "$OUT/diff-from-upstream.txt")
+          sha256sum flake.lock flake.nix .github/workflows/issues-repro.yml | tee "$OUT/build-input-sha256.txt"
+          timeout 90m bash -c "nix --print-build-logs build '.#llzk' 2>&1 | tee '$OUT/nix-build.log'"
+          readlink result | tee "$OUT/result-store-path.txt"
+          ./result/bin/llzk-opt --version 2>&1 | tee "$OUT/llzk-opt-version.txt" || true
+          cat > "$OUT/fixtures/r1cs_helper_call_dropped.llzk" <<'EOF'
+          module attributes {llzk.lang = "llzk"} {
+            function.def @force_zero(%x: !felt.type) attributes {function.allow_constraint} {
+              %zero = felt.const 0
+              constrain.eq %x, %zero : !felt.type
+              function.return
+            }
+            struct.def @Main {
+              struct.member @out : !felt.type {llzk.pub}
+              function.def @compute(%x: !felt.type) -> !struct.type<@Main> {
+                %self = struct.new : !struct.type<@Main>
+                struct.writem %self[@out] = %x : !struct.type<@Main>, !felt.type
+                function.return %self : !struct.type<@Main>
+              }
+              function.def @constrain(%self: !struct.type<@Main>, %x: !felt.type) attributes {function.allow_constraint} {
+                function.call @force_zero(%x) : (!felt.type) -> ()
+                %out = struct.readm %self[@out] : !struct.type<@Main>, !felt.type
+                constrain.eq %out, %x : !felt.type
+                function.return
+              }
+            }
+          }
+          EOF
+          set +e
+          ./result/bin/llzk-opt "$OUT/fixtures/r1cs_helper_call_dropped.llzk" --llzk-full-r1cs-lowering > "$OUT/lowering.stdout" 2> "$OUT/lowering.stderr"
+          ec=$?
+          set -e
+          echo "$ec" > "$OUT/lowering.exit"
+          grep -c "r1cs.constrain" "$OUT/lowering.stdout" > "$OUT/r1cs-constrain-count.txt" || true
+          sha256sum "$OUT"/fixtures/*.llzk > "$OUT/fixture-sha256.txt"
+          {
+            echo "issue=R1CS lowering omits constraints reachable through allow_constraint helper calls"
+            echo "priority=2"
+            echo "head=$(cat "$OUT/head.sha")"
+            echo "upstream_main=$(cat "$OUT/upstream-main.sha")"
+            echo "lowering_exit=$(cat "$OUT/lowering.exit")"
+            echo "r1cs_constrain_count=$(cat "$OUT/r1cs-constrain-count.txt" 2>/dev/null || true)"
+          } > "$OUT/SUMMARY.txt"
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: principal-02-r1cs-helper-call
+          path: repro-out/02-r1cs-helper-call
+
+  array-new-cse:
+    name: "03 array.new Pure/CSE"
+    needs: r1cs-helper-call
+    if: ${{ always() }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 105
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: cachix/install-nix-action@d1ca217b388ee87b2507a9a93bf01368bde7cec2
+        with:
+          install_url: https://releases.nixos.org/nix/nix-2.23.3/install
+          github_access_token: "${{ secrets.GITHUB_TOKEN }}"
+      - uses: DeterminateSystems/magic-nix-cache-action@908b263ff629f4cc17666315b7fd3ec127c6244d
+      - uses: cachix/cachix-action@v17
+        continue-on-error: true
+        with:
+          name: veridise-public
+      - name: Run priority repro
+        run: |
+          set -euxo pipefail
+          OUT="repro-out/03-array-new-cse"; mkdir -p "$OUT/fixtures"
+          git remote add upstream https://github.com/project-llzk/llzk-lib.git || true
+          git fetch upstream main
+          git rev-parse HEAD | tee "$OUT/head.sha"
+          git rev-parse upstream/main | tee "$OUT/upstream-main.sha"
+          git diff --name-only upstream/main...HEAD | tee "$OUT/diff-from-upstream.txt"
+          printf '%s\n' '.github/workflows/issues-repro.yml' | diff -u - <(sort "$OUT/diff-from-upstream.txt")
+          sha256sum flake.lock flake.nix .github/workflows/issues-repro.yml | tee "$OUT/build-input-sha256.txt"
+          timeout 90m bash -c "nix --print-build-logs build '.#llzk' 2>&1 | tee '$OUT/nix-build.log'"
+          readlink result | tee "$OUT/result-store-path.txt"
+          ./result/bin/llzk-opt --version 2>&1 | tee "$OUT/llzk-opt-version.txt" || true
+          cat > "$OUT/fixtures/array_new_cse.llzk" <<'EOF'
+          module attributes {llzk.lang = "llzk"} {
+            function.def @array_cse(%a: !felt.type<"babybear">, %b: !felt.type<"babybear">) -> !felt.type<"babybear"> {
+              %i = arith.constant 0 : index
+              %x = array.new %a : !array.type<1 x !felt.type<"babybear">>
+              %y = array.new %a : !array.type<1 x !felt.type<"babybear">>
+              array.write %x[%i] = %b : !array.type<1 x !felt.type<"babybear">>, !felt.type<"babybear">
+              %r = array.read %y[%i] : !array.type<1 x !felt.type<"babybear">>, !felt.type<"babybear">
+              function.return %r : !felt.type<"babybear">
+            }
+          }
+          EOF
+          ./result/bin/llzk-opt "$OUT/fixtures/array_new_cse.llzk" --cse > "$OUT/cse.stdout" 2> "$OUT/cse.stderr"; echo $? > "$OUT/cse.exit"
+          ./result/bin/llzk-opt "$OUT/fixtures/array_new_cse.llzk" --canonicalize --cse > "$OUT/canonicalize-cse.stdout" 2> "$OUT/canonicalize-cse.stderr"; echo $? > "$OUT/canonicalize-cse.exit"
+          sha256sum "$OUT"/fixtures/*.llzk > "$OUT/fixture-sha256.txt"
+          {
+            echo "issue=array.new is marked Pure allowing CSE to merge fresh mutable arrays"
+            echo "priority=3"
+            echo "head=$(cat "$OUT/head.sha")"
+            echo "upstream_main=$(cat "$OUT/upstream-main.sha")"
+            echo "cse_exit=$(cat "$OUT/cse.exit")"
+            echo "canonicalize_cse_exit=$(cat "$OUT/canonicalize-cse.exit")"
+          } > "$OUT/SUMMARY.txt"
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: principal-03-array-new-cse
+          path: repro-out/03-array-new-cse
+
+  r1cs-constrain-in:
+    name: "04 R1CS constrain.in unsupported"
+    needs: array-new-cse
+    if: ${{ always() }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 105
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: cachix/install-nix-action@d1ca217b388ee87b2507a9a93bf01368bde7cec2
+        with:
+          install_url: https://releases.nixos.org/nix/nix-2.23.3/install
+          github_access_token: "${{ secrets.GITHUB_TOKEN }}"
+      - uses: DeterminateSystems/magic-nix-cache-action@908b263ff629f4cc17666315b7fd3ec127c6244d
+      - uses: cachix/cachix-action@v17
+        continue-on-error: true
+        with:
+          name: veridise-public
+      - name: Run priority repro
+        run: |
+          set -euxo pipefail
+          OUT="repro-out/04-r1cs-constrain-in"; mkdir -p "$OUT/fixtures"
+          git remote add upstream https://github.com/project-llzk/llzk-lib.git || true
+          git fetch upstream main
+          git rev-parse HEAD | tee "$OUT/head.sha"
+          git rev-parse upstream/main | tee "$OUT/upstream-main.sha"
+          git diff --name-only upstream/main...HEAD | tee "$OUT/diff-from-upstream.txt"
+          printf '%s\n' '.github/workflows/issues-repro.yml' | diff -u - <(sort "$OUT/diff-from-upstream.txt")
+          sha256sum flake.lock flake.nix .github/workflows/issues-repro.yml | tee "$OUT/build-input-sha256.txt"
+          timeout 90m bash -c "nix --print-build-logs build '.#llzk' 2>&1 | tee '$OUT/nix-build.log'"
+          readlink result | tee "$OUT/result-store-path.txt"
+          ./result/bin/llzk-opt --version 2>&1 | tee "$OUT/llzk-opt-version.txt" || true
+          cat > "$OUT/fixtures/r1cs_constrain_in.llzk" <<'EOF'
+          module attributes {llzk.lang = "llzk"} {
+            struct.def @Main {
+              struct.member @out : !felt.type<"babybear"> {llzk.pub}
+              function.def @compute(%x: !felt.type<"babybear">) -> !struct.type<@Main> {
+                %self = struct.new : !struct.type<@Main>
+                struct.writem %self[@out] = %x : !struct.type<@Main>, !felt.type<"babybear">
+                function.return %self : !struct.type<@Main>
+              }
+              function.def @constrain(%self: !struct.type<@Main>, %x: !felt.type<"babybear">) attributes {function.allow_constraint} {
+                %out = struct.readm %self[@out] : !struct.type<@Main>, !felt.type<"babybear">
+                %a = array.new %out, %x : !array.type<2 x !felt.type<"babybear">>
+                constrain.in %a, %x : !array.type<2 x !felt.type<"babybear">>, !felt.type<"babybear">
+                function.return
+              }
+            }
+          }
+          EOF
+          set +e
+          ./result/bin/llzk-opt "$OUT/fixtures/r1cs_constrain_in.llzk" --llzk-full-r1cs-lowering > "$OUT/lowering.stdout" 2> "$OUT/lowering.stderr"
+          ec=$?
+          set -e
+          echo "$ec" > "$OUT/lowering.exit"
+          grep -c "r1cs.constrain" "$OUT/lowering.stdout" > "$OUT/r1cs-constrain-count.txt" || true
+          sha256sum "$OUT"/fixtures/*.llzk > "$OUT/fixture-sha256.txt"
+          {
+            echo "issue=R1CS lowering rejects constrain.in as unsupported"
+            echo "priority=4"
+            echo "head=$(cat "$OUT/head.sha")"
+            echo "upstream_main=$(cat "$OUT/upstream-main.sha")"
+            echo "lowering_exit=$(cat "$OUT/lowering.exit")"
+            echo "r1cs_constrain_count=$(cat "$OUT/r1cs-constrain-count.txt" 2>/dev/null || true)"
+          } > "$OUT/SUMMARY.txt"
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: principal-04-r1cs-constrain-in
+          path: repro-out/04-r1cs-constrain-in
+
+  zklean-constrain-in:
+    name: "05 ZKLean zero-result constraint drops"
+    needs: r1cs-constrain-in
+    if: ${{ always() }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 105
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: cachix/install-nix-action@d1ca217b388ee87b2507a9a93bf01368bde7cec2
+        with:
+          install_url: https://releases.nixos.org/nix/nix-2.23.3/install
+          github_access_token: "${{ secrets.GITHUB_TOKEN }}"
+      - uses: DeterminateSystems/magic-nix-cache-action@908b263ff629f4cc17666315b7fd3ec127c6244d
+      - uses: cachix/cachix-action@v17
+        continue-on-error: true
+        with:
+          name: veridise-public
+      - name: Run priority repro
+        run: |
+          set -euxo pipefail
+          OUT="repro-out/05-zklean-constrain-in"; mkdir -p "$OUT/fixtures"
+          git remote add upstream https://github.com/project-llzk/llzk-lib.git || true
+          git fetch upstream main
+          git rev-parse HEAD | tee "$OUT/head.sha"
+          git rev-parse upstream/main | tee "$OUT/upstream-main.sha"
+          git diff --name-only upstream/main...HEAD | tee "$OUT/diff-from-upstream.txt"
+          printf '%s\n' '.github/workflows/issues-repro.yml' | diff -u - <(sort "$OUT/diff-from-upstream.txt")
+          sha256sum flake.lock flake.nix .github/workflows/issues-repro.yml | tee "$OUT/build-input-sha256.txt"
+          timeout 90m bash -c "nix --print-build-logs build '.#llzk' 2>&1 | tee '$OUT/nix-build.log'"
+          readlink result | tee "$OUT/result-store-path.txt"
+          ./result/bin/llzk-opt --version 2>&1 | tee "$OUT/llzk-opt-version.txt" || true
+          cat > "$OUT/fixtures/zklean_constrain_in.llzk" <<'EOF'
+          module attributes {llzk.lang = "llzk"} {
+            function.def @contains(%xs: !array.type<2 x !felt.type<"babybear">>, %x: !felt.type<"babybear">) attributes {function.allow_constraint} {
+              constrain.in %xs, %x : !array.type<2 x !felt.type<"babybear">>, !felt.type<"babybear">
+              function.return
+            }
+          }
+          EOF
+          cat > "$OUT/fixtures/zklean_child_call_drop.llzk" <<'EOF'
+          module attributes {llzk.lang = "llzk"} {
+            struct.def @Child {
+              struct.member @out : !felt.type<"babybear">
+              function.def @compute(%x: !felt.type<"babybear">) -> !struct.type<@Child> {
+                %self = struct.new : !struct.type<@Child>
+                struct.writem %self[@out] = %x : !struct.type<@Child>, !felt.type<"babybear">
+                function.return %self : !struct.type<@Child>
+              }
+              function.def @constrain(%self: !struct.type<@Child>, %x: !felt.type<"babybear">) attributes {function.allow_constraint} {
+                %one = felt.const 1 <"babybear">
+                constrain.eq %x, %one : !felt.type<"babybear">
+                function.return
+              }
+            }
+            function.def @parent(%child: !struct.type<@Child>, %x: !felt.type<"babybear">) attributes {function.allow_constraint} {
+              function.call @Child::@constrain(%child, %x) : (!struct.type<@Child>, !felt.type<"babybear">) -> ()
+              function.return
+            }
+          }
+          EOF
+          set +e
+          ./result/bin/llzk-opt "$OUT/fixtures/zklean_constrain_in.llzk" --convert-llzk-to-zklean > "$OUT/constrain-in.stdout" 2> "$OUT/constrain-in.stderr"
+          constrain_in_ec=$?
+          ./result/bin/llzk-opt "$OUT/fixtures/zklean_child_call_drop.llzk" --convert-llzk-to-zklean > "$OUT/child-call.stdout" 2> "$OUT/child-call.stderr"
+          child_call_ec=$?
+          set -e
+          echo "$constrain_in_ec" > "$OUT/constrain-in.exit"
+          echo "$child_call_ec" > "$OUT/child-call.exit"
+          grep -c "zkbuilder.constrain_eq" "$OUT/constrain-in.stdout" > "$OUT/constrain-in-zkbuilder-eq-count.txt" || true
+          grep -c "zkbuilder.constrain_eq" "$OUT/child-call.stdout" > "$OUT/child-call-zkbuilder-eq-count.txt" || true
+          grep -c "parent" "$OUT/child-call.stdout" > "$OUT/child-call-parent-symbol-count.txt" || true
+          awk '/func.func @parent/,/^}/ { print }' "$OUT/child-call.stdout" > "$OUT/child-call-parent-block.txt" || true
+          grep -c "zkbuilder.constrain_eq" "$OUT/child-call-parent-block.txt" > "$OUT/child-call-parent-zkbuilder-eq-count.txt" || true
+          sha256sum "$OUT"/fixtures/*.llzk > "$OUT/fixture-sha256.txt"
+          {
+            echo "issue=ZKLean conversion silently drops unsupported zero-result constraint operations"
+            echo "priority=5"
+            echo "head=$(cat "$OUT/head.sha")"
+            echo "upstream_main=$(cat "$OUT/upstream-main.sha")"
+            echo "constrain_in_exit=$(cat "$OUT/constrain-in.exit")"
+            echo "constrain_in_zkbuilder_eq_count=$(cat "$OUT/constrain-in-zkbuilder-eq-count.txt" 2>/dev/null || true)"
+            echo "child_call_exit=$(cat "$OUT/child-call.exit")"
+            echo "child_call_zkbuilder_eq_count=$(cat "$OUT/child-call-zkbuilder-eq-count.txt" 2>/dev/null || true)"
+            echo "child_call_parent_symbol_count=$(cat "$OUT/child-call-parent-symbol-count.txt" 2>/dev/null || true)"
+            echo "child_call_parent_zkbuilder_eq_count=$(cat "$OUT/child-call-parent-zkbuilder-eq-count.txt" 2>/dev/null || true)"
+          } > "$OUT/SUMMARY.txt"
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: principal-05-zklean-constrain-in
+          path: repro-out/05-zklean-constrain-in
+  uintdiv-noncanonical:
+    name: "06 felt.uintdiv noncanonical constants"
+    needs: zklean-constrain-in
+    if: ${{ always() }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 105
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: cachix/install-nix-action@d1ca217b388ee87b2507a9a93bf01368bde7cec2
+        with:
+          install_url: https://releases.nixos.org/nix/nix-2.23.3/install
+          github_access_token: "${{ secrets.GITHUB_TOKEN }}"
+      - uses: DeterminateSystems/magic-nix-cache-action@908b263ff629f4cc17666315b7fd3ec127c6244d
+      - uses: cachix/cachix-action@v17
+        continue-on-error: true
+        with:
+          name: veridise-public
+      - name: Run priority repro
+        run: |
+          set -euxo pipefail
+          OUT="repro-out/06-uintdiv-noncanonical"; mkdir -p "$OUT/fixtures"
+          git remote add upstream https://github.com/project-llzk/llzk-lib.git || true
+          git fetch upstream main
+          git rev-parse HEAD | tee "$OUT/head.sha"
+          git rev-parse upstream/main | tee "$OUT/upstream-main.sha"
+          git diff --name-only upstream/main...HEAD | tee "$OUT/diff-from-upstream.txt"
+          printf '%s\n' '.github/workflows/issues-repro.yml' | diff -u - <(sort "$OUT/diff-from-upstream.txt")
+          sha256sum flake.lock flake.nix .github/workflows/issues-repro.yml | tee "$OUT/build-input-sha256.txt"
+          timeout 90m bash -c "nix --print-build-logs build '.#llzk' 2>&1 | tee '$OUT/nix-build.log'"
+          readlink result | tee "$OUT/result-store-path.txt"
+          ./result/bin/llzk-opt --version 2>&1 | tee "$OUT/llzk-opt-version.txt" || true
+          cat > "$OUT/fixtures/uintdiv_noncanonical.llzk" <<'EOF'
+          module attributes {llzk.lang = "llzk"} {
+            function.def @direct() -> !felt.type<"babybear"> attributes {function.allow_non_native_field_ops} {
+              %x = felt.const 2013265922 <"babybear">
+              %two = felt.const 2 <"babybear">
+              %q = felt.uintdiv %x, %two : !felt.type<"babybear">, !felt.type<"babybear">
+              function.return %q : !felt.type<"babybear">
+            }
+            function.def @via_identity() -> !felt.type<"babybear"> attributes {function.allow_non_native_field_ops} {
+              %x = felt.const 2013265922 <"babybear">
+              %zero = felt.const 0 <"babybear">
+              %x_norm = felt.add %x, %zero : !felt.type<"babybear">, !felt.type<"babybear">
+              %two = felt.const 2 <"babybear">
+              %q = felt.uintdiv %x_norm, %two : !felt.type<"babybear">, !felt.type<"babybear">
+              function.return %q : !felt.type<"babybear">
+            }
+          }
+          EOF
+          set +e
+          ./result/bin/llzk-opt "$OUT/fixtures/uintdiv_noncanonical.llzk" --canonicalize > "$OUT/canonicalize.stdout" 2> "$OUT/canonicalize.stderr"
+          ec=$?
+          set -e
+          echo "$ec" > "$OUT/canonicalize.exit"
+          sha256sum "$OUT"/fixtures/*.llzk > "$OUT/fixture-sha256.txt"
+          {
+            echo "issue=felt.uintdiv constant folding uses unreduced representatives"
+            echo "priority=6"
+            echo "head=$(cat "$OUT/head.sha")"
+            echo "upstream_main=$(cat "$OUT/upstream-main.sha")"
+            echo "canonicalize_exit=$(cat "$OUT/canonicalize.exit")"
+          } > "$OUT/SUMMARY.txt"
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: principal-06-uintdiv-noncanonical
+          path: repro-out/06-uintdiv-noncanonical
