@@ -200,8 +200,39 @@ jobs:
             }
           }
           EOF
+          cat > "$OUT/fixtures/array_new_cse_witness.llzk" <<'EOF'
+          module attributes {llzk.lang = "llzk", llzk.main = !struct.type<@Main>} {
+            struct.def @Main {
+              struct.member @out : !felt.type<"babybear"> {llzk.pub}
+              function.def @compute(
+                %a: !felt.type<"babybear"> {function.arg_name = "a"},
+                %b: !felt.type<"babybear"> {function.arg_name = "b"}
+              ) -> !struct.type<@Main> {
+                %self = struct.new : !struct.type<@Main>
+                %i = arith.constant 0 : index
+                %x = array.new %a : !array.type<1 x !felt.type<"babybear">>
+                %y = array.new %a : !array.type<1 x !felt.type<"babybear">>
+                array.write %x[%i] = %b : !array.type<1 x !felt.type<"babybear">>, !felt.type<"babybear">
+                %r = array.read %y[%i] : !array.type<1 x !felt.type<"babybear">>, !felt.type<"babybear">
+                struct.writem %self[@out] = %r : !struct.type<@Main>, !felt.type<"babybear">
+                function.return %self : !struct.type<@Main>
+              }
+              function.def @constrain(
+                %self: !struct.type<@Main>,
+                %a: !felt.type<"babybear">,
+                %b: !felt.type<"babybear">
+              ) {
+                function.return
+              }
+            }
+          }
+          EOF
+          printf '{"a": 3, "b": 9}\n' > "$OUT/fixtures/array_new_cse_witness_input.json"
           ./result/bin/llzk-opt "$OUT/fixtures/array_new_cse.llzk" --cse > "$OUT/cse.stdout" 2> "$OUT/cse.stderr"; echo $? > "$OUT/cse.exit"
           ./result/bin/llzk-opt "$OUT/fixtures/array_new_cse.llzk" --canonicalize --cse > "$OUT/canonicalize-cse.stdout" 2> "$OUT/canonicalize-cse.stderr"; echo $? > "$OUT/canonicalize-cse.exit"
+          ./result/bin/llzk-witgen "$OUT/fixtures/array_new_cse_witness.llzk" --inputs "$OUT/fixtures/array_new_cse_witness_input.json" > "$OUT/witness-before-cse.stdout" 2> "$OUT/witness-before-cse.stderr"; echo $? > "$OUT/witness-before-cse.exit"
+          ./result/bin/llzk-opt "$OUT/fixtures/array_new_cse_witness.llzk" --cse > "$OUT/array-new-cse-witness-after-cse.llzk" 2> "$OUT/witness-cse.stderr"; echo $? > "$OUT/witness-cse.exit"
+          ./result/bin/llzk-witgen "$OUT/array-new-cse-witness-after-cse.llzk" --inputs "$OUT/fixtures/array_new_cse_witness_input.json" > "$OUT/witness-after-cse.stdout" 2> "$OUT/witness-after-cse.stderr"; echo $? > "$OUT/witness-after-cse.exit"
           sha256sum "$OUT"/fixtures/*.llzk > "$OUT/fixture-sha256.txt"
           {
             echo "issue=array.new is marked Pure allowing CSE to merge fresh mutable arrays"
@@ -210,6 +241,10 @@ jobs:
             echo "upstream_main=$(cat "$OUT/upstream-main.sha")"
             echo "cse_exit=$(cat "$OUT/cse.exit")"
             echo "canonicalize_cse_exit=$(cat "$OUT/canonicalize-cse.exit")"
+            echo "witness_before_cse_exit=$(cat "$OUT/witness-before-cse.exit")"
+            echo "witness_after_cse_exit=$(cat "$OUT/witness-after-cse.exit")"
+            echo "witness_before_cse_out=$(tr -d '\n ' < "$OUT/witness-before-cse.stdout")"
+            echo "witness_after_cse_out=$(tr -d '\n ' < "$OUT/witness-after-cse.stdout")"
           } > "$OUT/SUMMARY.txt"
       - uses: actions/upload-artifact@v7
         if: always()
