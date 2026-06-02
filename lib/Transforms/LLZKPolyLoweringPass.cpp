@@ -121,6 +121,7 @@ private:
       return val;
     }
 
+    // Degree-neutral roots can still contain over-degree operands.
     auto lowerBinaryRoot = [&](auto op) -> Value {
       Value lhs = lowerExpression(
           op.getLhs(), structDef, constrainFunc, degreeMemo, rewrites, auxAssignments
@@ -263,6 +264,8 @@ private:
       return loweredVal;
     }
 
+    // Callees only receive SSA values, not the caller expression tree, so nonlinear
+    // call arguments must be represented by an auxiliary member read.
     std::string auxName = AUXILIARY_MEMBER_PREFIX + std::to_string(this->auxCounter++);
     MemberDefOp auxMember = addAuxMember(structDef, auxName);
 
