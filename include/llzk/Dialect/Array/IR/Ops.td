@@ -18,6 +18,7 @@ include "llzk/Dialect/Shared/OpTraits.td"
 include "mlir/IR/OpAsmInterface.td"
 include "mlir/IR/OpBase.td"
 include "mlir/IR/SymbolInterfaces.td"
+include "mlir/Interfaces/SideEffectInterfaces.td"
 
 class ArrayDialectOp<string mnemonic, list<Trait> traits = []>
     : Op<ArrayDialect, mnemonic, traits>;
@@ -103,7 +104,8 @@ class RangedArrayAccessOp<string mnemonic, bit isRead, list<Trait> traits = []>
 def LLZK_CreateArrayOp
     : ArrayDialectOp<
           "new",
-          [AttrSizedOperandSegments, VerifySizesForMultiAffineOps<1>,
+          [MemoryEffects<[MemAlloc<DefaultResource>]>,
+           AttrSizedOperandSegments, VerifySizesForMultiAffineOps<1>,
            DeclareOpInterfaceMethods<SymbolUserOpInterface>,
            DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmResultNames"]>,
            DeclareOpInterfaceMethods<PromotableAllocationOpInterface>,
@@ -237,7 +239,6 @@ def LLZK_CreateArrayOp
   }];
 
   let hasVerifier = 1;
-  let hasCanonicalizer = 1;
 }
 
 def LLZK_ReadArrayOp

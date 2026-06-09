@@ -48,6 +48,9 @@
 /// 5. Run MLIR "mem2reg" pass to convert all of the size 1 array allocation and access into SSA
 ///    values. This pass also runs several standard optimizations so the final result is condensed.
 ///
+/// 6. Remove array allocations that become unread after memory promotion, then remove SSA values
+///    made dead by that cleanup.
+///
 /// Note: This transformation imposes a "last write wins" semantics on array elements. If
 /// different/configurable semantics are added in the future, some additional transformation would
 /// be necessary before/during this pass so that multiple writes to the same index can be handled
@@ -950,8 +953,10 @@ class ArrayToScalarPass : public llzk::array::impl::ArrayToScalarPassBase<ArrayT
     nestedPM.addPass(createSpecializedMem2RegPass<CreateArrayOp>());
     // Cleanup SSA values made dead by the transformations
     nestedPM.addPass(createRemoveDeadValuesPass());
-    // Cleanup allocation ops that became unused after memory promotion.
-    nestedPM.addPass(createCanonicalizerPass());
+    // Cleanup allocations made dead by memory promotion.
+    nestedPM.addPass(createSpecializedRemoveUnusedAllocationsPass<CreateArrayOp>());
+    // Cleanup SSA values made dead by removing allocations and writes.
+    nestedPM.addPass(createRemoveDeadValuesPass());
     if (failed(runPipeline(nestedPM, module))) {
       signalPassFailure();
       return;

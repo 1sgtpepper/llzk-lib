@@ -1,4 +1,4 @@
-//===-- SpecializedMemoryPasses.h - Targeted SROA / mem2reg -----*- C++ -*-===//
+//===-- SpecializedMemoryPasses.h - Targeted memory passes -------*- C++ -*-===//
 //
 // Part of the LLZK Project, under the Apache License v2.0.
 // See LICENSE.txt for license information.
@@ -8,9 +8,7 @@
 //===----------------------------------------------------------------------===//
 ///
 /// \file
-/// Provides `SpecializedSROA<AllocOpTy>` and `SpecializedMem2Reg<AllocOpTy>`:
-/// pass templates that replicate the bodies of the MLIR `sroa` and `mem2reg`
-/// passes but restrict the allocation-op walk to a single concrete op type rather
+/// Provides pass templates that restrict allocation-op walks to a single concrete op type rather
 /// than collecting every op that implements the corresponding allocation interface.
 ///
 //===----------------------------------------------------------------------===//
@@ -25,7 +23,11 @@
 #include <mlir/Transforms/Mem2Reg.h>
 #include <mlir/Transforms/SROA.h>
 
+#include <llvm/ADT/ArrayRef.h>
+#include <llvm/ADT/STLExtras.h>
+#include <llvm/ADT/SmallPtrSet.h>
 #include <llvm/ADT/SmallVector.h>
+#include <llvm/Support/Casting.h>
 
 namespace llzk {
 
@@ -125,6 +127,102 @@ struct SpecializedMem2Reg
 template <typename AllocOpTy>
 std::unique_ptr<SpecializedMem2Reg<AllocOpTy>> createSpecializedMem2RegPass() {
   return std::make_unique<SpecializedMem2Reg<AllocOpTy>>();
+}
+
+/// A pass that erases allocator ops of type \p AllocOpTy when their remaining uses are removable
+/// stores. Use this only for allocator ops whose allocation has no externally observable effect
+/// unless its stored values are read or escaped.
+template <typename AllocOpTy>
+struct SpecializedRemoveUnusedAllocations
+    : mlir::PassWrapper<SpecializedRemoveUnusedAllocations<AllocOpTy>, mlir::OperationPass<>> {
+
+  mlir::StringRef getArgument() const override {
+    return "llzk-specialized-remove-unused-allocations";
+  }
+
+  mlir::StringRef getDescription() const override {
+    return "Removes unread allocation ops of a specific allocator op type";
+  }
+
+  void runOnOperation() override {
+    bool changed = false;
+    bool changedThisIteration = false;
+    do {
+      changedThisIteration = false;
+      mlir::SmallVector<mlir::Operation *> opsToErase;
+      llvm::SmallPtrSet<mlir::Operation *, 16> seen;
+
+      this->getOperation()->walk([&](AllocOpTy allocator) {
+        mlir::SmallVector<mlir::Operation *> usersToErase;
+        if (!collectRemovableUsers(allocator, usersToErase)) {
+          return;
+        }
+        for (mlir::Operation *user : usersToErase) {
+          if (seen.insert(user).second) {
+            opsToErase.push_back(user);
+          }
+        }
+        if (seen.insert(allocator).second) {
+          opsToErase.push_back(allocator);
+        }
+      });
+
+      for (mlir::Operation *op : opsToErase) {
+        op->erase();
+      }
+
+      changedThisIteration = !opsToErase.empty();
+      changed |= changedThisIteration;
+    } while (changedThisIteration);
+
+    if (!changed) {
+      this->markAllAnalysesPreserved();
+    }
+  }
+
+private:
+  static bool collectRemovableUsers(
+      AllocOpTy allocator, mlir::SmallVectorImpl<mlir::Operation *> &usersToErase
+  ) {
+    if (allocator->use_empty()) {
+      return true;
+    }
+
+    mlir::SmallVector<mlir::MemorySlot> slots = allocator.getPromotableSlots();
+    if (slots.empty()) {
+      return false;
+    }
+
+    for (mlir::OpOperand &use : allocator->getUses()) {
+      mlir::Operation *user = use.getOwner();
+      if (user->mightHaveTrait<mlir::OpTrait::IsTerminator>()) {
+        return false;
+      }
+
+      auto memOp = llvm::dyn_cast<mlir::PromotableMemOpInterface>(user);
+      if (!memOp || !isRemovableStore(memOp, slots)) {
+        return false;
+      }
+      usersToErase.push_back(user);
+    }
+
+    return true;
+  }
+
+  static bool isRemovableStore(
+      mlir::PromotableMemOpInterface memOp, llvm::ArrayRef<mlir::MemorySlot> slots
+  ) {
+    return llvm::any_of(slots, [&](mlir::MemorySlot slot) {
+      return memOp.storesTo(slot) && !memOp.loadsFrom(slot);
+    });
+  }
+};
+
+/// Pass factory for `SpecializedRemoveUnusedAllocations`.
+template <typename AllocOpTy>
+std::unique_ptr<SpecializedRemoveUnusedAllocations<AllocOpTy>>
+createSpecializedRemoveUnusedAllocationsPass() {
+  return std::make_unique<SpecializedRemoveUnusedAllocations<AllocOpTy>>();
 }
 
 } // namespace llzk
