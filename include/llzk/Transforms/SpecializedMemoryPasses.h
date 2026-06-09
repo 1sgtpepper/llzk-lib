@@ -19,6 +19,7 @@
 #include <mlir/IR/Builders.h>
 #include <mlir/IR/Dominance.h>
 #include <mlir/Interfaces/MemorySlotInterfaces.h>
+#include <mlir/Interfaces/SideEffectInterfaces.h>
 #include <mlir/Pass/Pass.h>
 #include <mlir/Transforms/Mem2Reg.h>
 #include <mlir/Transforms/SROA.h>
@@ -145,16 +146,21 @@ struct SpecializedRemoveUnusedAllocations
   }
 
   void runOnOperation() override {
+    mlir::Operation *scopeOp = this->getOperation();
+    auto &dataLayoutAnalysis = this->template getAnalysis<mlir::DataLayoutAnalysis>();
+    const mlir::DataLayout &dataLayout = dataLayoutAnalysis.getAtOrAbove(scopeOp);
+
     bool changed = false;
     bool changedThisIteration = false;
     do {
       changedThisIteration = false;
       mlir::SmallVector<mlir::Operation *> opsToErase;
+      mlir::SmallVector<mlir::Operation *> maybeDeadDefs;
       llvm::SmallPtrSet<mlir::Operation *, 16> seen;
 
-      this->getOperation()->walk([&](AllocOpTy allocator) {
+      scopeOp->walk([&](AllocOpTy allocator) {
         mlir::SmallVector<mlir::Operation *> usersToErase;
-        if (!collectRemovableUsers(allocator, usersToErase)) {
+        if (!collectRemovableUsers(allocator, usersToErase, dataLayout)) {
           return;
         }
         for (mlir::Operation *user : usersToErase) {
@@ -167,11 +173,13 @@ struct SpecializedRemoveUnusedAllocations
         }
       });
 
+      collectOperandDefiningOps(opsToErase, seen, maybeDeadDefs);
       for (mlir::Operation *op : opsToErase) {
         op->erase();
       }
 
       changedThisIteration = !opsToErase.empty();
+      changedThisIteration |= eraseTriviallyDeadDefs(maybeDeadDefs);
       changed |= changedThisIteration;
     } while (changedThisIteration);
 
@@ -182,7 +190,8 @@ struct SpecializedRemoveUnusedAllocations
 
 private:
   static bool collectRemovableUsers(
-      AllocOpTy allocator, mlir::SmallVectorImpl<mlir::Operation *> &usersToErase
+      AllocOpTy allocator, mlir::SmallVectorImpl<mlir::Operation *> &usersToErase,
+      const mlir::DataLayout &dataLayout
   ) {
     if (allocator->use_empty()) {
       return true;
@@ -200,7 +209,7 @@ private:
       }
 
       auto memOp = llvm::dyn_cast<mlir::PromotableMemOpInterface>(user);
-      if (!memOp || !isRemovableStore(memOp, slots)) {
+      if (!memOp || !canRemoveUse(memOp, use, slots, dataLayout)) {
         return false;
       }
       usersToErase.push_back(user);
@@ -209,11 +218,66 @@ private:
     return true;
   }
 
-  static bool
-  isRemovableStore(mlir::PromotableMemOpInterface memOp, llvm::ArrayRef<mlir::MemorySlot> slots) {
+  static bool canRemoveUse(
+      mlir::PromotableMemOpInterface memOp, mlir::OpOperand &use,
+      llvm::ArrayRef<mlir::MemorySlot> slots, const mlir::DataLayout &dataLayout
+  ) {
+    llvm::SmallPtrSet<mlir::OpOperand *, 1> blockingUses;
+    blockingUses.insert(&use);
+
     return llvm::any_of(slots, [&](mlir::MemorySlot slot) {
-      return memOp.storesTo(slot) && !memOp.loadsFrom(slot);
+      mlir::SmallVector<mlir::OpOperand *> newBlockingUses;
+      return memOp.storesTo(slot) && !memOp.loadsFrom(slot) &&
+             memOp.canUsesBeRemoved(slot, blockingUses, newBlockingUses, dataLayout) &&
+             newBlockingUses.empty();
     });
+  }
+
+  static void collectOperandDefiningOps(
+      llvm::ArrayRef<mlir::Operation *> opsToErase,
+      const llvm::SmallPtrSetImpl<mlir::Operation *> &opsBeingErased,
+      mlir::SmallVectorImpl<mlir::Operation *> &maybeDeadDefs
+  ) {
+    llvm::SmallPtrSet<mlir::Operation *, 16> seenDefs;
+    for (mlir::Operation *op : opsToErase) {
+      for (mlir::Value operand : op->getOperands()) {
+        mlir::Operation *definingOp = operand.getDefiningOp();
+        if (definingOp && !opsBeingErased.contains(definingOp) &&
+            seenDefs.insert(definingOp).second) {
+          maybeDeadDefs.push_back(definingOp);
+        }
+      }
+    }
+  }
+
+  static bool eraseTriviallyDeadDefs(mlir::SmallVectorImpl<mlir::Operation *> &maybeDeadDefs) {
+    bool changed = false;
+    bool changedThisIteration = false;
+    llvm::SmallPtrSet<mlir::Operation *, 16> seen(maybeDeadDefs.begin(), maybeDeadDefs.end());
+    llvm::SmallPtrSet<mlir::Operation *, 16> erased;
+
+    do {
+      changedThisIteration = false;
+      for (size_t i = 0; i < maybeDeadDefs.size(); ++i) {
+        mlir::Operation *op = maybeDeadDefs[i];
+        if (erased.contains(op) || !mlir::isOpTriviallyDead(op)) {
+          continue;
+        }
+        for (mlir::Value operand : op->getOperands()) {
+          if (mlir::Operation *definingOp = operand.getDefiningOp()) {
+            if (seen.insert(definingOp).second) {
+              maybeDeadDefs.push_back(definingOp);
+            }
+          }
+        }
+        op->erase();
+        erased.insert(op);
+        changedThisIteration = true;
+      }
+      changed |= changedThisIteration;
+    } while (changedThisIteration);
+
+    return changed;
   }
 };
 

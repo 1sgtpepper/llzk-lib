@@ -49,7 +49,6 @@
 #include <mlir/Support/LogicalResult.h>
 #include <mlir/Transforms/DialectConversion.h>
 #include <mlir/Transforms/GreedyPatternRewriteDriver.h>
-#include <mlir/Transforms/Passes.h>
 #include <mlir/Transforms/WalkPatternRewriteDriver.h>
 
 #include <llvm/ADT/APInt.h>
@@ -2530,7 +2529,6 @@ private:
 
     OpPassManager allocationCleanup(ModuleOp::getOperationName());
     allocationCleanup.addPass(createSpecializedRemoveUnusedAllocationsPass<CreateArrayOp>());
-    allocationCleanup.addPass(createRemoveDeadValuesPass());
     return runPipeline(allocationCleanup, modOp);
   }
 
