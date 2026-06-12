@@ -9,6 +9,7 @@
 
 #pragma once
 
+#include <mlir/Interfaces/DataLayoutInterfaces.h>
 #include <mlir/Interfaces/SideEffectInterfaces.h>
 
 namespace llzk {
