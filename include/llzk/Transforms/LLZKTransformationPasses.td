@@ -54,13 +54,17 @@ def UnusedDeclarationEliminationPass
 
 def RemoveUnusedDiscardableAllocationsPass
     : LLZKPass<"llzk-remove-unused-discardable-allocations"> {
-  let summary = "Remove unread discardable array allocations and their dead stores";
+  let summary = "Remove unread discardable allocations and their dead stores";
   let description = [{
-    Remove `array.new` ops marked with `MemAlloc<DiscardableAllocationResource>` when the
-    allocation has no reads and every direct user is a discardable allocation accessor that can be
-    erased as a dead store.
+    Remove ops with the selected allocator operation name when they are marked with
+    `MemAlloc<DiscardableAllocationResource>`, the allocation has no reads, and every direct user is
+    a discardable allocation accessor that can be erased as a dead store.
   }];
   let constructor = "llzk::createRemoveUnusedDiscardableAllocationsPass()";
+  let options = [Option<
+      "allocatorOpName", "allocator-op", "std::string",
+      /* default */ "\"\"",
+      "Operation name of the discardable allocator to remove">];
 }
 
 def PolyLoweringPass : LLZKPass<"llzk-poly-lowering-pass"> {

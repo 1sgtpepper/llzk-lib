@@ -14,6 +14,7 @@ include "llzk/Dialect/Array/IR/Dialect.td"
 include "llzk/Dialect/Array/IR/OpInterfaces.td"
 include "llzk/Dialect/Array/IR/Types.td"
 include "llzk/Dialect/Shared/OpTraits.td"
+include "llzk/Transforms/DiscardableAllocationOpInterfaces.td"
 
 include "mlir/IR/OpAsmInterface.td"
 include "mlir/IR/OpBase.td"
@@ -22,9 +23,6 @@ include "mlir/Interfaces/SideEffectInterfaces.td"
 
 class ArrayDialectOp<string mnemonic, list<Trait> traits = []>
     : Op<ArrayDialect, mnemonic, traits>;
-
-def DiscardableAllocationResource
-    : Resource<"::llzk::array::DiscardableAllocationResource">;
 
 class ArrayAccessOpBase<string mnemonic, list<Trait> traits = []>
     : ArrayDialectOp<
@@ -96,7 +94,8 @@ class ScalarArrayAccessOp<string mnemonic, bit isRead, list<Trait> traits = []>
 
     /// Required by DiscardableAllocationAccessorOpInterface / unused allocation cleanup.
     bool $cppClass::storesToDiscardableAllocation(::mlir::Value ptr) {
-      return }]#!if(isRead, "false", "getArrRef() == ptr && getRvalue() != ptr")#[{;
+      return }]#!if(isRead, "false",
+                    "getArrRef() == ptr && getRvalue() != ptr")#[{;
     }
 
     /// Required by DiscardableAllocationAccessorOpInterface / unused allocation cleanup.

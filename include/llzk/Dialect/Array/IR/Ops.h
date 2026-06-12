@@ -12,20 +12,11 @@
 #include "llzk/Dialect/Array/IR/Dialect.h"
 #include "llzk/Dialect/Array/IR/Types.h"
 #include "llzk/Dialect/Shared/OpHelpers.h"
+#include "llzk/Transforms/DiscardableAllocationOpInterfaces.h"
 #include "llzk/Util/TypeHelper.h"
 
 #include <mlir/Interfaces/InferTypeOpInterface.h>
 #include <mlir/Interfaces/SideEffectInterfaces.h>
-
-namespace llzk::array {
-
-/// Memory resource for allocations that may be erased when no stored value is ever read.
-struct DiscardableAllocationResource
-    : public mlir::SideEffects::Resource::Base<DiscardableAllocationResource> {
-  mlir::StringRef getName() final { return "DiscardableAllocation"; }
-};
-
-} // namespace llzk::array
 
 // Include TableGen'd declarations
 #include "llzk/Dialect/Array/IR/OpInterfaces.h.inc"

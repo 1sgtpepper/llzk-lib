@@ -1,4 +1,5 @@
-// RUN: llzk-opt -split-input-file -llzk-remove-unused-discardable-allocations %s | FileCheck --enable-var-scope %s
+// RUN: llzk-opt -split-input-file -llzk-remove-unused-discardable-allocations="allocator-op=array.new" %s | FileCheck --enable-var-scope %s
+// RUN: not llzk-opt -split-input-file -llzk-remove-unused-discardable-allocations="allocator-op=arith.constant" %s 2>&1 | FileCheck --check-prefix=ERR %s
 
 module attributes {llzk.lang} {
   function.def @unused_array() -> index {
@@ -14,6 +15,7 @@ module attributes {llzk.lang} {
 // CHECK-NOT:     arith.constant 7
 // CHECK:         %[[RET:[0-9a-zA-Z_\.]+]] = arith.constant 42 : index
 // CHECK-NEXT:    function.return %[[RET]] : index
+// ERR: 'arith.constant' op selected for discardable-allocation cleanup but is not marked with MemAlloc<DiscardableAllocationResource>
 
 // -----
 
