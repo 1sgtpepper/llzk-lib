@@ -26,7 +26,6 @@
 #include "llzk/Dialect/String/IR/Dialect.h"
 #include "llzk/Dialect/Struct/IR/Ops.h"
 #include "llzk/Transforms/LLZKTransformationPasses.h"
-#include "llzk/Transforms/SpecializedMemoryPasses.h"
 #include "llzk/Util/Concepts.h"
 #include "llzk/Util/Debug.h"
 #include "llzk/Util/SymbolHelper.h"

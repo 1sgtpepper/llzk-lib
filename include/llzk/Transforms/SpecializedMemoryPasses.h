@@ -1,4 +1,4 @@
-//===-- SpecializedMemoryPasses.h - Targeted memory passes ------*- C++ -*-===//
+//===-- SpecializedMemoryPasses.h - Targeted SROA / mem2reg -----*- C++ -*-===//
 //
 // Part of the LLZK Project, under the Apache License v2.0.
 // See LICENSE.txt for license information.
@@ -8,7 +8,9 @@
 //===----------------------------------------------------------------------===//
 ///
 /// \file
-/// Provides pass templates that restrict allocation-op walks to a single concrete op type rather
+/// Provides `SpecializedSROA<AllocOpTy>` and `SpecializedMem2Reg<AllocOpTy>`:
+/// pass templates that replicate the bodies of the MLIR `sroa` and `mem2reg`
+/// passes but restrict the allocation-op walk to a single concrete op type rather
 /// than collecting every op that implements the corresponding allocation interface.
 ///
 //===----------------------------------------------------------------------===//
@@ -19,7 +21,6 @@
 #include <mlir/IR/Builders.h>
 #include <mlir/IR/Dominance.h>
 #include <mlir/Interfaces/MemorySlotInterfaces.h>
-#include <mlir/Interfaces/SideEffectInterfaces.h>
 #include <mlir/Pass/Pass.h>
 #include <mlir/Transforms/Mem2Reg.h>
 #include <mlir/Transforms/SROA.h>
