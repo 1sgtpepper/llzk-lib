@@ -13,8 +13,8 @@
 include "llzk/Dialect/Array/IR/Dialect.td"
 include "llzk/Dialect/Array/IR/OpInterfaces.td"
 include "llzk/Dialect/Array/IR/Types.td"
+include "llzk/Dialect/Shared/DiscardableAllocationOpInterfaces.td"
 include "llzk/Dialect/Shared/OpTraits.td"
-include "llzk/Transforms/DiscardableAllocationOpInterfaces.td"
 
 include "mlir/IR/OpAsmInterface.td"
 include "mlir/IR/OpBase.td"
@@ -99,10 +99,9 @@ class ScalarArrayAccessOp<string mnemonic, bit isRead, list<Trait> traits = []>
     }
 
     /// Required by DiscardableAllocationAccessorOpInterface / unused allocation cleanup.
-    bool $cppClass::canEraseAsDeadStoreTo(::mlir::Value ptr,
-                                          const ::mlir::DataLayout & /*dataLayout*/) {
-      }]#!if(isRead, "return false",
-             "return getArrRef() == ptr && getRvalue() != ptr")#[{;
+    bool $cppClass::canEraseAsDeadStoreTo(::mlir::Value ptr, const ::mlir::DataLayout &) {
+      return }]#!if(isRead, "false",
+                    "getArrRef() == ptr && getRvalue() != ptr")#[{;
     }
   }];
 }

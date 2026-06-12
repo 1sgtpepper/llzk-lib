@@ -910,7 +910,10 @@ static void step3(ModuleOp modOp) {
 }
 
 /// Pass driver for the full array-to-scalar lowering pipeline described above.
-class ArrayToScalarPass : public llzk::array::impl::ArrayToScalarPassBase<ArrayToScalarPass> {
+class PassImpl : public llzk::array::impl::ArrayToScalarPassBase<PassImpl> {
+  using Base = ArrayToScalarPassBase<PassImpl>;
+  using Base::Base;
+
   void runOnOperation() override {
     ModuleOp module = getOperation();
 
@@ -960,9 +963,11 @@ class ArrayToScalarPass : public llzk::array::impl::ArrayToScalarPassBase<ArrayT
     // The mem2reg pass converts all of the size-1 array allocation and access into SSA values.
     nestedPM.addPass(createSpecializedMem2RegPass<CreateArrayOp>());
     // Cleanup allocations made dead by memory promotion.
-    nestedPM.addPass(
-        createRemoveUnusedDiscardableAllocationsPass(CreateArrayOp::getOperationName())
-    );
+    nestedPM.addPass(createRemoveUnusedDiscardableAllocationsPass(
+        RemoveUnusedDiscardableAllocationsPassOptions {
+            .allocatorOpName = CreateArrayOp::getOperationName().str()
+        }
+    ));
     // Cleanup SSA values made dead by removing allocations and writes.
     nestedPM.addPass(createRemoveDeadValuesPass());
     if (failed(runPipeline(nestedPM, module))) {
@@ -977,8 +982,3 @@ class ArrayToScalarPass : public llzk::array::impl::ArrayToScalarPassBase<ArrayT
 };
 
 } // namespace
-
-/// Create the pass that rewrites eligible arrays into scalar SSA values.
-std::unique_ptr<Pass> llzk::array::createArrayToScalarPass() {
-  return std::make_unique<ArrayToScalarPass>();
-};

@@ -17,10 +17,10 @@ namespace llzk {
 /// Memory resource for allocations that may be erased when no stored value is ever read.
 struct DiscardableAllocationResource
     : public mlir::SideEffects::Resource::Base<DiscardableAllocationResource> {
-  mlir::StringRef getName() final { return "DiscardableAllocation"; }
+  mlir::StringRef getName() final;
 };
 
 } // namespace llzk
 
 // Include TableGen'd declarations
-#include "llzk/Transforms/DiscardableAllocationOpInterfaces.h.inc"
+#include "llzk/Dialect/Shared/DiscardableAllocationOpInterfaces.h.inc"
