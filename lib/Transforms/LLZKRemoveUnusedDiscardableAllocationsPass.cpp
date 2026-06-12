@@ -201,8 +201,8 @@ class RemoveUnusedDiscardableAllocationsPass
 public:
   RemoveUnusedDiscardableAllocationsPass() = default;
 
-  explicit RemoveUnusedDiscardableAllocationsPass(StringRef allocatorOpName) {
-    this->allocatorOpName = allocatorOpName.str();
+  explicit RemoveUnusedDiscardableAllocationsPass(StringRef allocatorOperationName) {
+    this->allocatorOpName = allocatorOperationName.str();
   }
 
   void runOnOperation() override {
