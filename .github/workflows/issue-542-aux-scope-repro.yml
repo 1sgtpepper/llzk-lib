@@ -1,0 +1,117 @@
+name: Issue 542 Auxiliary Scope Repro
+
+on:
+  push:
+    branches: [ aux-scope-repro-evidence ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  poly-aux-scope:
+    name: poly auxiliary scope
+    runs-on: ubuntu-24.04
+    timeout-minutes: 105
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - uses: cachix/install-nix-action@d1ca217b388ee87b2507a9a93bf01368bde7cec2
+        with:
+          install_url: https://releases.nixos.org/nix/nix-2.23.3/install
+          github_access_token: "${{ secrets.GITHUB_TOKEN }}"
+
+      - uses: DeterminateSystems/magic-nix-cache-action@908b263ff629f4cc17666315b7fd3ec127c6244d
+
+      - uses: cachix/cachix-action@v17
+        continue-on-error: true
+        with:
+          name: veridise-public
+
+      - name: Run issue 542 repro
+        run: |
+          set -euxo pipefail
+
+          out="repro-out/issue-542"
+          mkdir -p "$out"
+
+          git remote add upstream https://github.com/project-llzk/llzk-lib.git || true
+          git fetch upstream main
+
+          git rev-parse HEAD | tee "$out/head.sha"
+          git rev-parse upstream/main | tee "$out/upstream-main.sha"
+          git diff --name-only upstream/main...HEAD | sort | tee "$out/diff-from-upstream.txt"
+          diff -u <(printf '%s\n' \
+            '.github/workflows/issue-542-aux-scope-repro.yml' \
+            'repro/issue-542-loop-aux-scope.llzk') "$out/diff-from-upstream.txt"
+
+          sha256sum \
+            flake.lock \
+            flake.nix \
+            repro/issue-542-loop-aux-scope.llzk \
+            .github/workflows/issue-542-aux-scope-repro.yml \
+            | tee "$out/input-sha256.txt"
+
+          timeout 90m bash -c "nix --print-build-logs build '.#llzk' 2>&1 | tee '$out/nix-build.log'"
+          readlink result | tee "$out/result-store-path.txt"
+          ./result/bin/llzk-opt --version 2>&1 | tee "$out/llzk-opt-version.txt" || true
+
+          set +e
+          ./result/bin/llzk-opt repro/issue-542-loop-aux-scope.llzk \
+            --llzk-poly-lowering-pass="max-degree=2" \
+            > "$out/poly-lowering.stdout" 2> "$out/poly-lowering.stderr"
+          exit_code=$?
+          set -e
+          echo "$exit_code" | tee "$out/poly-lowering.exit"
+
+          python3 - <<'PY' | tee "$out/analysis.txt"
+          from pathlib import Path
+
+          out = Path("repro-out/issue-542")
+          lowered = (out / "poly-lowering.stdout").read_text(errors="replace")
+          stderr = (out / "poly-lowering.stderr").read_text(errors="replace")
+          exit_code = (out / "poly-lowering.exit").read_text().strip()
+          aux_prefix = "__llzk_poly_lowering_pass_aux_member"
+          aux_def = "struct.member @" + aux_prefix
+
+          facts = {
+              "poly_lowering_exit": exit_code,
+              "aux_member_occurrences": str(lowered.count(aux_prefix)),
+              "contains_scf_for": str("scf.for" in lowered).lower(),
+              "contains_aux_member_def": str(aux_def in lowered).lower(),
+              "contains_member_write_aux": str("struct.writem" in lowered and aux_prefix in lowered).lower(),
+              "contains_member_read_aux": str("struct.readm" in lowered and aux_prefix in lowered).lower(),
+              "contains_constraint_eq": str("constrain.eq" in lowered).lower(),
+              "stderr_first_line": (stderr.splitlines() or [""])[0],
+          }
+          for key, value in facts.items():
+              print(f"{key}={value}")
+
+          if exit_code != "0":
+              raise SystemExit("poly lowering rejected or crashed before producing the scoped auxiliary evidence")
+          required = [
+              facts["contains_scf_for"] == "true",
+              facts["contains_aux_member_def"] == "true",
+              facts["contains_member_write_aux"] == "true",
+              facts["contains_member_read_aux"] == "true",
+              facts["contains_constraint_eq"] == "true",
+          ]
+          if not all(required):
+              raise SystemExit("lowered output did not contain the expected loop-scoped auxiliary artifact")
+          print("verdict=lowered_with_loop_scoped_aux_artifact")
+          PY
+
+          {
+            echo "issue=542"
+            echo "head=$(cat "$out/head.sha")"
+            echo "upstream_main=$(cat "$out/upstream-main.sha")"
+            cat "$out/analysis.txt"
+          } | tee "$out/SUMMARY.txt"
+
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: issue-542-aux-scope-repro
+          path: repro-out/issue-542
