@@ -64,7 +64,7 @@ jobs:
                 %lb = arith.constant 0 : index
                 %ub = arith.constant 2 : index
                 %step = arith.constant 1 : index
-                %one = felt.const 1
+                %one = felt.const 1 : !felt.type<"babybear">
 
                 %res = scf.for %iv = %lb to %ub step %step
                     iter_args(%acc = %a) -> !felt.type<"babybear"> {
