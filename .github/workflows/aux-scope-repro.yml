@@ -1,0 +1,130 @@
+name: Auxiliary Scope Repro
+
+on:
+  push:
+    branches: [ aux-scope-ci ]
+  workflow_dispatch:
+
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  poly-aux-scope:
+    name: "poly auxiliary scope"
+    runs-on: ubuntu-24.04
+    timeout-minutes: 105
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - uses: cachix/install-nix-action@d1ca217b388ee87b2507a9a93bf01368bde7cec2
+        with:
+          install_url: https://releases.nixos.org/nix/nix-2.23.3/install
+          github_access_token: "${{ secrets.GITHUB_TOKEN }}"
+
+      - uses: DeterminateSystems/magic-nix-cache-action@908b263ff629f4cc17666315b7fd3ec127c6244d
+
+      - uses: cachix/cachix-action@v17
+        continue-on-error: true
+        with:
+          name: veridise-public
+
+      - name: Run auxiliary scoping repro
+        run: |
+          set -euxo pipefail
+          OUT="repro-out/aux-scope"
+          mkdir -p "$OUT/fixtures"
+
+          git remote add upstream https://github.com/project-llzk/llzk-lib.git || true
+          git fetch upstream main
+          git rev-parse HEAD | tee "$OUT/head.sha"
+          git rev-parse upstream/main | tee "$OUT/upstream-main.sha"
+          git diff --name-only upstream/main...HEAD | tee "$OUT/diff-from-upstream.txt"
+          printf '%s\n' '.github/workflows/aux-scope-repro.yml' | diff -u - <(sort "$OUT/diff-from-upstream.txt")
+          sha256sum flake.lock flake.nix .github/workflows/aux-scope-repro.yml | tee "$OUT/build-input-sha256.txt"
+
+          timeout 90m bash -c "nix --print-build-logs build '.#llzk' 2>&1 | tee '$OUT/nix-build.log'"
+          readlink result | tee "$OUT/result-store-path.txt"
+          ./result/bin/llzk-opt --version 2>&1 | tee "$OUT/llzk-opt-version.txt" || true
+
+          cat > "$OUT/fixtures/loop_aux_scope.llzk" <<'EOF'
+          module attributes {llzk.lang = "llzk"} {
+            struct.def @LoopAuxScope {
+              struct.member @out : !felt.type<"babybear"> {llzk.pub}
+
+              function.def @compute(%a: !felt.type<"babybear">) -> !struct.type<@LoopAuxScope> {
+                %self = struct.new : !struct.type<@LoopAuxScope>
+                struct.writem %self[@out] = %a : !struct.type<@LoopAuxScope>, !felt.type<"babybear">
+                function.return %self : !struct.type<@LoopAuxScope>
+              }
+
+              function.def @constrain(%self: !struct.type<@LoopAuxScope>, %a: !felt.type<"babybear">) {
+                %lb = arith.constant 0 : index
+                %ub = arith.constant 2 : index
+                %step = arith.constant 1 : index
+                %one = felt.const 1
+
+                %res = scf.for %iv = %lb to %ub step %step
+                    iter_args(%acc = %a) -> !felt.type<"babybear"> {
+                  %sq = felt.mul %acc, %acc : !felt.type<"babybear">, !felt.type<"babybear">
+                  %cube = felt.mul %sq, %acc : !felt.type<"babybear">, !felt.type<"babybear">
+                  constrain.eq %cube, %cube : !felt.type<"babybear">
+                  %next = felt.add %acc, %one : !felt.type<"babybear">, !felt.type<"babybear">
+                  scf.yield %next : !felt.type<"babybear">
+                }
+
+                function.return
+              }
+            }
+          }
+          EOF
+
+          set +e
+          ./result/bin/llzk-opt "$OUT/fixtures/loop_aux_scope.llzk" \
+            --llzk-poly-lowering-pass="max-degree=2" \
+            > "$OUT/poly-lowering.stdout" 2> "$OUT/poly-lowering.stderr"
+          ec=$?
+          set -e
+          echo "$ec" > "$OUT/poly-lowering.exit"
+
+          python3 - <<'PY' > "$OUT/analysis.txt"
+          from pathlib import Path
+
+          out = Path("repro-out/aux-scope")
+          lowered = (out / "poly-lowering.stdout").read_text(errors="replace")
+          stderr = (out / "poly-lowering.stderr").read_text(errors="replace")
+          exit_code = (out / "poly-lowering.exit").read_text().strip()
+          aux_name = "__llzk_poly_lowering_pass_aux_member"
+
+          print(f"poly_lowering_exit={exit_code}")
+          print(f"aux_member_occurrences={lowered.count(aux_name)}")
+          print(f"contains_scf_for={'scf.for' in lowered}")
+          print(f"contains_aux_member_def={'struct.member @' + aux_name in lowered}")
+          print(f"contains_member_write_aux={'struct.writem' in lowered and aux_name in lowered}")
+          print(f"contains_member_read_aux={'struct.readm' in lowered and aux_name in lowered}")
+          print(f"contains_constraint_eq={'constrain.eq' in lowered}")
+          print(f"stderr_first_line={(stderr.splitlines() or [''])[0]}")
+
+          verdict = "inconclusive"
+          if exit_code != "0":
+              verdict = "pass_rejected_or_crashed"
+          elif aux_name in lowered and "scf.for" in lowered and "constrain.eq" in lowered:
+              verdict = "lowered_with_loop_scoped_aux_artifact"
+          print(f"verdict={verdict}")
+          PY
+
+          sha256sum "$OUT"/fixtures/*.llzk > "$OUT/fixture-sha256.txt"
+          {
+            echo "issue=poly lowering materializes loop-local high-degree expression as component-scope auxiliary"
+            echo "head=$(cat "$OUT/head.sha")"
+            echo "upstream_main=$(cat "$OUT/upstream-main.sha")"
+            cat "$OUT/analysis.txt"
+          } > "$OUT/SUMMARY.txt"
+
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: aux-scope-repro
+          path: repro-out/aux-scope
