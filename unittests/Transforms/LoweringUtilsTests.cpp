@@ -26,6 +26,8 @@ namespace {
 class LoweringUtilsTests : public LLZKTest {};
 
 TEST_F(LoweringUtilsTests, RejectsSingleBlockSuccessorBearingConstrainBody) {
+  ctx.allowUnregisteredDialects();
+
   OpBuilder builder(&ctx);
   OwningOpRef<ModuleOp> module = ModuleOp::create(loc);
   builder.setInsertionPointToStart(module->getBody());
@@ -34,6 +36,8 @@ TEST_F(LoweringUtilsTests, RejectsSingleBlockSuccessorBearingConstrainBody) {
   auto constrainFunc = builder.create<function::FuncDefOp>(loc, "constrain", funcType);
   Block *entryBlock = constrainFunc.addEntryBlock();
 
+  // No registered LLZK test op has successors without regions, so use a synthetic op to cover the
+  // helper's successor-only rejection path without changing dialect registration.
   OperationState successorOpState(loc, "test.successor");
   successorOpState.addSuccessors(entryBlock);
   entryBlock->push_back(Operation::create(successorOpState));
