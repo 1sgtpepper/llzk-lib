@@ -19,10 +19,7 @@ module attributes {llzk.lang} {
         function.return
       }
 
-      function.def @make() -> !struct.type<@TToFelt::@ToFelt<[@A]>> {
-        %self = struct.new : !struct.type<@TToFelt::@ToFelt<[@A]>>
-        function.return %self : !struct.type<@TToFelt::@ToFelt<[@A]>>
-      }
+      function.def private @make() -> !struct.type<@TToFelt::@ToFelt<[@A]>> attributes {extern}
     }
 
   }
