@@ -1,4 +1,4 @@
-name: Poly repro: nondet rebuild abort
+name: "Poly repro: nondet rebuild abort"
 
 on:
   workflow_dispatch:
