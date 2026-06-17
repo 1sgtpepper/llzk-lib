@@ -1,4 +1,4 @@
-name: Poly repro: typed auxiliary member
+name: "Poly repro: typed auxiliary member"
 
 on:
   workflow_dispatch:
