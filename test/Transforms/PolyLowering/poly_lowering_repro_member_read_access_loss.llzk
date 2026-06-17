@@ -2,7 +2,7 @@
 
 module attributes {llzk.lang} {
   struct.def @TableOffsetAux {
-    struct.member @x : !felt.type
+    struct.member @x : !felt.type {column}
     struct.member @out : !felt.type {llzk.pub}
 
     function.def @compute(%x: !felt.type) -> !struct.type<@TableOffsetAux> {
