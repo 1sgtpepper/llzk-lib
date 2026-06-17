@@ -43,8 +43,6 @@ checkConstrainBodyIsStraightLine(function::FuncDefOp constrainFunc, llvm::String
 component::MemberDefOp
 addAuxMember(component::StructDefOp structDef, llvm::StringRef name, mlir::Type type);
 
-component::MemberDefOp addAuxMember(component::StructDefOp structDef, llvm::StringRef name);
-
 unsigned getFeltDegree(mlir::Value val, llvm::DenseMap<mlir::Value, unsigned> &memo);
 
 /// Replaces all *subsequent uses* of `oldVal` with `newVal`, starting *after* `afterOp`.

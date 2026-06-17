@@ -156,11 +156,6 @@ MemberDefOp addAuxMember(StructDefOp structDef, StringRef name, Type type) {
   return builder.create<MemberDefOp>(structDef.getLoc(), builder.getStringAttr(name), type);
 }
 
-MemberDefOp addAuxMember(StructDefOp structDef, StringRef name) {
-  OpBuilder builder(structDef);
-  return addAuxMember(structDef, name, builder.getType<FeltType>());
-}
-
 unsigned getFeltDegree(Value val, DenseMap<Value, unsigned> &memo) {
   if (auto it = memo.find(val); it != memo.end()) {
     return it->second;
