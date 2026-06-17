@@ -2,6 +2,8 @@
 
 module attributes {llzk.lang} {
   struct.def @NondetAux {
+    struct.member @out : !felt.type {llzk.pub}
+
     function.def @compute() -> !struct.type<@NondetAux> {
       %self = struct.new : !struct.type<@NondetAux>
       function.return %self : !struct.type<@NondetAux>
@@ -11,7 +13,8 @@ module attributes {llzk.lang} {
       %x = llzk.nondet : !felt.type
       %sq = felt.mul %x, %x : !felt.type, !felt.type
       %cube = felt.mul %sq, %x : !felt.type, !felt.type
-      constrain.eq %cube, %cube : !felt.type
+      %out = struct.readm %self[@out] : !struct.type<@NondetAux>, !felt.type
+      constrain.eq %out, %cube : !felt.type
       function.return
     }
   }
