@@ -10,6 +10,8 @@ module attributes {llzk.lang} {
       %c: !felt.type<"babybear">
     ) -> !struct.type<@TypedR1CSAux> {
       %self = struct.new : !struct.type<@TypedR1CSAux>
+      %ab = felt.mul %a, %b : !felt.type<"babybear">, !felt.type<"babybear">
+      struct.writem %self[@out] = %ab : !struct.type<@TypedR1CSAux>, !felt.type<"babybear">
       function.return %self : !struct.type<@TypedR1CSAux>
     }
 
