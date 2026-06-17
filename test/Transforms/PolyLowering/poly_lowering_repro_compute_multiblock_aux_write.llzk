@@ -30,4 +30,4 @@ module attributes {llzk.lang = "llzk"} {
 }
 
 // CHECK: error:
-// CHECK: dominance
+// CHECK: operand #0 does not dominate this use
