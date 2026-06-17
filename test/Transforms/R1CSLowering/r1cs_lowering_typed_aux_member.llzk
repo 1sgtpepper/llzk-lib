@@ -22,6 +22,8 @@ module attributes {llzk.lang} {
       %ab = felt.mul %a, %b : !felt.type<"babybear">, !felt.type<"babybear">
       %bc = felt.mul %b, %c : !felt.type<"babybear">, !felt.type<"babybear">
       constrain.eq %ab, %bc : !felt.type<"babybear">
+      %out = struct.readm %self[@out] : !struct.type<@TypedR1CSAux>, !felt.type<"babybear">
+      constrain.eq %out, %ab : !felt.type<"babybear">
       function.return
     }
   }
