@@ -1,4 +1,4 @@
-name: Poly repro: rewrite dominance
+name: "Poly repro: rewrite dominance"
 
 on:
   workflow_dispatch:
