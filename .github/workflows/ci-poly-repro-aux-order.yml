@@ -1,4 +1,4 @@
-name: Poly repro: aux dependency order
+name: "Poly repro: aux dependency order"
 
 on:
   workflow_dispatch:
