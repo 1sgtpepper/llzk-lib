@@ -29,4 +29,5 @@ module attributes {llzk.lang} {
 // CHECK:         struct.writem %[[SELF]][@__llzk_poly_lowering_pass_aux_member_0]
 // CHECK-LABEL: function.def @constrain
 // CHECK:         struct.readm {{.*}}[@x] : <@TableOffsetAux>, !felt.type {tableOffset = -1 : index}
-// CHECK:         constrain.eq {{.*}}@__llzk_poly_lowering_pass_aux_member_0
+// CHECK:         %[[AUX:.*]] = struct.readm {{.*}}[@__llzk_poly_lowering_pass_aux_member_0] : <@TableOffsetAux>, !felt.type
+// CHECK:         constrain.eq %[[AUX]],
