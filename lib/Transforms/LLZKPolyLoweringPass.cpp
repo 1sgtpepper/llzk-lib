@@ -159,7 +159,6 @@ class PassImpl : public llzk::impl::PolyLoweringPassBase<PassImpl> {
     DenseMap<Value, unsigned> auxValueToIndex;
     llvm::StringMap<unsigned> auxNameToIndex;
     auxValueToIndex.reserve(auxAssignments.size());
-    auxNameToIndex.reserve(auxAssignments.size());
     for (auto [idx, assign] : llvm::enumerate(auxAssignments)) {
       if (assign.auxValue) {
         auxValueToIndex[assign.auxValue] = idx;
