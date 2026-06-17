@@ -29,3 +29,36 @@ jobs:
           authToken: '${{ secrets.CACHIX_PUBLIC_TOKEN }}'
       - name: Build and run repro lit tests
         run: nix --print-build-logs build '.#debugGCC'
+      - name: Capture read-before-write proof
+        run: |
+          set -euo pipefail
+          mkdir -p proof
+          input='test/Transforms/PolyLowering/poly_lowering_repro_aux_dependency_order.llzk'
+          opt='result/bin/llzk-opt'
+
+          awk '/^\/\/--- repro.llzk/{emit=1; next} /^\/\/--- input.json/{emit=0} emit {print}' \
+            "$input" > proof/repro.llzk
+          "$opt" -I test/Transforms/PolyLowering -split-input-file \
+            -llzk-full-poly-lowering='max-degree=3' proof/repro.llzk \
+            > proof/poly-lowered.llzk
+
+          awk '/function.def @compute/,/function.return/' proof/poly-lowered.llzk > proof/compute-region.llzk
+          read_line="$(grep -n 'struct.readm .*@__llzk_poly_lowering_pass_aux_member_1' proof/compute-region.llzk | head -n 1 | cut -d: -f1)"
+          write_line="$(grep -n 'struct.writem .*@__llzk_poly_lowering_pass_aux_member_1' proof/compute-region.llzk | head -n 1 | cut -d: -f1)"
+          if [ -z "$read_line" ] || [ -z "$write_line" ]; then
+            echo 'missing aux_1 read/write evidence in compute region' >&2
+            exit 1
+          fi
+          if [ "$read_line" -ge "$write_line" ]; then
+            echo "expected aux_1 read before write, got read=$read_line write=$write_line" >&2
+            exit 1
+          fi
+
+          echo '=== generated compute region reads aux_1 before writing aux_1 ==='
+          sed -n "${read_line},${write_line}p" proof/compute-region.llzk
+      - name: Upload proof artifacts
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: poly-repro-aux-order-proof
+          path: proof/**
