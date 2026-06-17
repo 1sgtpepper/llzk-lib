@@ -29,3 +29,31 @@ jobs:
           authToken: '${{ secrets.CACHIX_PUBLIC_TOKEN }}'
       - name: Build and run repro lit tests
         run: nix --print-build-logs build '.#debugGCC'
+      - name: Capture multiblock dominance proof
+        run: |
+          set -euo pipefail
+          mkdir -p proof
+          input='test/Transforms/PolyLowering/poly_lowering_repro_compute_multiblock_aux_write.llzk'
+          opt='result/bin/llzk-opt'
+
+          set +e
+          "$opt" -I test/Transforms/PolyLowering -split-input-file \
+            -llzk-poly-lowering-pass='max-degree=2' --verify-each "$input" \
+            > proof/stdout.llzk 2> proof/stderr.txt
+          status="$?"
+          set -e
+          if [ "$status" -eq 0 ]; then
+            echo 'expected multiblock dominance rejection, but poly lowering succeeded' >&2
+            exit 1
+          fi
+          grep -F 'operand #0 does not dominate this use' proof/stderr.txt \
+            > proof/dominance-error.txt
+
+          echo '=== verifier rejects aux write because operand #0 does not dominate ==='
+          cat proof/dominance-error.txt
+      - name: Upload proof artifacts
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: poly-repro-compute-multiblock-proof
+          path: proof/**
