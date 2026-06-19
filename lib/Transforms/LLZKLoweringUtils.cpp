@@ -30,10 +30,8 @@ namespace llzk {
 namespace {
 
 Value mapBlockArgumentInCompute(BlockArgument barg, FuncDefOp computeFunc) {
-  // constrain(%self, args...) corresponds to compute(args...).  When rebuilding
-  // expressions in compute(), the constrain self argument maps to the compute
-  // self value, and every other constrain argument maps one position earlier in
-  // compute().
+  // Constrain entry arguments map onto compute inputs: constrain(%self, args...)
+  // corresponds to compute(args...), plus the compute-side `%self`.
   if (barg.getArgNumber() == 0) {
     return computeFunc.getSelfValueFromCompute();
   }
@@ -77,6 +75,8 @@ Value rebuildExprInCompute(
   }
 
   if (val.getType().isIndex()) {
+    // Preserve index producers used by member-read access operands so rebuilt reads
+    // keep the original access semantics.
     Operation *defOp = val.getDefiningOp();
     assert(defOp && "index block arguments should already be mapped");
 
