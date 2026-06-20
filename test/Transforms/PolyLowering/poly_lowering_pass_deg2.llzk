@@ -177,7 +177,7 @@ module attributes {llzk.lang} {
 }
 
 // CHECK-LABEL:   struct.def @Mod2 {
-// CHECK:           struct.member @val : !felt.type
+// CHECK:           struct.member @val : !felt.type {llzk.pub}
 // CHECK:           function.def @compute(%[[VAL_0:.*]]: !felt.type, %[[VAL_1:.*]]: !felt.type) -> !struct.type<@Mod2> attributes {function.allow_witness} {
 // CHECK:             %[[VAL_2:.*]] = struct.new : <@Mod2>
 // CHECK:             struct.writem %[[VAL_2]][@val] = %[[VAL_0]] : <@Mod2>, !felt.type
