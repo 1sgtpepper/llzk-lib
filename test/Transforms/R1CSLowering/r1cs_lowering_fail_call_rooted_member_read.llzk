@@ -1,6 +1,6 @@
 // RUN: llzk-opt -split-input-file -llzk-full-r1cs-lowering -verify-diagnostics %s
 
-module attributes {llzk.lang} {
+module attributes {llzk.lang, llzk.main = !struct.type<@UsesExternPayload>} {
   struct.def @ExternPayload {
     struct.member @value : !felt.type {llzk.pub}
 

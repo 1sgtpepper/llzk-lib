@@ -91,7 +91,7 @@ module attributes {llzk.lang, llzk.main = !struct.type<@CmpConstraint>} {
 // CHECK-DAG:         }
 // -----
 
-module attributes {llzk.lang} {
+module attributes {llzk.lang, llzk.main = !struct.type<@SelfReadAux>} {
   struct.def @SelfReadAux {
     struct.member @in : !felt.type {llzk.pub}
     struct.member @out : !felt.type {llzk.pub}
