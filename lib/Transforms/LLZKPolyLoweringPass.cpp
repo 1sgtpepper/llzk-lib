@@ -57,6 +57,12 @@ struct AuxAssignment {
   Value auxValue;
 };
 
+enum class AuxAssignmentVisitState : uint8_t {
+  Unvisited,
+  Visiting,
+  Done,
+};
+
 class PassImpl : public llzk::impl::PolyLoweringPassBase<PassImpl> {
   using Base = PolyLoweringPassBase<PassImpl>;
   using Base::Base;
@@ -116,26 +122,27 @@ class PassImpl : public llzk::impl::PolyLoweringPassBase<PassImpl> {
   }
 
   LogicalResult visitAuxAssignment(
-      unsigned idx, ArrayRef<SmallVector<unsigned>> deps, SmallVectorImpl<uint8_t> &visitState,
-      SmallVectorImpl<unsigned> &ordered, ArrayRef<AuxAssignment> auxAssignments
+      unsigned idx, ArrayRef<SmallVector<unsigned>> deps,
+      SmallVectorImpl<AuxAssignmentVisitState> &visitState, SmallVectorImpl<unsigned> &ordered,
+      ArrayRef<AuxAssignment> auxAssignments
   ) const {
-    if (visitState[idx] == 2) {
+    if (visitState[idx] == AuxAssignmentVisitState::Done) {
       return success();
     }
-    if (visitState[idx] == 1) {
+    if (visitState[idx] == AuxAssignmentVisitState::Visiting) {
       return emitError(auxAssignments[idx].computedValue.getLoc())
              << "poly lowering generated cyclic auxiliary dependency involving @"
              << auxAssignments[idx].auxMemberName;
     }
 
-    visitState[idx] = 1;
+    visitState[idx] = AuxAssignmentVisitState::Visiting;
     // Emit prerequisite aux writes before the aux writes that read them.
     for (unsigned dep : deps[idx]) {
       if (failed(visitAuxAssignment(dep, deps, visitState, ordered, auxAssignments))) {
         return failure();
       }
     }
-    visitState[idx] = 2;
+    visitState[idx] = AuxAssignmentVisitState::Done;
     ordered.push_back(idx);
     return success();
   }
@@ -163,7 +170,9 @@ class PassImpl : public llzk::impl::PolyLoweringPassBase<PassImpl> {
       );
     }
 
-    SmallVector<uint8_t> visitState(auxAssignments.size(), 0);
+    SmallVector<AuxAssignmentVisitState> visitState(
+        auxAssignments.size(), AuxAssignmentVisitState::Unvisited
+    );
     for (unsigned idx = 0, e = auxAssignments.size(); idx < e; ++idx) {
       if (failed(visitAuxAssignment(idx, deps, visitState, ordered, auxAssignments))) {
         return failure();
