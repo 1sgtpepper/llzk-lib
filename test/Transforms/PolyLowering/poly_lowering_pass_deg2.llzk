@@ -292,7 +292,7 @@ module attributes {llzk.lang, llzk.main = !struct.type<@UsesExternPayload>} {
 // CHECK-NEXT:        function.return
 // CHECK-NEXT:      }
 // CHECK-NEXT:    }
-// CHECK-NEXT:    function.def private @extern_wrap(%[[VAL_4:[0-9a-zA-Z_\.]+]]: !felt.type) -> !struct.type<@ExternPayload> attributes {extern}
+// CHECK-NEXT:    function.def private @extern_wrap(!felt.type) -> !struct.type<@ExternPayload> attributes {extern}
 // CHECK-NEXT:    struct.def @UsesExternPayload {
 // CHECK-NEXT:      struct.member @out : !felt.type
 // CHECK-NEXT:      function.def @compute(%[[VAL_5:[0-9a-zA-Z_\.]+]]: !felt.type) -> !struct.type<@UsesExternPayload> attributes {function.allow_witness} {
