@@ -493,25 +493,21 @@ class PassImpl : public r1cs::impl::R1CSLoweringPassBase<PassImpl> {
         Operation *op = v.getDefiningOp();
         if (auto read = dyn_cast<MemberReadOp>(op)) {
           if (read.getComponent() != selfVal) {
-            read.emitError(
-                    "R1CS lowering only supports member reads rooted at the current constrain "
-                    "self value"
-            )
-                .report();
             signalPassFailure();
-            return failure();
+            return read.emitError(
+                "R1CS lowering only supports member reads rooted at the current constrain "
+                "self value"
+            );
           }
           auto memberVal = memberMap.find(read.getMemberName());
           if (memberVal == memberMap.end()) {
-            read.emitError("member read is not associated with an R1CS signal").report();
             signalPassFailure();
-            return failure();
+            return read.emitError("member read is not associated with an R1CS signal");
           }
           return memberVal->second;
         }
-        op->emitError("Value not mapped in R1CS lowering").report();
         signalPassFailure();
-        return failure();
+        return op->emitError("Value not mapped in R1CS lowering");
       }
       return valueMap.lookup(v);
     };

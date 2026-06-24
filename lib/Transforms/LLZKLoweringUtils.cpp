@@ -55,9 +55,12 @@ Value rebuildExprInCompute(
 
   if (auto callOp = val.getDefiningOp<CallOp>()) {
     if (!callOp.getMapOperands().empty()) {
-      callOp.emitError(
-          "cannot rebuild affine-instantiated function.call in compute-side auxiliary expression"
-      );
+      callOp
+          .emitError(
+              "cannot rebuild affine-instantiated function.call in compute-side auxiliary "
+              "expression"
+          )
+          .report();
       return nullptr;
     }
 
@@ -73,10 +76,13 @@ Value rebuildExprInCompute(
         (targetFunc.hasAllowNonNativeFieldOpsAttr() &&
          !computeFunc.hasAllowNonNativeFieldOpsAttr());
     if (invalidTarget) {
-      callOp.emitError(
-          "cannot rebuild function.call in compute-side auxiliary expression because the callee "
-          "requires attributes not present on the compute function"
-      );
+      callOp
+          .emitError(
+              "cannot rebuild function.call in compute-side auxiliary expression because the "
+              "callee "
+              "requires attributes not present on the compute function"
+          )
+          .report();
       return nullptr;
     }
 
@@ -154,7 +160,8 @@ Value rebuildExprInCompute(
   }
 
   if (Operation *op = val.getDefiningOp()) {
-    op->emitError("cannot rebuild unsupported operation in compute-side auxiliary expression");
+    op->emitError("cannot rebuild unsupported operation in compute-side auxiliary expression")
+        .report();
   }
   return nullptr;
 }
