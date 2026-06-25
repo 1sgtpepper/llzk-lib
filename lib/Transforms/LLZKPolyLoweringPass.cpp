@@ -21,6 +21,7 @@
 #include "llzk/Transforms/LLZKTransformationPasses.h"
 
 #include <mlir/IR/BuiltinOps.h>
+#include <mlir/IR/Dominance.h>
 
 #include <llvm/ADT/DenseMap.h>
 #include <llvm/ADT/DenseMapInfo.h>
@@ -74,22 +75,6 @@ class PassImpl : public llzk::impl::PolyLoweringPassBase<PassImpl> {
       structDefs.push_back(structDef);
       return WalkResult::skip();
     });
-  }
-
-  static bool valueDominatesUse(Value value, Operation *useOp) {
-    if (!useOp || llvm::isa<BlockArgument>(value)) {
-      return true;
-    }
-
-    Operation *defOp = value.getDefiningOp();
-    if (!defOp) {
-      return true;
-    }
-
-    // checkConstrainBodyIsStraightLine has already rejected multi-block or
-    // nested-region constrain bodies. Within that invariant, same-block order
-    // is a sufficient and exact dominance check for values introduced here.
-    return defOp->getBlock() == useOp->getBlock() && defOp->isBeforeInBlock(useOp);
   }
 
   /// Records a dependency from the current aux assignment to a prerequisite.
@@ -238,11 +223,11 @@ class PassImpl : public llzk::impl::PolyLoweringPassBase<PassImpl> {
 
   Value lowerExpression(
       Value val, StructDefOp structDef, FuncDefOp constrainFunc, Operation *useOp,
-      DenseMap<Value, unsigned> &degreeMemo, DenseMap<Value, Value> &rewrites,
-      SmallVector<AuxAssignment> &auxAssignments
+      DominanceInfo &dominanceInfo, DenseMap<Value, unsigned> &degreeMemo,
+      DenseMap<Value, Value> &rewrites, SmallVector<AuxAssignment> &auxAssignments
   ) {
     auto rewriteIt = rewrites.find(val);
-    if (rewriteIt != rewrites.end() && valueDominatesUse(rewriteIt->second, useOp)) {
+    if (rewriteIt != rewrites.end() && dominanceInfo.properlyDominates(rewriteIt->second, useOp)) {
       return rewriteIt->second;
     }
 
@@ -265,12 +250,12 @@ class PassImpl : public llzk::impl::PolyLoweringPassBase<PassImpl> {
     // Degree-neutral roots can still contain over-degree operands.
     auto lowerBinaryRoot = [&](auto op) -> Value {
       Value lhs = lowerExpression(
-          op.getLhs(), structDef, constrainFunc, op.getOperation(), degreeMemo, rewrites,
-          auxAssignments
+          op.getLhs(), structDef, constrainFunc, op.getOperation(), dominanceInfo, degreeMemo,
+          rewrites, auxAssignments
       );
       Value rhs = lowerExpression(
-          op.getRhs(), structDef, constrainFunc, op.getOperation(), degreeMemo, rewrites,
-          auxAssignments
+          op.getRhs(), structDef, constrainFunc, op.getOperation(), dominanceInfo, degreeMemo,
+          rewrites, auxAssignments
       );
 
       if (lhs != op.getLhs()) {
@@ -294,8 +279,8 @@ class PassImpl : public llzk::impl::PolyLoweringPassBase<PassImpl> {
 
     if (auto negOp = val.getDefiningOp<NegFeltOp>()) {
       Value operand = lowerExpression(
-          negOp.getOperand(), structDef, constrainFunc, negOp.getOperation(), degreeMemo, rewrites,
-          auxAssignments
+          negOp.getOperand(), structDef, constrainFunc, negOp.getOperation(), dominanceInfo,
+          degreeMemo, rewrites, auxAssignments
       );
 
       if (operand != negOp.getOperand()) {
@@ -309,12 +294,12 @@ class PassImpl : public llzk::impl::PolyLoweringPassBase<PassImpl> {
     if (auto mulOp = val.getDefiningOp<MulFeltOp>()) {
       // Recursively lower operands first
       Value lhs = lowerExpression(
-          mulOp.getLhs(), structDef, constrainFunc, mulOp.getOperation(), degreeMemo, rewrites,
-          auxAssignments
+          mulOp.getLhs(), structDef, constrainFunc, mulOp.getOperation(), dominanceInfo, degreeMemo,
+          rewrites, auxAssignments
       );
       Value rhs = lowerExpression(
-          mulOp.getRhs(), structDef, constrainFunc, mulOp.getOperation(), degreeMemo, rewrites,
-          auxAssignments
+          mulOp.getRhs(), structDef, constrainFunc, mulOp.getOperation(), dominanceInfo, degreeMemo,
+          rewrites, auxAssignments
       );
 
       unsigned lhsDeg = getDegree(lhs, degreeMemo);
@@ -400,11 +385,12 @@ class PassImpl : public llzk::impl::PolyLoweringPassBase<PassImpl> {
 
   Value materializeCallArgument(
       Value val, StructDefOp structDef, FuncDefOp constrainFunc, CallOp callOp,
-      DenseMap<Value, unsigned> &degreeMemo, DenseMap<Value, Value> &rewrites,
-      SmallVector<AuxAssignment> &auxAssignments
+      DominanceInfo &dominanceInfo, DenseMap<Value, unsigned> &degreeMemo,
+      DenseMap<Value, Value> &rewrites, SmallVector<AuxAssignment> &auxAssignments
   ) {
     Value loweredVal = lowerExpression(
-        val, structDef, constrainFunc, callOp.getOperation(), degreeMemo, rewrites, auxAssignments
+        val, structDef, constrainFunc, callOp.getOperation(), dominanceInfo, degreeMemo, rewrites,
+        auxAssignments
     );
     DenseMap<Value, unsigned> checkMemo;
     if (getDegree(loweredVal, checkMemo) <= 1) {
@@ -528,6 +514,7 @@ class PassImpl : public llzk::impl::PolyLoweringPassBase<PassImpl> {
       DenseMap<Value, unsigned> degreeMemo;
       DenseMap<Value, Value> rewrites;
       SmallVector<AuxAssignment> auxAssignments;
+      DominanceInfo dominanceInfo(constrainFunc);
 
       // Lower equality constraints
       constrainFunc.walk([&](EmitEqualityOp constraintOp) {
@@ -538,15 +525,15 @@ class PassImpl : public llzk::impl::PolyLoweringPassBase<PassImpl> {
 
         if (degreeLhs > maxDegree) {
           Value loweredExpr = lowerExpression(
-              lhsOperand.get(), structDef, constrainFunc, constraintOp.getOperation(), degreeMemo,
-              rewrites, auxAssignments
+              lhsOperand.get(), structDef, constrainFunc, constraintOp.getOperation(),
+              dominanceInfo, degreeMemo, rewrites, auxAssignments
           );
           lhsOperand.set(loweredExpr);
         }
         if (degreeRhs > maxDegree) {
           Value loweredExpr = lowerExpression(
-              rhsOperand.get(), structDef, constrainFunc, constraintOp.getOperation(), degreeMemo,
-              rewrites, auxAssignments
+              rhsOperand.get(), structDef, constrainFunc, constraintOp.getOperation(),
+              dominanceInfo, degreeMemo, rewrites, auxAssignments
           );
           rhsOperand.set(loweredExpr);
         }
@@ -578,7 +565,8 @@ class PassImpl : public llzk::impl::PolyLoweringPassBase<PassImpl> {
 
             if (deg > 1) {
               arg = materializeCallArgument(
-                  arg, structDef, constrainFunc, callOp, degreeMemo, rewrites, auxAssignments
+                  arg, structDef, constrainFunc, callOp, dominanceInfo, degreeMemo, rewrites,
+                  auxAssignments
               );
               modified = true;
             }
