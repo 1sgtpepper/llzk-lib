@@ -13,7 +13,7 @@ module attributes {llzk.lang} {
       %eq1 = bool.cmp eq(%a, %b) : !F, !F
       %eq2 = bool.cmp eq(%b, %c) : !F, !F
       %xor = bool.xor %eq1, %eq2
-      constrain.eq %xor, %eq1 : i1, i1
+      %use = bool.and %xor, %eq1
       function.return
     }
   }
@@ -24,5 +24,4 @@ module attributes {llzk.lang} {
 // CHECK:         %[[EQ2:[0-9a-zA-Z_\.]+]] = pcl.eq %arg1, %arg2
 // CHECK:         %[[IFF:[0-9a-zA-Z_\.]+]] = pcl.iff %[[EQ1]], %[[EQ2]]
 // CHECK:         %[[XOR:[0-9a-zA-Z_\.]+]] = pcl.not %[[IFF]]
-// CHECK:         %[[ASSERT_EQ:[0-9a-zA-Z_\.]+]] = pcl.eq %[[XOR]], %[[EQ1]]
-// CHECK:         pcl.assert %[[ASSERT_EQ]]
+// CHECK:         %[[USE:[0-9a-zA-Z_\.]+]] = pcl.and %[[XOR]], %[[EQ1]]
