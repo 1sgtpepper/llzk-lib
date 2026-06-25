@@ -487,7 +487,12 @@ class PassImpl : public llzk::impl::PolyLoweringPassBase<PassImpl> {
         return;
       }
 
-      if (failed(checkConstrainBodyIsStraightLine(constrainFunc, "poly lowering"))) {
+      if (failed(checkFuncBodyIsStraightLine(constrainFunc, "poly lowering"))) {
+        signalPassFailure();
+        return;
+      }
+
+      if (failed(checkFuncBodyIsStraightLine(computeFunc, "poly lowering"))) {
         signalPassFailure();
         return;
       }
