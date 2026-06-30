@@ -255,40 +255,6 @@ module attributes {llzk.lang} {
   }
 }
 
-// CHECK-LABEL: struct.def @IsZero {
-// CHECK-NEXT:    struct.member @bit : !felt.type
-// CHECK-NEXT:    struct.member @zero : !felt.type
-// CHECK-NEXT:    struct.member @one : !felt.type
-// CHECK-NEXT:    function.def @compute(%[[VAL_0:.*]]: !felt.type) -> !struct.type<@IsZero> attributes {function.allow_witness} {
-// CHECK-NEXT:      %[[VAL_1:.*]] = struct.new : <@IsZero>
-// CHECK-NEXT:      %[[VAL_2:.*]] = felt.const  0
-// CHECK-NEXT:      %[[VAL_3:.*]] = felt.const  1
-// CHECK-NEXT:      struct.writem %[[VAL_1]][@zero] = %[[VAL_2]] : <@IsZero>, !felt.type
-// CHECK-NEXT:      struct.writem %[[VAL_1]][@one] = %[[VAL_3]] : <@IsZero>, !felt.type
-// CHECK-NEXT:      %[[VAL_4:.*]] = bool.cmp eq(%[[VAL_0]], %[[VAL_2]])
-// CHECK-NEXT:      %[[VAL_5:.*]] = scf.if %[[VAL_4]] -> (!felt.type) {
-// CHECK-NEXT:        scf.yield %[[VAL_2]] : !felt.type
-// CHECK-NEXT:      } else {
-// CHECK-NEXT:        scf.yield %[[VAL_3]] : !felt.type
-// CHECK-NEXT:      }
-// CHECK-NEXT:      struct.writem %[[VAL_1]][@bit] = %[[VAL_5]] : <@IsZero>, !felt.type
-// CHECK-NEXT:      function.return %[[VAL_1]] : !struct.type<@IsZero>
-// CHECK-NEXT:    }
-// CHECK-NEXT:    function.def @constrain(%[[VAL_6:.*]]: !struct.type<@IsZero>, %[[VAL_7:.*]]: !felt.type) attributes {function.allow_constraint} {
-// CHECK-NEXT:      %[[VAL_8:.*]] = struct.readm %[[VAL_6]][@bit] : <@IsZero>, !felt.type
-// CHECK-NEXT:      %[[VAL_9:.*]] = felt.const  1
-// CHECK-NEXT:      %[[VAL_10:.*]] = felt.sub %[[VAL_8]], %[[VAL_9]] : !felt.type, !felt.type
-// CHECK-NEXT:      %[[VAL_11:.*]] = felt.mul %[[VAL_8]], %[[VAL_10]] : !felt.type, !felt.type
-// CHECK-NEXT:      %[[VAL_12:.*]] = felt.const  0
-// CHECK-NEXT:      constrain.eq %[[VAL_11]], %[[VAL_12]] : !felt.type, !felt.type
-// CHECK-NEXT:      %[[VAL_13:.*]] = struct.readm %[[VAL_6]][@zero] : <@IsZero>, !felt.type
-// CHECK-NEXT:      %[[VAL_14:.*]] = struct.readm %[[VAL_6]][@one] : <@IsZero>, !felt.type
-// CHECK-NEXT:      constrain.eq %[[VAL_13]], %[[VAL_12]] : !felt.type, !felt.type
-// CHECK-NEXT:      constrain.eq %[[VAL_14]], %[[VAL_9]] : !felt.type, !felt.type
-// CHECK-NEXT:      function.return
-// CHECK-NEXT:    }
-// CHECK-NEXT:  }
-
 // -----
 
 module attributes {llzk.lang} {

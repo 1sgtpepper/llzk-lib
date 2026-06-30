@@ -239,7 +239,6 @@ module attributes {llzk.lang = "zirgen"} {
 // CHECK-NEXT:      struct.writem %[[V3]][@"$temp"] = %[[V4]] : <@TBar_4_3_7_Bar>, !struct.type<@Div>
 // CHECK-NEXT:      %[[V6:[0-9a-zA-Z_\.]+]] = function.call @TFoo_4_3_7_Foo::@compute(%[[V0]]) : (!array.type<7 x !felt.type>) -> !struct.type<@TFoo_4_3_7_Foo>
 // CHECK-NEXT:      struct.writem %[[V3]][@"$temp_0"] = %[[V6]] : <@TBar_4_3_7_Bar>, !struct.type<@TFoo_4_3_7_Foo>
-// CHECK-NEXT:      %[[V7:[0-9a-zA-Z_\.]+]] = struct.readm %[[V3]][@"$temp_0"] : <@TBar_4_3_7_Bar>, !struct.type<@TFoo_4_3_7_Foo>
 // CHECK-NEXT:      %[[V8:[0-9a-zA-Z_\.]+]] = function.call @Component::@compute() : () -> !struct.type<@Component>
 // CHECK-NEXT:      struct.writem %[[V3]][@"$temp_1"] = %[[V8]] : <@TBar_4_3_7_Bar>, !struct.type<@Component>
 // CHECK-NEXT:      %[[V9:[0-9a-zA-Z_\.]+]] = struct.readm %[[V3]][@"$temp_1"] : <@TBar_4_3_7_Bar>, !struct.type<@Component>
