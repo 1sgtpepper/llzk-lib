@@ -296,8 +296,7 @@ module attributes {llzk.lang} {
   }
 }
 
-// CHECK-LABEL: module attributes {llzk.lang} {
-// CHECK-NEXT:  global.def @g : !felt.type = 1
+// CHECK-LABEL: global.def @g : !felt.type = 1
 // CHECK-NEXT:  function.def @global_read_reuse() -> !felt.type {
 // CHECK-NEXT:    %[[READ:.*]] = global.read @g : !felt.type
 // CHECK-NEXT:    %[[SUM:.*]] = felt.add %[[READ]], %[[READ]] : !felt.type, !felt.type
@@ -320,8 +319,7 @@ module attributes {llzk.lang} {
   }
 }
 
-// CHECK-LABEL: module attributes {llzk.lang} {
-// CHECK-NEXT:  global.def @g : !felt.type = 1
+// CHECK-LABEL: global.def @g : !felt.type = 1
 // CHECK-NEXT:  function.def @global_write_updates_known_value(%[[NEW:.*]]: !felt.type) -> !felt.type attributes {function.allow_witness} {
 // CHECK-NEXT:    %[[BEFORE:.*]] = global.read @g : !felt.type
 // CHECK-NEXT:    global.write @g = %[[NEW]] : !felt.type
@@ -347,8 +345,7 @@ module attributes {llzk.lang} {
   }
 }
 
-// CHECK-LABEL: module attributes {llzk.lang} {
-// CHECK-NEXT:  global.def @g : !felt.type = 1
+// CHECK-LABEL: global.def @g : !felt.type = 1
 // CHECK-NEXT:  function.def @global_conditional_write_keeps_read(%[[NEW:.*]]: !felt.type, %[[COND:.*]]: i1) -> !felt.type attributes {function.allow_witness} {
 // CHECK-NEXT:    %[[BEFORE:.*]] = global.read @g : !felt.type
 // CHECK-NEXT:    scf.if %[[COND]] {
@@ -378,8 +375,7 @@ module attributes {llzk.lang} {
   }
 }
 
-// CHECK-LABEL: module attributes {llzk.lang} {
-// CHECK-NEXT:  global.def @g : !felt.type = 1
+// CHECK-LABEL: global.def @g : !felt.type = 1
 // CHECK-NEXT:  global.def @h : !felt.type = 2
 // CHECK-NEXT:  function.def @global_conditional_other_write_reuses_read(%[[NEW:.*]]: !felt.type, %[[COND:.*]]: i1) -> !felt.type attributes {function.allow_witness} {
 // CHECK-NEXT:    %[[READ:.*]] = global.read @g : !felt.type
@@ -407,8 +403,7 @@ module attributes {llzk.lang} {
   }
 }
 
-// CHECK-LABEL: module attributes {llzk.lang} {
-// CHECK-NEXT:  global.def @g : !felt.type = 1
+// CHECK-LABEL: global.def @g : !felt.type = 1
 // CHECK-NEXT:  global.def @h : !felt.type = 2
 // CHECK-NEXT:  function.def @different_global_write_reuses_read(%[[NEW:.*]]: !felt.type) -> !felt.type attributes {function.allow_witness} {
 // CHECK-NEXT:    %[[READ:.*]] = global.read @g : !felt.type
@@ -439,8 +434,7 @@ module attributes {llzk.lang} {
   }
 }
 
-// CHECK-LABEL: module attributes {llzk.lang} {
-// CHECK-NEXT:  global.def @g : !felt.type = 1
+// CHECK-LABEL: global.def @g : !felt.type = 1
 // CHECK-NEXT:  function.def @mutate_global(%[[NEW:.*]]: !felt.type) attributes {function.allow_witness} {
 // CHECK-NEXT:    global.write @g = %[[NEW]] : !felt.type
 // CHECK-NEXT:    function.return
@@ -466,8 +460,8 @@ module attributes {llzk.lang} {
   }
 }
 
-// CHECK-LABEL: module attributes {llzk.lang} {
-// CHECK-NEXT:  function.def @ram_load_reuse(%[[ADDR:.*]]: index) -> !felt.type attributes {function.allow_witness} {
+// CHECK-LABEL: function.def @ram_load_reuse
+// CHECK-SAME: (%[[ADDR:.*]]: index) -> !felt.type attributes {function.allow_witness} {
 // CHECK-NEXT:    %[[LOAD:.*]] = ram.load %[[ADDR]] : !felt.type
 // CHECK-NEXT:    %[[SUM:.*]] = felt.add %[[LOAD]], %[[LOAD]] : !felt.type, !felt.type
 // CHECK-NEXT:    function.return %[[SUM]] : !felt.type
@@ -485,8 +479,8 @@ module attributes {llzk.lang} {
   }
 }
 
-// CHECK-LABEL: module attributes {llzk.lang} {
-// CHECK-NEXT:  function.def @ram_store_updates_known_value(%[[ADDR:.*]]: index, %[[NEW:.*]]: !felt.type) -> !felt.type attributes {function.allow_witness} {
+// CHECK-LABEL: function.def @ram_store_updates_known_value
+// CHECK-SAME: (%[[ADDR:.*]]: index, %[[NEW:.*]]: !felt.type) -> !felt.type attributes {function.allow_witness} {
 // CHECK-NEXT:    ram.store %[[ADDR]], %[[NEW]] : !felt.type
 // CHECK-NEXT:    function.return %[[NEW]] : !felt.type
 // CHECK-NEXT:  }
@@ -507,8 +501,8 @@ module attributes {llzk.lang} {
   }
 }
 
-// CHECK-LABEL: module attributes {llzk.lang} {
-// CHECK-NEXT:  function.def @ram_conditional_store_keeps_load(%[[ADDR:.*]]: index, %[[NEW:.*]]: !felt.type, %[[COND:.*]]: i1) -> !felt.type attributes {function.allow_witness} {
+// CHECK-LABEL: function.def @ram_conditional_store_keeps_load
+// CHECK-SAME: (%[[ADDR:.*]]: index, %[[NEW:.*]]: !felt.type, %[[COND:.*]]: i1) -> !felt.type attributes {function.allow_witness} {
 // CHECK-NEXT:    %[[BEFORE:.*]] = ram.load %[[ADDR]] : !felt.type
 // CHECK-NEXT:    scf.if %[[COND]] {
 // CHECK-NEXT:      ram.store %[[ADDR]], %[[NEW]] : !felt.type
@@ -537,8 +531,7 @@ module attributes {llzk.lang} {
   }
 }
 
-// CHECK-LABEL: module attributes {llzk.lang} {
-// CHECK-NEXT:  global.def @g : !felt.type = 1
+// CHECK-LABEL: global.def @g : !felt.type = 1
 // CHECK-NEXT:  function.def @ram_load_conditional_global_write_reuses_load(%[[ADDR:.*]]: index, %[[NEW:.*]]: !felt.type, %[[COND:.*]]: i1) -> !felt.type attributes {function.allow_witness} {
 // CHECK-NEXT:    %[[LOAD:.*]] = ram.load %[[ADDR]] : !felt.type
 // CHECK-NEXT:    scf.if %[[COND]] {
@@ -562,8 +555,8 @@ module attributes {llzk.lang} {
   }
 }
 
-// CHECK-LABEL: module attributes {llzk.lang} {
-// CHECK-NEXT:  function.def @ram_store_unknown_alias(%[[LOAD_ADDR:.*]]: index, %[[STORE_ADDR:.*]]: index, %[[NEW:.*]]: !felt.type) -> !felt.type attributes {function.allow_witness} {
+// CHECK-LABEL: function.def @ram_store_unknown_alias
+// CHECK-SAME: (%[[LOAD_ADDR:.*]]: index, %[[STORE_ADDR:.*]]: index, %[[NEW:.*]]: !felt.type) -> !felt.type attributes {function.allow_witness} {
 // CHECK-NEXT:    %[[BEFORE:.*]] = ram.load %[[LOAD_ADDR]] : !felt.type
 // CHECK-NEXT:    ram.store %[[STORE_ADDR]], %[[NEW]] : !felt.type
 // CHECK-NEXT:    %[[AFTER:.*]] = ram.load %[[LOAD_ADDR]] : !felt.type
@@ -591,8 +584,8 @@ module attributes {llzk.lang} {
   }
 }
 
-// CHECK-LABEL: module attributes {llzk.lang} {
-// CHECK-NEXT:  function.def @mutate_ram(%[[M_ADDR:.*]]: index, %[[M_NEW:.*]]: !felt.type) attributes {function.allow_witness} {
+// CHECK-LABEL: function.def @mutate_ram
+// CHECK-SAME: (%[[M_ADDR:.*]]: index, %[[M_NEW:.*]]: !felt.type) attributes {function.allow_witness} {
 // CHECK-NEXT:    ram.store %[[M_ADDR]], %[[M_NEW]] : !felt.type
 // CHECK-NEXT:    function.return
 // CHECK-NEXT:  }
