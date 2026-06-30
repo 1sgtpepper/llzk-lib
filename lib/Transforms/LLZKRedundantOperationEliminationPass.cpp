@@ -15,9 +15,7 @@
 #include "llzk/Analysis/CallGraphAnalyses.h"
 #include "llzk/Dialect/Bool/IR/Ops.h"
 #include "llzk/Dialect/Constrain/IR/Ops.h"
-#include "llzk/Dialect/Global/IR/Ops.h"
 #include "llzk/Dialect/LLZK/IR/Ops.h"
-#include "llzk/Dialect/RAM/IR/Ops.h"
 #include "llzk/Dialect/Struct/IR/Dialect.h"
 #include "llzk/Dialect/Struct/IR/Ops.h"
 #include "llzk/Transforms/LLZKTransformationPasses.h"
@@ -60,49 +58,11 @@ static Operation *TOMBSTONE_OP_KEY = llvm::DenseMapInfo<Operation *>::getTombsto
 // Maps original -> replacement value
 using TranslationMap = DenseMap<Value, Value>;
 
-// Stateful reads are equivalent only when they observe the same mutation history.
-struct ReadStateKey {
-  Block *block = nullptr;
-  Operation *lastCommonBarrier = nullptr;
-  Operation *lastStateMutation = nullptr;
-
-  friend bool operator==(const ReadStateKey &lhs, const ReadStateKey &rhs) {
-    return lhs.block == rhs.block && lhs.lastCommonBarrier == rhs.lastCommonBarrier &&
-           lhs.lastStateMutation == rhs.lastStateMutation;
-  }
-};
-
-struct BlockReadState {
-  // Unknown and generic non-read effects invalidate every modeled read.
-  Operation *lastCommonBarrier = nullptr;
-  Operation *lastAnyWrite = nullptr;
-  Operation *lastRamStore = nullptr;
-  DenseMap<SymbolRefAttr, Operation *> lastGlobalWrite;
-  DenseMap<Value, DenseMap<SymbolRefAttr, Operation *>> lastMemberWrite;
-};
-
 static bool hasUnknownOrNonReadEffect(Operation *op) {
   auto effects = getEffectsRecursively(op);
   return !effects || llvm::any_of(*effects, [](const MemoryEffects::EffectInstance &effect) {
     return !isa<MemoryEffects::Read>(effect.getEffect());
   });
-}
-
-static bool hasOnlyReadEffects(Operation *op) {
-  auto effects = getEffectsRecursively(op);
-  if (!effects || effects->empty()) {
-    return false;
-  }
-  return llvm::all_of(*effects, [](const MemoryEffects::EffectInstance &effect) {
-    return isa<MemoryEffects::Read>(effect.getEffect());
-  });
-}
-
-static Value translateValue(Value value, const TranslationMap &map) {
-  if (auto it = map.find(value); it != map.end()) {
-    return it->second;
-  }
-  return value;
 }
 
 static bool isDuplicateEliminationCandidate(Operation *op) {
@@ -111,64 +71,7 @@ static bool isDuplicateEliminationCandidate(Operation *op) {
     return false;
   }
 
-  // Constraint elimination is an intentional behavior of this pass. Memory
-  // reads are handled using the state keys below.
-  return isa<ConstraintOpInterface>(op) || hasOnlyReadEffects(op) || isMemoryEffectFree(op);
-}
-
-static ReadStateKey
-getReadStateKey(Operation *op, const BlockReadState &state, const TranslationMap &map) {
-  if (auto read = dyn_cast<global::GlobalReadOp>(op)) {
-    return {
-        op->getBlock(), state.lastCommonBarrier, state.lastGlobalWrite.lookup(read.getNameRef())
-    };
-  }
-  if (isa<ram::LoadOp>(op)) {
-    return {op->getBlock(), state.lastCommonBarrier, state.lastRamStore};
-  }
-  if (auto read = dyn_cast<MemberReadOp>(op)) {
-    Value component = translateValue(read.getComponent(), map);
-    Operation *lastMemberWrite = nullptr;
-    if (auto it = state.lastMemberWrite.find(component); it != state.lastMemberWrite.end()) {
-      lastMemberWrite = it->second.lookup(read.getMemberNameAttr());
-    }
-    return {op->getBlock(), state.lastCommonBarrier, lastMemberWrite};
-  }
-  if (hasOnlyReadEffects(op)) {
-    return {op->getBlock(), state.lastCommonBarrier, state.lastAnyWrite};
-  }
-  return {};
-}
-
-static void updateReadState(Operation *op, BlockReadState &state, const TranslationMap &map) {
-  if (auto write = dyn_cast<global::GlobalWriteOp>(op)) {
-    state.lastGlobalWrite[write.getNameRef()] = op;
-    state.lastAnyWrite = op;
-    return;
-  }
-
-  if (isa<ram::StoreOp>(op)) {
-    // Without RAM alias analysis, every store may affect every load.
-    state.lastRamStore = op;
-    state.lastAnyWrite = op;
-    return;
-  }
-
-  if (auto write = dyn_cast<MemberWriteOp>(op)) {
-    Value component = translateValue(write.getComponent(), map);
-    state.lastMemberWrite[component][write.getMemberNameAttr()] = op;
-    state.lastAnyWrite = op;
-    return;
-  }
-
-  if (isa<ConstraintOpInterface>(op) || hasOnlyReadEffects(op) || isMemoryEffectFree(op)) {
-    return;
-  }
-
-  if (hasUnknownOrNonReadEffect(op)) {
-    state.lastCommonBarrier = op;
-    state.lastAnyWrite = op;
-  }
+  return isa<ConstraintOpInterface>(op) || isMemoryEffectFree(op);
 }
 
 static bool isDeadAfterElimination(Operation *op) {
@@ -194,8 +97,7 @@ public:
     }
   }
 
-  OperationComparator(Operation *o, const TranslationMap &m, ReadStateKey key = {})
-      : op(o), readStateKey(key) {
+  OperationComparator(Operation *o, const TranslationMap &m) : op(o) {
     for (Value operand : op->getOperands()) {
       if (auto it = m.find(operand); it != m.end()) {
         operands.push_back(it->second);
@@ -208,7 +110,6 @@ public:
   Operation *getOp() const { return op; }
 
   const SmallVector<Value> &getOperands() const { return operands; }
-  const ReadStateKey &getReadStateKey() const { return readStateKey; }
 
   bool isCommutative() const { return op->hasTrait<OpTrait::IsCommutative>(); }
 
@@ -218,8 +119,7 @@ public:
       return lhs.op == rhs.op;
     }
 
-    if (!(lhs.readStateKey == rhs.readStateKey) ||
-        !OperationEquivalence::isEquivalentTo(
+    if (!OperationEquivalence::isEquivalentTo(
             lhs.op, rhs.op, OperationEquivalence::ignoreValueEquivalence,
             /*markEquivalent=*/nullptr, OperationEquivalence::IgnoreLocations
         )) {
@@ -239,7 +139,6 @@ public:
 private:
   Operation *op;
   SmallVector<Value> operands;
-  ReadStateKey readStateKey;
 };
 
 } // namespace
@@ -274,10 +173,7 @@ template <> struct DenseMapInfo<OperationComparator> {
       operandHash = hash_combine_range(operands.begin(), operands.end());
     }
 
-    const ReadStateKey &key = oc.getReadStateKey();
-    return hash_combine(
-        opHash, operandHash, key.block, key.lastCommonBarrier, key.lastStateMutation
-    );
+    return hash_combine(opHash, operandHash);
   }
   static bool isEqual(const OperationComparator &lhs, const OperationComparator &rhs) {
     return lhs == rhs;
@@ -337,8 +233,8 @@ class PassImpl : public llzk::impl::RedundantOperationEliminationPassBase<PassIm
         return WalkResult::advance();
       }
 
-      // Purposeless calls skip updateReadState, so apply its conservative
-      // unknown-effect policy before allowing a call to be removed.
+      // Removing a call to a constrain function is only safe when the callee has
+      // no unknown or mutating effects.
       if (hasUnknownOrNonReadEffect(op)) {
         res = false;
         return WalkResult::interrupt();
@@ -357,7 +253,6 @@ class PassImpl : public llzk::impl::RedundantOperationEliminationPassBase<PassIm
     TranslationMap map;
     SmallVector<Operation *> redundantOps;
     DenseSet<OperationComparator> uniqueOps;
-    DenseMap<Block *, BlockReadState> readStates;
     DominanceInfo domInfo(fn);
 
     auto unnecessaryOpCheck = [&](Operation *op) -> bool {
@@ -385,27 +280,19 @@ class PassImpl : public llzk::impl::RedundantOperationEliminationPassBase<PassIm
         return WalkResult::advance();
       }
 
-      BlockReadState &readState = readStates[op->getBlock()];
-
       // Case 2: An equivalent operation A has already been performed before
       // the current operation B and A dominates B.
-      bool isRedundant = false;
       if (isDuplicateEliminationCandidate(op)) {
-        OperationComparator comp(op, map, getReadStateKey(op, readState, map));
+        OperationComparator comp(op, map);
         if (auto it = uniqueOps.find(comp);
             it != uniqueOps.end() && domInfo.dominates(it->getOp(), op)) {
           redundantOps.push_back(op);
-          isRedundant = true;
           for (unsigned opNum = 0; opNum < op->getNumResults(); opNum++) {
             map[op->getResult(opNum)] = it->getOp()->getResult(opNum);
           }
         } else {
           uniqueOps.insert(comp);
         }
-      }
-
-      if (!isRedundant) {
-        updateReadState(op, readState, map);
       }
       return WalkResult::advance();
     });

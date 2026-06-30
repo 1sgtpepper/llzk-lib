@@ -16,7 +16,12 @@ def RedundantReadAndWriteEliminationPass
     : LLZKPass<"llzk-duplicate-read-write-elim"> {
   let summary = "Remove redundant reads and writes";
   let description = [{
-    Remove read and write operations to struct members and arrays that are redundant or unnecessary.
+    Remove redundant or unnecessary reads and writes to struct members and
+    arrays, and redundant reads from globals and RAM.
+
+    Stateful reads are reused when the current analysis state proves the read
+    observes the same value. Writes and stores update that known state, while
+    unknown or non-read state effects invalidate it.
   }];
 }
 
@@ -24,8 +29,6 @@ def RedundantOperationEliminationPass : LLZKPass<"llzk-duplicate-op-elim"> {
   let summary = "Remove redundant operations";
   let description = [{
     Remove equivalent memory-effect-free operations and duplicate LLZK constraints.
-    Memory read ops  are reused within one block when no operation can write the
-    same memory or introduce an unknown/non-read state effect.
 
     Pass should be run after `llzk-duplicate-read-write-elim` for maximum effect.
   }];
