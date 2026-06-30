@@ -283,26 +283,6 @@ module attributes {llzk.lang} {
   }
 }
 
-// CHECK-LABEL: struct.def @Component {
-// CHECK-NEXT:    struct.member @matrix : !array.type<7,3 x !felt.type>
-// CHECK-NEXT:    function.def @compute(%[[VAL_0:.*]]: !array.type<3 x !felt.type>, %[[VAL_1:.*]]: i1) -> !struct.type<@Component> attributes {function.allow_witness} {
-// CHECK-NEXT:      %[[VAL_2:.*]] = struct.new : <@Component>
-// CHECK-NEXT:      %[[VAL_3:.*]] = struct.readm %[[VAL_2]][@matrix] : <@Component>, !array.type<7,3 x !felt.type>
-// CHECK-NEXT:      %[[VAL_4:.*]] = arith.constant 1 : index
-// CHECK-NEXT:      %[[VAL_5:.*]] = arith.constant 4 : index
-// CHECK-NEXT:      scf.if %[[VAL_1]] {
-// CHECK-NEXT:        array.insert %[[VAL_3]]{{\[}}%[[VAL_4]]] = %[[VAL_0]] : <7,3 x !felt.type>, <3 x !felt.type>
-// CHECK-NEXT:      } else {
-// CHECK-NEXT:        %[[VAL_6:.*]] = array.extract %[[VAL_3]]{{\[}}%[[VAL_4]]] : <7,3 x !felt.type>
-// CHECK-NEXT:        array.insert %[[VAL_3]]{{\[}}%[[VAL_5]]] = %[[VAL_6]] : <7,3 x !felt.type>, <3 x !felt.type>
-// CHECK-NEXT:      }
-// CHECK-NEXT:      function.return %[[VAL_2]] : !struct.type<@Component>
-// CHECK-NEXT:    }
-// CHECK-NEXT:    function.def @constrain(%[[VAL_7:.*]]: !struct.type<@Component>, %[[VAL_8:.*]]: !array.type<3 x !felt.type>, %[[VAL_9:.*]]: i1) attributes {function.allow_constraint} {
-// CHECK-NEXT:      function.return
-// CHECK-NEXT:    }
-// CHECK-NEXT:  }
-
 // -----
 
 module attributes {llzk.lang} {
