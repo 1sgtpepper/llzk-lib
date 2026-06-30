@@ -78,7 +78,7 @@ struct BlockReadState {
   Operation *lastAnyWrite = nullptr;
   Operation *lastRamStore = nullptr;
   DenseMap<SymbolRefAttr, Operation *> lastGlobalWrite;
-  DenseMap<Value, DenseMap<FlatSymbolRefAttr, Operation *>> lastMemberWrite;
+  DenseMap<Value, DenseMap<SymbolRefAttr, Operation *>> lastMemberWrite;
 };
 
 static bool hasUnknownOrNonReadEffect(Operation *op) {
