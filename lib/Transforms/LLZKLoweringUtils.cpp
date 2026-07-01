@@ -68,7 +68,11 @@ Value rebuildExprInCompute(
   if (auto readOp = val.getDefiningOp<MemberReadOp>()) {
     IRMapping mapper;
     for (Value operand : readOp->getOperands()) {
-      mapper.map(operand, mapValueIntoCompute(operand, computeFunc, builder, memo));
+      Value rebuiltOperand = mapValueIntoCompute(operand, computeFunc, builder, memo);
+      if (!rebuiltOperand) {
+        return nullptr;
+      }
+      mapper.map(operand, rebuiltOperand);
     }
 
     Operation *rebuiltOp = builder.clone(*readOp.getOperation(), mapper);
@@ -84,7 +88,11 @@ Value rebuildExprInCompute(
 
     IRMapping mapper;
     for (Value operand : defOp->getOperands()) {
-      mapper.map(operand, mapValueIntoCompute(operand, computeFunc, builder, memo));
+      Value rebuiltOperand = mapValueIntoCompute(operand, computeFunc, builder, memo);
+      if (!rebuiltOperand) {
+        return nullptr;
+      }
+      mapper.map(operand, rebuiltOperand);
     }
 
     Operation *rebuiltOp = builder.clone(*defOp, mapper);
