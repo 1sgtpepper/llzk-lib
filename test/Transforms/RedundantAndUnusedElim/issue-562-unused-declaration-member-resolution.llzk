@@ -1,6 +1,16 @@
-// RUN: llzk-opt -verify-each -llzk-unused-declaration-elim %s >/dev/null
+// RUN: llzk-opt -verify-each -llzk-unused-declaration-elim %s | FileCheck %s
 // Regression for #562: nested component roots must not let live member references
 // lose their resolved member declarations during unused declaration elimination.
+
+// CHECK-LABEL: module attributes {llzk.lang, llzk.main = !struct.type<@std::@C1>} {
+// CHECK:       struct.def @Reg {
+// CHECK:         struct.member @reg : !felt.type {llzk.pub}
+// CHECK:         %[[REG:.*]] = struct.readm %{{.*}}[@reg] : <@risc0::@Reg>, !felt.type
+// CHECK:         constrain.eq %{{.*}}, %[[REG]] : !felt.type, !felt.type
+// CHECK:       struct.def @C1 {
+// CHECK:         struct.member @z : !struct.type<@std::@risc0::@Reg> {llzk.pub}
+// CHECK:         %[[Z:.*]] = struct.readm %{{.*}}[@z] : <@C1>, !struct.type<@std::@risc0::@Reg>
+// CHECK:         function.call @std::@risc0::@Reg::@constrain(%[[Z]], %{{.*}}) : (!struct.type<@std::@risc0::@Reg>, !felt.type) -> ()
 
 module attributes {llzk.lang, llzk.main = !struct.type<@std::@C1>} {
   module @std attributes {llzk.lang = "zirgen"} {
