@@ -110,7 +110,7 @@ def LLZK_AuxOp
     after proving that the chosen representation is at least as fresh as the
     dynamic domain required by the auxiliary's dependencies.
 
-    V1 is conservative and only supports field elements.
+    This initial operation is conservative and only supports field elements.
 
     Example:
 
