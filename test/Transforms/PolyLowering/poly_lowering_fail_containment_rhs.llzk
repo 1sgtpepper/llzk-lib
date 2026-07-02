@@ -80,3 +80,28 @@ module attributes {llzk.lang} {
     }
   }
 }
+
+// -----
+
+module attributes {llzk.lang} {
+  struct.def @AmbiguousContainmentArrayWriteIndex {
+    function.def @compute(%a: !felt.type, %b: !felt.type, %i: index) -> !struct.type<@AmbiguousContainmentArrayWriteIndex> {
+      %self = struct.new : !struct.type<@AmbiguousContainmentArrayWriteIndex>
+      function.return %self : !struct.type<@AmbiguousContainmentArrayWriteIndex>
+    }
+
+    function.def @constrain(
+        %self: !struct.type<@AmbiguousContainmentArrayWriteIndex>,
+        %a: !felt.type,
+        %b: !felt.type,
+        %i: index
+    ) {
+      %table = array.new %a, %b : !array.type<2, 1 x !felt.type>
+      %row = array.new : !array.type<1 x !felt.type>
+      array.write %row[%i] = %a : !array.type<1 x !felt.type>, !felt.type
+      // expected-error@+1 {{'constrain.in' op poly lowering cannot resolve containment RHS row write history: array.write index is not static}}
+      constrain.in %table, %row : !array.type<2, 1 x !felt.type>, !array.type<1 x !felt.type>
+      function.return
+    }
+  }
+}

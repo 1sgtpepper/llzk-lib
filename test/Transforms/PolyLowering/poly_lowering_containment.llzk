@@ -78,6 +78,118 @@ module attributes {llzk.lang} {
 // -----
 
 module attributes {llzk.lang} {
+  struct.def @RowOverwriteContainment {
+    function.def @compute(%a: !felt.type, %b: !felt.type, %c: !felt.type) -> !struct.type<@RowOverwriteContainment> {
+      %self = struct.new : !struct.type<@RowOverwriteContainment>
+      function.return %self : !struct.type<@RowOverwriteContainment>
+    }
+
+    function.def @constrain(
+        %self: !struct.type<@RowOverwriteContainment>,
+        %a: !felt.type,
+        %b: !felt.type,
+        %c: !felt.type
+    ) {
+      %i = arith.constant 0 : index
+      %table = array.new %a, %b : !array.type<2, 1 x !felt.type>
+      %row = array.new : !array.type<1 x !felt.type>
+      %ab = felt.mul %a, %b : !felt.type, !felt.type
+      %stale = felt.div %ab, %c : !felt.type, !felt.type
+      array.write %row[%i] = %stale : !array.type<1 x !felt.type>, !felt.type
+      array.write %row[%i] = %a : !array.type<1 x !felt.type>, !felt.type
+      constrain.in %table, %row : !array.type<2, 1 x !felt.type>, !array.type<1 x !felt.type>
+      function.return
+    }
+  }
+}
+
+// CHECK-LABEL: struct.def @RowOverwriteContainment {
+// CHECK-NOT:    __llzk_poly_lowering_pass_aux_member
+// CHECK:        function.def @constrain
+// CHECK:        felt.div
+// CHECK:        array.write
+// CHECK:        array.write
+// CHECK:        constrain.in
+// CHECK-NOT:    __llzk_poly_lowering_pass_aux_member
+
+// -----
+
+module attributes {llzk.lang} {
+  struct.def @RowInsertOverwriteContainment {
+    function.def @compute(%a: !felt.type, %b: !felt.type, %c: !felt.type) -> !struct.type<@RowInsertOverwriteContainment> {
+      %self = struct.new : !struct.type<@RowInsertOverwriteContainment>
+      function.return %self : !struct.type<@RowInsertOverwriteContainment>
+    }
+
+    function.def @constrain(
+        %self: !struct.type<@RowInsertOverwriteContainment>,
+        %a: !felt.type,
+        %b: !felt.type,
+        %c: !felt.type
+    ) {
+      %table = array.new %a, %b : !array.type<2, 1 x !felt.type>
+      %row = array.new : !array.type<1 x !felt.type>
+      %ab = felt.mul %a, %b : !felt.type, !felt.type
+      %stale = felt.div %ab, %c : !felt.type, !felt.type
+      %staleRow = array.new %stale : !array.type<1 x !felt.type>
+      array.insert %row[] = %staleRow : !array.type<1 x !felt.type>, !array.type<1 x !felt.type>
+      %visibleRow = array.new %a : !array.type<1 x !felt.type>
+      array.insert %row[] = %visibleRow : !array.type<1 x !felt.type>, !array.type<1 x !felt.type>
+      constrain.in %table, %row : !array.type<2, 1 x !felt.type>, !array.type<1 x !felt.type>
+      function.return
+    }
+  }
+}
+
+// CHECK-LABEL: struct.def @RowInsertOverwriteContainment {
+// CHECK-NOT:    __llzk_poly_lowering_pass_aux_member
+// CHECK:        function.def @constrain
+// CHECK:        felt.div
+// CHECK:        array.insert
+// CHECK:        array.insert
+// CHECK:        constrain.in
+// CHECK-NOT:    __llzk_poly_lowering_pass_aux_member
+
+// -----
+
+module attributes {llzk.lang} {
+  struct.def @RowFinalWriteContainment {
+    function.def @compute(%a: !felt.type, %b: !felt.type) -> !struct.type<@RowFinalWriteContainment> {
+      %self = struct.new : !struct.type<@RowFinalWriteContainment>
+      function.return %self : !struct.type<@RowFinalWriteContainment>
+    }
+
+    function.def @constrain(
+        %self: !struct.type<@RowFinalWriteContainment>,
+        %a: !felt.type,
+        %b: !felt.type
+    ) {
+      %i = arith.constant 0 : index
+      %table = array.new %a, %b : !array.type<2, 1 x !felt.type>
+      %row = array.new : !array.type<1 x !felt.type>
+      array.write %row[%i] = %a : !array.type<1 x !felt.type>, !felt.type
+      %ab = felt.mul %a, %b : !felt.type, !felt.type
+      %lookup = felt.mul %ab, %ab : !felt.type, !felt.type
+      array.write %row[%i] = %lookup : !array.type<1 x !felt.type>, !felt.type
+      constrain.in %table, %row : !array.type<2, 1 x !felt.type>, !array.type<1 x !felt.type>
+      function.return
+    }
+  }
+}
+
+// CHECK-LABEL: struct.def @RowFinalWriteContainment {
+// CHECK:        function.def @constrain
+// CHECK:        array.write
+// CHECK:        %[[FINAL_AB:[0-9a-zA-Z_\.]+]] = felt.mul
+// CHECK:        %[[FINAL_AUX:[0-9a-zA-Z_\.]+]] = struct.readm {{.*}}[@__llzk_poly_lowering_pass_aux_member_0]
+// CHECK:        constrain.eq %[[FINAL_AUX]], %[[FINAL_AB]]
+// CHECK:        %[[FINAL_LOWERED:[0-9a-zA-Z_\.]+]] = felt.mul %[[FINAL_AUX]], %[[FINAL_AUX]]
+// CHECK:        array.write {{.*}} = %[[FINAL_LOWERED]]
+// CHECK:        constrain.in
+
+// -----
+
+module attributes {llzk.lang} {
   struct.def @RowInsertContainment {
     function.def @compute(%a: !felt.type, %b: !felt.type, %c: !felt.type, %d: !felt.type) -> !struct.type<@RowInsertContainment> {
       %self = struct.new : !struct.type<@RowInsertContainment>
