@@ -51,3 +51,32 @@ module attributes {llzk.lang} {
     }
   }
 }
+
+// -----
+
+module attributes {llzk.lang} {
+  struct.def @UnsupportedContainmentExtractElement {
+    function.def @compute(%a: !felt.type, %b: !felt.type, %c: !felt.type, %d: !felt.type) -> !struct.type<@UnsupportedContainmentExtractElement> {
+      %self = struct.new : !struct.type<@UnsupportedContainmentExtractElement>
+      function.return %self : !struct.type<@UnsupportedContainmentExtractElement>
+    }
+
+    function.def @constrain(
+        %self: !struct.type<@UnsupportedContainmentExtractElement>,
+        %a: !felt.type,
+        %b: !felt.type,
+        %c: !felt.type,
+        %d: !felt.type
+    ) {
+      %i = arith.constant 0 : index
+      %table = array.new %a, %b, %c, %d : !array.type<2, 2 x !felt.type>
+      %ab = felt.mul %a, %b : !felt.type, !felt.type
+      %elt = felt.div %ab, %c : !felt.type, !felt.type
+      %source = array.new %elt, %c, %d, %a : !array.type<2, 2 x !felt.type>
+      %row = array.extract %source[%i] : !array.type<2, 2 x !felt.type>
+      // expected-error@+1 {{'constrain.in' op poly lowering postcondition failed: containment RHS element degree exceeds max-degree 2 (element degree 3)}}
+      constrain.in %table, %row : !array.type<2, 2 x !felt.type>, !array.type<2 x !felt.type>
+      function.return
+    }
+  }
+}

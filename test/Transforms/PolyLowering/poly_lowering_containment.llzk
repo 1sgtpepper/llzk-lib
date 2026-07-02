@@ -41,6 +41,119 @@ module attributes {llzk.lang} {
 // -----
 
 module attributes {llzk.lang} {
+  struct.def @RowWriteContainment {
+    function.def @compute(%a: !felt.type, %b: !felt.type, %c: !felt.type, %d: !felt.type) -> !struct.type<@RowWriteContainment> {
+      %self = struct.new : !struct.type<@RowWriteContainment>
+      function.return %self : !struct.type<@RowWriteContainment>
+    }
+
+    function.def @constrain(
+        %self: !struct.type<@RowWriteContainment>,
+        %a: !felt.type,
+        %b: !felt.type,
+        %c: !felt.type,
+        %d: !felt.type
+    ) {
+      %i = arith.constant 0 : index
+      %table = array.new %a, %b, %c, %d : !array.type<2, 2 x !felt.type>
+      %row = array.new : !array.type<2 x !felt.type>
+      %ab = felt.mul %a, %b : !felt.type, !felt.type
+      %lookup = felt.mul %ab, %ab : !felt.type, !felt.type
+      array.write %row[%i] = %lookup : !array.type<2 x !felt.type>, !felt.type
+      constrain.in %table, %row : !array.type<2, 2 x !felt.type>, !array.type<2 x !felt.type>
+      function.return
+    }
+  }
+}
+
+// CHECK-LABEL: struct.def @RowWriteContainment {
+// CHECK:        function.def @constrain
+// CHECK:        %[[WRITE_AB:[0-9a-zA-Z_\.]+]] = felt.mul
+// CHECK:        %[[WRITE_AUX:[0-9a-zA-Z_\.]+]] = struct.readm {{.*}}[@__llzk_poly_lowering_pass_aux_member_0]
+// CHECK:        constrain.eq %[[WRITE_AUX]], %[[WRITE_AB]]
+// CHECK:        %[[WRITE_LOWERED:[0-9a-zA-Z_\.]+]] = felt.mul %[[WRITE_AUX]], %[[WRITE_AUX]]
+// CHECK:        array.write {{.*}} = %[[WRITE_LOWERED]]
+// CHECK:        constrain.in
+
+// -----
+
+module attributes {llzk.lang} {
+  struct.def @RowInsertContainment {
+    function.def @compute(%a: !felt.type, %b: !felt.type, %c: !felt.type, %d: !felt.type) -> !struct.type<@RowInsertContainment> {
+      %self = struct.new : !struct.type<@RowInsertContainment>
+      function.return %self : !struct.type<@RowInsertContainment>
+    }
+
+    function.def @constrain(
+        %self: !struct.type<@RowInsertContainment>,
+        %a: !felt.type,
+        %b: !felt.type,
+        %c: !felt.type,
+        %d: !felt.type
+    ) {
+      %table = array.new %a, %b, %c, %d : !array.type<2, 2 x !felt.type>
+      %row = array.new : !array.type<2 x !felt.type>
+      %ab = felt.mul %a, %b : !felt.type, !felt.type
+      %lookup = felt.mul %ab, %ab : !felt.type, !felt.type
+      %inserted = array.new %lookup, %c : !array.type<2 x !felt.type>
+      array.insert %row[] = %inserted : !array.type<2 x !felt.type>, !array.type<2 x !felt.type>
+      constrain.in %table, %row : !array.type<2, 2 x !felt.type>, !array.type<2 x !felt.type>
+      function.return
+    }
+  }
+}
+
+// CHECK-LABEL: struct.def @RowInsertContainment {
+// CHECK:        function.def @constrain
+// CHECK:        %[[INSERT_AB:[0-9a-zA-Z_\.]+]] = felt.mul
+// CHECK:        %[[INSERT_AUX:[0-9a-zA-Z_\.]+]] = struct.readm {{.*}}[@__llzk_poly_lowering_pass_aux_member_0]
+// CHECK:        constrain.eq %[[INSERT_AUX]], %[[INSERT_AB]]
+// CHECK:        %[[INSERT_LOWERED:[0-9a-zA-Z_\.]+]] = felt.mul %[[INSERT_AUX]], %[[INSERT_AUX]]
+// CHECK:        %[[INSERT_ROW:[0-9a-zA-Z_\.]+]] = array.new %[[INSERT_LOWERED]],
+// CHECK:        array.insert {{.*}} = %[[INSERT_ROW]]
+// CHECK:        constrain.in
+
+// -----
+
+module attributes {llzk.lang} {
+  struct.def @RowExtractContainment {
+    function.def @compute(%a: !felt.type, %b: !felt.type, %c: !felt.type, %d: !felt.type) -> !struct.type<@RowExtractContainment> {
+      %self = struct.new : !struct.type<@RowExtractContainment>
+      function.return %self : !struct.type<@RowExtractContainment>
+    }
+
+    function.def @constrain(
+        %self: !struct.type<@RowExtractContainment>,
+        %a: !felt.type,
+        %b: !felt.type,
+        %c: !felt.type,
+        %d: !felt.type
+    ) {
+      %i = arith.constant 0 : index
+      %table = array.new %a, %b, %c, %d : !array.type<2, 2 x !felt.type>
+      %ab = felt.mul %a, %b : !felt.type, !felt.type
+      %lookup = felt.mul %ab, %ab : !felt.type, !felt.type
+      %source = array.new %lookup, %c, %d, %a : !array.type<2, 2 x !felt.type>
+      %row = array.extract %source[%i] : !array.type<2, 2 x !felt.type>
+      constrain.in %table, %row : !array.type<2, 2 x !felt.type>, !array.type<2 x !felt.type>
+      function.return
+    }
+  }
+}
+
+// CHECK-LABEL: struct.def @RowExtractContainment {
+// CHECK:        function.def @constrain
+// CHECK:        %[[EXTRACT_AB:[0-9a-zA-Z_\.]+]] = felt.mul
+// CHECK:        %[[EXTRACT_AUX:[0-9a-zA-Z_\.]+]] = struct.readm {{.*}}[@__llzk_poly_lowering_pass_aux_member_0]
+// CHECK:        constrain.eq %[[EXTRACT_AUX]], %[[EXTRACT_AB]]
+// CHECK:        %[[EXTRACT_LOWERED:[0-9a-zA-Z_\.]+]] = felt.mul %[[EXTRACT_AUX]], %[[EXTRACT_AUX]]
+// CHECK:        %[[EXTRACT_SOURCE:[0-9a-zA-Z_\.]+]] = array.new %[[EXTRACT_LOWERED]],
+// CHECK:        %[[EXTRACT_ROW:[0-9a-zA-Z_\.]+]] = array.extract %[[EXTRACT_SOURCE]]
+// CHECK:        constrain.in {{.*}}, %[[EXTRACT_ROW]]
+
+// -----
+
+module attributes {llzk.lang} {
   struct.def @RowContainment {
     function.def @compute(%a: !felt.type, %b: !felt.type, %c: !felt.type, %d: !felt.type) -> !struct.type<@RowContainment> {
       %self = struct.new : !struct.type<@RowContainment>

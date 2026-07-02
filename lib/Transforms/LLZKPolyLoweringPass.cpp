@@ -508,6 +508,13 @@ class PassImpl : public llzk::impl::PolyLoweringPassBase<PassImpl> {
       }
     }
 
+    if (auto extractOp = value.getDefiningOp<llzk::array::ExtractArrayOp>()) {
+      lowerContainmentRhsValue(
+          extractOp.getArrRefMutable(), structDef, constrainFunc, dominanceInfo, degreeMemo,
+          rewrites, auxAssignments, containOp, visitedArrays
+      );
+    }
+
     for (Operation *user : value.getUsers()) {
       if (!dominanceInfo.properlyDominates(user, containOp.getOperation())) {
         continue;
@@ -557,6 +564,12 @@ class PassImpl : public llzk::impl::PolyLoweringPassBase<PassImpl> {
             element, containOp, checkMemo, failedCheck, dominanceInfo, visitedArrays
         );
       }
+    }
+
+    if (auto extractOp = value.getDefiningOp<llzk::array::ExtractArrayOp>()) {
+      checkContainmentRhsValue(
+          extractOp.getArrRef(), containOp, checkMemo, failedCheck, dominanceInfo, visitedArrays
+      );
     }
 
     for (Operation *user : value.getUsers()) {
