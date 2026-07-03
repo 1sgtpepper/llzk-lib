@@ -1,0 +1,26 @@
+//===-- EffectHelper.h ------------------------------------------*- C++ -*-===//
+//
+// Part of the LLZK Project, under the Apache License v2.0.
+// See LICENSE.txt for license information.
+// Copyright 2025 Veridise Inc.
+// SPDX-License-Identifier: Apache-2.0
+//
+//===----------------------------------------------------------------------===//
+
+#pragma once
+
+#include <mlir/IR/Operation.h>
+#include <mlir/Interfaces/SideEffectInterfaces.h>
+
+#include <llvm/ADT/STLExtras.h>
+
+namespace llzk {
+
+inline bool hasUnknownOrNonReadEffect(mlir::Operation *op) {
+  auto effects = mlir::getEffectsRecursively(op);
+  return !effects || llvm::any_of(*effects, [](const mlir::MemoryEffects::EffectInstance &effect) {
+    return !llvm::isa<mlir::MemoryEffects::Read>(effect.getEffect());
+  });
+}
+
+} // namespace llzk

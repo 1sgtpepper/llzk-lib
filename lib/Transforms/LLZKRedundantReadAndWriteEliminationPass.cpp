@@ -19,10 +19,10 @@
 #include "llzk/Dialect/RAM/IR/Ops.h"
 #include "llzk/Transforms/LLZKTransformationPasses.h"
 #include "llzk/Util/Concepts.h"
+#include "llzk/Util/EffectHelper.h"
 #include "llzk/Util/StreamHelper.h"
 
 #include <mlir/IR/BuiltinOps.h>
-#include <mlir/Interfaces/SideEffectInterfaces.h>
 
 #include <llvm/ADT/DenseMap.h>
 #include <llvm/ADT/DenseMapInfo.h>
@@ -322,13 +322,6 @@ struct KnownState {
   DenseMap<SymbolRefAttr, Value> globals;
   DenseMap<ReferenceID, Value> ram;
 };
-
-static bool hasUnknownOrNonReadEffect(Operation *op) {
-  auto effects = getEffectsRecursively(op);
-  return !effects || llvm::any_of(*effects, [](const MemoryEffects::EffectInstance &effect) {
-    return !isa<MemoryEffects::Read>(effect.getEffect());
-  });
-}
 
 ValueMap intersectValueMap(const ValueMap &lhs, const ValueMap &rhs) {
   ValueMap res;

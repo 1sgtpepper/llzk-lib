@@ -17,15 +17,14 @@
 #include "llzk/Dialect/Constrain/IR/Ops.h"
 #include "llzk/Dialect/LLZK/IR/Ops.h"
 #include "llzk/Dialect/Struct/IR/Dialect.h"
-#include "llzk/Dialect/Struct/IR/Ops.h"
 #include "llzk/Transforms/LLZKTransformationPasses.h"
+#include "llzk/Util/EffectHelper.h"
 #include "llzk/Util/SymbolHelper.h"
 
 #include <mlir/Dialect/Arith/IR/Arith.h>
 #include <mlir/IR/BuiltinOps.h>
 #include <mlir/IR/Dominance.h>
 #include <mlir/IR/OperationSupport.h>
-#include <mlir/Interfaces/SideEffectInterfaces.h>
 
 #include <llvm/ADT/DenseMap.h>
 #include <llvm/ADT/DenseSet.h>
@@ -58,13 +57,6 @@ static Operation *TOMBSTONE_OP_KEY = llvm::DenseMapInfo<Operation *>::getTombsto
 // Maps original -> replacement value
 using TranslationMap = DenseMap<Value, Value>;
 
-static bool hasUnknownOrNonReadEffect(Operation *op) {
-  auto effects = getEffectsRecursively(op);
-  return !effects || llvm::any_of(*effects, [](const MemoryEffects::EffectInstance &effect) {
-    return !isa<MemoryEffects::Read>(effect.getEffect());
-  });
-}
-
 static bool isDuplicateEliminationCandidate(Operation *op) {
   if (isa<NonDetOp>(op) || op->hasTrait<OpTrait::IsTerminator>() || op->getNumRegions() != 0 ||
       op->getNumSuccessors() != 0) {
@@ -72,18 +64,6 @@ static bool isDuplicateEliminationCandidate(Operation *op) {
   }
 
   return isa<ConstraintOpInterface>(op) || isMemoryEffectFree(op);
-}
-
-static bool isDeadAfterElimination(Operation *op) {
-  if (isOpTriviallyDead(op)) {
-    return true;
-  }
-
-  // Member reads are observations with no mutation. Keep this local so the
-  // pass can clean up reads made unused by its rewrites without changing
-  // dialect-wide canonicalization behavior for unrelated pipelines.
-  return isa<MemberReadOp>(op) &&
-         llvm::all_of(op->getResults(), [](Value result) { return result.use_empty(); });
 }
 
 /// @brief A wrapper for an operation that provides comparators for operations
@@ -338,7 +318,7 @@ class PassImpl : public llzk::impl::RedundantOperationEliminationPassBase<PassIm
     while (!deadOpCandidates.empty()) {
       Operation *op = deadOpCandidates.pop_back_val();
       queuedDeadOps.erase(op);
-      if (!isDeadAfterElimination(op)) {
+      if (!isOpTriviallyDead(op)) {
         continue;
       }
 
