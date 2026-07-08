@@ -28,7 +28,7 @@ jobs:
       - name: Generate CHECK lines for containment test
         run: |
           result/bin/llzk-opt -I test/Transforms/PolyLowering -split-input-file \
-            -llzk-poly-lowering-pass="max-degree=2" -verify-diagnostics \
+            -llzk-poly-lowering-pass="max-degree=2" \
             test/Transforms/PolyLowering/poly_lowering_containment.llzk \
             | python3 scripts/generate-test-checks.py \
               --source test/Transforms/PolyLowering/poly_lowering_containment.llzk -i
