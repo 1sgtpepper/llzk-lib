@@ -25,17 +25,17 @@ jobs:
           authToken: '${{ secrets.CACHIX_PUBLIC_TOKEN }}'
       - name: Build llzk-opt
         run: nix --print-build-logs build '.#debugClangCov'
-      - name: Generate CHECK lines for containment test
+      - name: Debug: count segments
         run: |
+          echo "=== Source segments ==="
+          grep -c "^// -----" test/Transforms/PolyLowering/poly_lowering_containment.llzk || true
+          echo "=== Running llzk-opt ==="
           result/bin/llzk-opt -I test/Transforms/PolyLowering -split-input-file \
             -llzk-poly-lowering-pass="max-degree=2" \
-            test/Transforms/PolyLowering/poly_lowering_containment.llzk \
-            | python3 scripts/generate-test-checks.py \
-              --source test/Transforms/PolyLowering/poly_lowering_containment.llzk -i
-      - name: Show diff
-        run: git diff
-      - name: Upload modified test file
-        uses: actions/upload-artifact@v7
-        with:
-          name: generated-test-checks
-          path: test/Transforms/PolyLowering/poly_lowering_containment.llzk
+            test/Transforms/PolyLowering/poly_lowering_containment.llzk > /tmp/llzk-opt-output.txt 2>&1 || true
+          echo "=== Output segments ==="
+          grep -c "^// -----" /tmp/llzk-opt-output.txt || true
+          echo "=== First 50 lines of output ==="
+          head -50 /tmp/llzk-opt-output.txt
+          echo "=== Output line count ==="
+          wc -l /tmp/llzk-opt-output.txt
