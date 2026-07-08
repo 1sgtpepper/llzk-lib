@@ -1,6 +1,8 @@
 name: Generate Test Checks
 on:
   workflow_dispatch:
+  push:
+    branches: [ci-gen-checks]
 
 jobs:
   generate:
