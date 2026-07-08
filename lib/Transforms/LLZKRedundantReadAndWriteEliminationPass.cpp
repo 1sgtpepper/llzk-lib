@@ -757,7 +757,7 @@ class PassImpl : public llzk::impl::RedundantReadAndWriteEliminationPassBase<Pas
       std::shared_ptr<ReferenceNode> access = getMemberAccessNode(readm);
       Value resVal = readm.getVal();
       if (access == nullptr) {
-        state[resVal] = ReferenceNode::create(resVal, resVal);
+        state.values[resVal] = ReferenceNode::create(resVal, resVal);
         readVals.push_back(resVal);
         return;
       }
