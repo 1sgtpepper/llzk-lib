@@ -499,6 +499,15 @@ class PassImpl : public r1cs::impl::R1CSLoweringPassBase<PassImpl> {
                 "self value"
             );
           }
+          // Table offsets and map operands select a different row.  Those
+          // accesses must not be lowered to the current-row R1CS signal.
+          if (read.getTableOffset() || !read.getMapOperands().empty()) {
+            signalPassFailure();
+            return read.emitError(
+                "R1CS lowering does not support member reads with table offsets "
+                "or map operands"
+            );
+          }
           auto memberVal = memberMap.find(read.getMemberName());
           if (memberVal == memberMap.end()) {
             signalPassFailure();
