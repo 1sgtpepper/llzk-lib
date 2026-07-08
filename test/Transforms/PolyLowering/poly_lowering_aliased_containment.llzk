@@ -1,0 +1,47 @@
+// RUN: llzk-opt -I %S -split-input-file -llzk-poly-lowering-pass="max-degree=2" -verify-diagnostics %s | FileCheck --enable-var-scope %s
+
+// The pass must track array.write / array.insert operands even when
+// the target array is a different SSA value that reads the same
+// struct member as the containment RHS.
+module attributes {llzk.lang} {
+  struct.def @AliasedMemberWriteContainment {
+    struct.member @row : !array.type<1 x !felt.type>
+
+    function.def @compute(%a: !felt.type, %b: !felt.type) -> !struct.type<@AliasedMemberWriteContainment> {
+      %self = struct.new : !struct.type<@AliasedMemberWriteContainment>
+      function.return %self : !struct.type<@AliasedMemberWriteContainment>
+    }
+
+    function.def @constrain(
+        %self: !struct.type<@AliasedMemberWriteContainment>,
+        %a: !felt.type,
+        %b: !felt.type
+    ) {
+      %i = arith.constant 0 : index
+      %table = array.new %a, %b : !array.type<2, 1 x !felt.type>
+      %ab = felt.mul %a, %b : !felt.type, !felt.type
+      %lookup = felt.mul %ab, %ab : !felt.type, !felt.type   // degree 4 → must lower
+      %row1 = struct.readm %self[@row] : <@AliasedMemberWriteContainment>, !array.type<1 x !felt.type>
+      array.write %row1[%i] = %lookup : !array.type<1 x !felt.type>, !felt.type
+      %row2 = struct.readm %self[@row] : <@AliasedMemberWriteContainment>, !array.type<1 x !felt.type>
+      constrain.in %table, %row2 : !array.type<2, 1 x !felt.type>, !array.type<1 x !felt.type>
+      function.return
+    }
+  }
+}
+
+// The write's RHS (%lookup) is degree 4.  It must be lowered through an
+// auxiliary member even though the write target (%row1) is a different SSA
+// value than the containment RHS (%row2).
+// CHECK-LABEL: struct.def @AliasedMemberWriteContainment {
+// CHECK:        function.def @constrain
+// CHECK:        %[[AB:[0-9a-zA-Z_\.]+]] = felt.mul
+// CHECK:        %[[AUX:[0-9a-zA-Z_\.]+]] = struct.readm {{.*}}[@__llzk_poly_lowering_pass_aux_member_0]
+// CHECK:        constrain.eq %[[AUX]], %[[AB]]
+// CHECK:        %[[LOWERED:[0-9a-zA-Z_\.]+]] = felt.mul %[[AUX]], %[[AUX]]
+// CHECK:        array.write {{.*}} = %[[LOWERED]]
+// CHECK:        constrain.in
+// CHECK:        function.return
+// CHECK:      }
+// CHECK:      struct.member @__llzk_poly_lowering_pass_aux_member_0
+// CHECK:    }

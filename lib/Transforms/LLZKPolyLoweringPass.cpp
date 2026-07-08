@@ -594,6 +594,41 @@ class PassImpl : public llzk::impl::PolyLoweringPassBase<PassImpl> {
     return success();
   }
 
+  /// If \p v is defined by a `struct.readm`, returns the canonical
+  /// (component, member) pair that identifies the source struct member.
+  /// Returns std::nullopt when the defining op is not a struct read.
+  static std::optional<std::pair<Value, FlatSymbolRefAttr>> resolveStructReadSource(Value v) {
+    auto *op = v.getDefiningOp();
+    if (!op) {
+      return std::nullopt;
+    }
+    auto readOp = dyn_cast<MemberReadOp>(op);
+    if (!readOp) {
+      return std::nullopt;
+    }
+    return std::make_pair(readOp.getComponent(), readOp.getMemberNameAttr());
+  }
+
+  /// Returns true when \p a and \p b may reference the same underlying array
+  /// data.  Two `struct.readm` values alias when they read the same member
+  /// from the same component value (ignoring offset / map operands which are
+  /// not expected in containment RHS paths).  For all other defining ops we
+  /// fall back to strict Value equality.
+  static bool mayAliasArraySource(Value a, Value b) {
+    if (a == b) {
+      return true;
+    }
+    auto srcA = resolveStructReadSource(a);
+    if (!srcA) {
+      return false;
+    }
+    auto srcB = resolveStructReadSource(b);
+    if (!srcB) {
+      return false;
+    }
+    return srcA->first == srcB->first && srcA->second == srcB->second;
+  }
+
   LogicalResult collectMutableContainmentElementMap(
       Value arrayValue, Operation *boundaryOp, ArrayRef<Attribute> viewPrefix,
       EmitContainmentOp containOp, DenseSet<Value> &activeArrays,
@@ -662,7 +697,7 @@ class PassImpl : public llzk::impl::PolyLoweringPassBase<PassImpl> {
       }
 
       if (auto writeOp = llvm::dyn_cast<llzk::array::WriteArrayOp>(&op)) {
-        if (writeOp.getArrRef() != arrayValue) {
+        if (!mayAliasArraySource(writeOp.getArrRef(), arrayValue)) {
           continue;
         }
 
@@ -678,7 +713,7 @@ class PassImpl : public llzk::impl::PolyLoweringPassBase<PassImpl> {
       }
 
       if (auto insertOp = llvm::dyn_cast<llzk::array::InsertArrayOp>(&op)) {
-        if (insertOp.getArrRef() != arrayValue) {
+        if (!mayAliasArraySource(insertOp.getArrRef(), arrayValue)) {
           continue;
         }
 
