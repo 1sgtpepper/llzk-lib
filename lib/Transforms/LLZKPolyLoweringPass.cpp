@@ -48,6 +48,7 @@ using namespace llzk::felt;
 using namespace llzk::function;
 using namespace llzk::component;
 using namespace llzk::constrain;
+using namespace llzk::array;
 
 #define DEBUG_TYPE "llzk-poly-lowering-pass"
 #define AUXILIARY_MEMBER_PREFIX "__llzk_poly_lowering_pass_aux_member_"
@@ -60,6 +61,7 @@ struct AuxAssignment {
   Value auxValue;
 };
 
+/// Tracks a mutable felt-array element operand together with its relative index.
 struct MutableContainmentElement {
   ArrayAttr index;
   OpOperand *operand;
@@ -475,8 +477,9 @@ class PassImpl : public llzk::impl::PolyLoweringPassBase<PassImpl> {
     return failure(failedCheck);
   }
 
+  /// Returns true when \p type is an array whose element type is FeltType.
   bool isFeltArray(Type type) const {
-    auto arrayType = llvm::dyn_cast<llzk::array::ArrayType>(type);
+    auto arrayType = llvm::dyn_cast<ArrayType>(type);
     if (!arrayType) {
       return false;
     }
@@ -484,13 +487,13 @@ class PassImpl : public llzk::impl::PolyLoweringPassBase<PassImpl> {
   }
 
   LogicalResult emitAmbiguousContainmentRhs(EmitContainmentOp containOp, StringRef detail) const {
-    auto diag = containOp.emitOpError();
-    diag << "poly lowering cannot resolve containment RHS row write history: " << detail;
-    diag.report();
-    return failure();
+    return containOp.emitOpError()
+        << "poly lowering cannot resolve containment RHS row write history: "
+        << detail;
   }
 
   template <typename IndexRange, typename PrefixRange>
+  /// Returns true when \p index begins with the exact attribute sequence in \p prefix.
   bool indexStartsWith(const IndexRange &index, const PrefixRange &prefix) const {
     auto indexIt = index.begin();
     for (Attribute attr : prefix) {
@@ -503,6 +506,7 @@ class PassImpl : public llzk::impl::PolyLoweringPassBase<PassImpl> {
   }
 
   template <typename LhsRange, typename RhsRange>
+  /// Returns true when \p lhs and \p rhs share a common prefix (one is a prefix of the other).
   bool prefixesCanOverlap(const LhsRange &lhs, const RhsRange &rhs) const {
     auto lhsIt = lhs.begin();
     auto rhsIt = rhs.begin();
@@ -516,6 +520,7 @@ class PassImpl : public llzk::impl::PolyLoweringPassBase<PassImpl> {
     return true;
   }
 
+  /// Returns a new ArrayAttr with the first \p prefixSize elements of \p index removed.
   ArrayAttr dropIndexPrefix(MLIRContext *ctx, ArrayAttr index, size_t prefixSize) const {
     SmallVector<Attribute> attrs;
     size_t idx = 0;
@@ -528,6 +533,7 @@ class PassImpl : public llzk::impl::PolyLoweringPassBase<PassImpl> {
   }
 
   template <typename PrefixRange>
+  /// Returns a new ArrayAttr formed by concatenating \p prefix and \p suffix.
   ArrayAttr appendIndex(MLIRContext *ctx, const PrefixRange &prefix, ArrayAttr suffix) const {
     SmallVector<Attribute> attrs;
     for (Attribute attr : prefix) {
@@ -539,12 +545,15 @@ class PassImpl : public llzk::impl::PolyLoweringPassBase<PassImpl> {
     return ArrayAttr::get(ctx, attrs);
   }
 
+  /// Returns the static access indices of \p op as an ArrayAttr.
   ArrayAttr getStaticAccessIndex(Operation *op) const {
-    return llvm::cast<llzk::array::ArrayAccessOpInterface>(op).indexOperandsToAttributeArray();
+    return llvm::cast<ArrayAccessOpInterface>(op).indexOperandsToAttributeArray();
   }
 
+  /// Returns the subelement indices of \p arrayType that start with \p viewPrefix,
+  /// with the prefix stripped from each result.
   std::optional<SmallVector<ArrayAttr>>
-  getViewIndices(llzk::array::ArrayType arrayType, ArrayRef<Attribute> viewPrefix) const {
+  getViewIndices(ArrayType arrayType, ArrayRef<Attribute> viewPrefix) const {
     std::optional<SmallVector<ArrayAttr>> allIndices = arrayType.getSubelementIndices();
     if (!allIndices) {
       return std::nullopt;
@@ -560,12 +569,15 @@ class PassImpl : public llzk::impl::PolyLoweringPassBase<PassImpl> {
     return viewIndices;
   }
 
+  /// Collects mutable felt-array element operands visible at \p boundaryOp,
+  /// keyed by indices relative to \p viewPrefix.  Ambiguous write histories
+  /// are rejected explicitly.
   LogicalResult collectMutableContainmentElements(
       Value arrayValue, Operation *boundaryOp, ArrayRef<Attribute> viewPrefix,
       EmitContainmentOp containOp, DenseSet<Value> &activeArrays,
       SmallVectorImpl<MutableContainmentElement> &elements
   ) {
-    auto arrayType = llvm::dyn_cast<llzk::array::ArrayType>(arrayValue.getType());
+    auto arrayType = llvm::dyn_cast<ArrayType>(arrayValue.getType());
     if (!arrayType || !llvm::isa<FeltType>(arrayType.getElementType())) {
       return success();
     }
@@ -598,11 +610,7 @@ class PassImpl : public llzk::impl::PolyLoweringPassBase<PassImpl> {
   /// (component, member) pair that identifies the source struct member.
   /// Returns std::nullopt when the defining op is not a struct read.
   static std::optional<std::pair<Value, FlatSymbolRefAttr>> resolveStructReadSource(Value v) {
-    auto *op = v.getDefiningOp();
-    if (!op) {
-      return std::nullopt;
-    }
-    auto readOp = dyn_cast<MemberReadOp>(op);
+    auto readOp = llvm::dyn_cast_if_present<MemberReadOp>(v.getDefiningOp());
     if (!readOp) {
       return std::nullopt;
     }
@@ -629,6 +637,9 @@ class PassImpl : public llzk::impl::PolyLoweringPassBase<PassImpl> {
     return srcA->first == srcB->first && srcA->second == srcB->second;
   }
 
+  /// Walks the write history of \p arrayValue up to \p boundaryOp and populates
+  /// \p finalElements with the final visible felt operands, keyed by indices
+  /// relative to \p viewPrefix.  Ambiguous histories are rejected.
   LogicalResult collectMutableContainmentElementMap(
       Value arrayValue, Operation *boundaryOp, ArrayRef<Attribute> viewPrefix,
       EmitContainmentOp containOp, DenseSet<Value> &activeArrays,
@@ -636,7 +647,7 @@ class PassImpl : public llzk::impl::PolyLoweringPassBase<PassImpl> {
   ) {
     // Track the final visible felt-array operands at boundaryOp, keyed by
     // indices relative to viewPrefix. Ambiguous histories fail instead of guessing.
-    auto arrayType = llvm::dyn_cast<llzk::array::ArrayType>(arrayValue.getType());
+    auto arrayType = llvm::dyn_cast<ArrayType>(arrayValue.getType());
     if (!arrayType || !llvm::isa<FeltType>(arrayType.getElementType())) {
       return success();
     }
@@ -650,7 +661,7 @@ class PassImpl : public llzk::impl::PolyLoweringPassBase<PassImpl> {
 
     MLIRContext *ctx = arrayType.getContext();
 
-    if (auto arrayOp = arrayValue.getDefiningOp<llzk::array::CreateArrayOp>()) {
+    if (auto arrayOp = arrayValue.getDefiningOp<CreateArrayOp>()) {
       MutableOperandRange elementOperands = arrayOp.getElementsMutable();
       if (!elementOperands.empty()) {
         std::optional<SmallVector<ArrayAttr>> allIndices = arrayType.getSubelementIndices();
@@ -669,7 +680,7 @@ class PassImpl : public llzk::impl::PolyLoweringPassBase<PassImpl> {
       }
     }
 
-    if (auto extractOp = arrayValue.getDefiningOp<llzk::array::ExtractArrayOp>()) {
+    if (auto extractOp = arrayValue.getDefiningOp<ExtractArrayOp>()) {
       ArrayAttr extractIndex = getStaticAccessIndex(extractOp.getOperation());
       if (!extractIndex) {
         return emitAmbiguousContainmentRhs(containOp, "array.extract index is not static");
@@ -696,7 +707,7 @@ class PassImpl : public llzk::impl::PolyLoweringPassBase<PassImpl> {
         break;
       }
 
-      if (auto writeOp = llvm::dyn_cast<llzk::array::WriteArrayOp>(&op)) {
+      if (auto writeOp = llvm::dyn_cast<WriteArrayOp>(&op)) {
         if (!mayAliasArraySource(writeOp.getArrRef(), arrayValue)) {
           continue;
         }
@@ -712,7 +723,7 @@ class PassImpl : public llzk::impl::PolyLoweringPassBase<PassImpl> {
         continue;
       }
 
-      if (auto insertOp = llvm::dyn_cast<llzk::array::InsertArrayOp>(&op)) {
+      if (auto insertOp = llvm::dyn_cast<InsertArrayOp>(&op)) {
         if (!mayAliasArraySource(insertOp.getArrRef(), arrayValue)) {
           continue;
         }
@@ -725,7 +736,7 @@ class PassImpl : public llzk::impl::PolyLoweringPassBase<PassImpl> {
           continue;
         }
 
-        auto rvalueType = llvm::dyn_cast<llzk::array::ArrayType>(insertOp.getRvalue().getType());
+        auto rvalueType = llvm::dyn_cast<ArrayType>(insertOp.getRvalue().getType());
         if (!rvalueType || !llvm::isa<FeltType>(rvalueType.getElementType())) {
           continue;
         }
@@ -768,6 +779,8 @@ class PassImpl : public llzk::impl::PolyLoweringPassBase<PassImpl> {
     return success();
   }
 
+  /// Lowers an individual felt operand when its degree exceeds maxDegree,
+  /// rewriting it through the existing auxiliary-member lowering path.
   LogicalResult lowerContainmentRhsFeltOperand(
       OpOperand &operand, StructDefOp structDef, FuncDefOp constrainFunc,
       DominanceInfo &dominanceInfo, DenseMap<Value, unsigned> &degreeMemo,
@@ -788,6 +801,8 @@ class PassImpl : public llzk::impl::PolyLoweringPassBase<PassImpl> {
     return success();
   }
 
+  /// Lowers the RHS operand of an EmitContainmentOp, recursing into
+  /// felt-array elements when the RHS is an array type.
   LogicalResult lowerContainmentRhsValue(
       OpOperand &operand, StructDefOp structDef, FuncDefOp constrainFunc,
       DominanceInfo &dominanceInfo, DenseMap<Value, unsigned> &degreeMemo,
@@ -826,6 +841,8 @@ class PassImpl : public llzk::impl::PolyLoweringPassBase<PassImpl> {
     return success();
   }
 
+  /// Reports an error when a felt value in a containment RHS exceeds maxDegree
+  /// after lowering has completed.
   void checkContainmentRhsFeltValue(
       Value value, EmitContainmentOp containOp, DenseMap<Value, unsigned> &checkMemo,
       bool &failedCheck
@@ -842,11 +859,13 @@ class PassImpl : public llzk::impl::PolyLoweringPassBase<PassImpl> {
     auto diag = containOp.emitOpError();
     diag << "poly lowering postcondition failed: containment RHS element degree "
             "exceeds max-degree "
-         << maxDegree.getValue() << " (element degree " << valueDegree << ")";
+         << maxDegree.getValue() << " (element degree " << valueDegree << ')';
     diag.report();
     failedCheck = true;
   }
 
+  /// Recursively checks that every felt element visible in a containment RHS
+  /// stays within maxDegree after lowering.
   LogicalResult checkContainmentRhsValue(
       Value value, EmitContainmentOp containOp, DenseMap<Value, unsigned> &checkMemo,
       bool &failedCheck
@@ -875,6 +894,8 @@ class PassImpl : public llzk::impl::PolyLoweringPassBase<PassImpl> {
     return success();
   }
 
+  /// Postcondition: walks every EmitContainmentOp in \p constrainFunc and
+  /// verifies that no containment RHS felt element exceeds maxDegree.
   LogicalResult checkContainmentRhsDegrees(FuncDefOp constrainFunc) {
     bool failedCheck = false;
     bool failedCollection = false;
