@@ -1,0 +1,41 @@
+name: Generate Test Checks
+on:
+  workflow_dispatch:
+
+jobs:
+  generate:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: cachix/install-nix-action@d1ca217b388ee87b2507a9a93bf01368bde7cec2
+        with:
+          install_url: https://releases.nixos.org/nix/nix-2.23.3/install
+          github_access_token: "${{ secrets.GITHUB_TOKEN }}"
+      - name: Set Git credentials
+        run: |
+          git config --global 'url.https://api@github.com/'.insteadOf 'https://github.com/'
+          git config --global 'url.https://ssh@github.com/'.insteadOf 'ssh://git@github.com/'
+          git config --global 'url.https://git@github.com/'.insteadOf 'git@github.com:'
+      - uses: cachix/cachix-action@v17
+        with:
+          name: veridise-public
+          authToken: '${{ secrets.CACHIX_PUBLIC_TOKEN }}'
+      - name: Build llzk-opt
+        run: nix --print-build-logs build '.#debugClangCov'
+      - name: Generate CHECK lines for containment test
+        run: |
+          result/bin/llzk-opt -I test/Transforms/PolyLowering -split-input-file \
+            -llzk-poly-lowering-pass="max-degree=2" -verify-diagnostics \
+            test/Transforms/PolyLowering/poly_lowering_containment.llzk \
+            | python3 scripts/generate-test-checks.py \
+              --source test/Transforms/PolyLowering/poly_lowering_containment.llzk -i
+      - name: Show diff
+        run: git diff
+      - name: Upload modified test file
+        uses: actions/upload-artifact@v7
+        with:
+          name: generated-test-checks
+          path: test/Transforms/PolyLowering/poly_lowering_containment.llzk
