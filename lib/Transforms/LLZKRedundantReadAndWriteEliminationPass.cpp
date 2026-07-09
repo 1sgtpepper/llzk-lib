@@ -318,12 +318,15 @@ private:
 
 using ValueMap = DenseMap<mlir::Value, std::shared_ptr<ReferenceNode>>;
 
+/// Known values at a program point, split between tree-shaped value state and
+/// flat stateful-memory read facts.
 struct KnownState {
   ValueMap values;
   DenseMap<SymbolRefAttr, Value> globals;
   DenseMap<ReferenceID, Value> ram;
 };
 
+/// Intersects tree-shaped value facts by retaining only common subtrees.
 ValueMap intersectValueMap(const ValueMap &lhs, const ValueMap &rhs) {
   ValueMap res;
   for (const auto &[id, lhsValTree] : lhs) {
@@ -335,6 +338,7 @@ ValueMap intersectValueMap(const ValueMap &lhs, const ValueMap &rhs) {
   return res;
 }
 
+/// Intersects flat lookup facts by retaining keys mapped to the same value.
 template <typename KeyT>
 DenseMap<KeyT, Value>
 intersectValueLookup(const DenseMap<KeyT, Value> &lhs, const DenseMap<KeyT, Value> &rhs) {
@@ -347,6 +351,7 @@ intersectValueLookup(const DenseMap<KeyT, Value> &lhs, const DenseMap<KeyT, Valu
   return res;
 }
 
+/// Intersects known state across predecessor blocks.
 KnownState intersect(const KnownState &lhs, const KnownState &rhs) {
   return {
       intersectValueMap(lhs.values, rhs.values), intersectValueLookup(lhs.globals, rhs.globals),
@@ -364,6 +369,8 @@ ValueMap cloneValueMap(const ValueMap &orig) {
   return res;
 }
 
+/// Deep copy the KnownState for exclusive branches/regions so tree updates do
+/// not mutate the incoming state.
 KnownState cloneKnownState(const KnownState &orig) {
   return {cloneValueMap(orig.values), orig.globals, orig.ram};
 }
