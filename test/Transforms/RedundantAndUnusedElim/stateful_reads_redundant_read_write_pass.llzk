@@ -15,7 +15,7 @@
 // CHECK-NEXT:      function.return %[[VAL_1]] : !felt.type
 // CHECK-NEXT:    }
 // CHECK-NEXT:  }
-// CHECK-NEXT:  // -----
+// CHECK:  // -----
 module attributes {llzk.lang} {
   global.def @g : !felt.type = 1
 
@@ -37,7 +37,7 @@ module attributes {llzk.lang} {
 // CHECK-NEXT:      function.return %[[VAL_2]] : !felt.type
 // CHECK-NEXT:    }
 // CHECK-NEXT:  }
-// CHECK-NEXT:  // -----
+// CHECK:  // -----
 module attributes {llzk.lang} {
   global.def @g : !felt.type = 1
 
@@ -65,7 +65,7 @@ module attributes {llzk.lang} {
 // CHECK-NEXT:      function.return %[[VAL_4]] : !felt.type
 // CHECK-NEXT:    }
 // CHECK-NEXT:  }
-// CHECK-NEXT:  // -----
+// CHECK:  // -----
 module attributes {llzk.lang} {
   global.def @g : !felt.type = 1
 
@@ -94,7 +94,7 @@ module attributes {llzk.lang} {
 // CHECK-NEXT:      function.return %[[VAL_2]] : !felt.type
 // CHECK-NEXT:    }
 // CHECK-NEXT:  }
-// CHECK-NEXT:  // -----
+// CHECK:  // -----
 module attributes {llzk.lang} {
   global.def @g : !felt.type = 1
   global.def @h : !felt.type = 2
@@ -126,7 +126,7 @@ module attributes {llzk.lang} {
 // CHECK-NEXT:      function.return %[[VAL_4]] : !felt.type
 // CHECK-NEXT:    }
 // CHECK-NEXT:  }
-// CHECK-NEXT:  // -----
+// CHECK:  // -----
 module attributes {llzk.lang} {
   global.def @g : !felt.type = 1
 
@@ -156,7 +156,7 @@ module attributes {llzk.lang} {
 // CHECK-NEXT:      function.return %[[VAL_2]] : !felt.type
 // CHECK-NEXT:    }
 // CHECK-NEXT:  }
-// CHECK-NEXT:  // -----
+// CHECK:  // -----
 module attributes {llzk.lang} {
   function.def @ram_load_reuse(%addr: index) -> !felt.type
       attributes {function.allow_witness} {
@@ -176,7 +176,7 @@ module attributes {llzk.lang} {
 // CHECK-NEXT:      function.return %[[VAL_1]] : !felt.type
 // CHECK-NEXT:    }
 // CHECK-NEXT:  }
-// CHECK-NEXT:  // -----
+// CHECK:  // -----
 module attributes {llzk.lang} {
   function.def @ram_store_updates_known_value(%addr: index, %new: !felt.type) -> !felt.type
       attributes {function.allow_witness} {
@@ -200,7 +200,7 @@ module attributes {llzk.lang} {
 // CHECK-NEXT:      function.return %[[VAL_5]] : !felt.type
 // CHECK-NEXT:    }
 // CHECK-NEXT:  }
-// CHECK-NEXT:  // -----
+// CHECK:  // -----
 module attributes {llzk.lang} {
   function.def @ram_conditional_store_keeps_load(%addr: index, %new: !felt.type, %cond: i1)
       -> !felt.type attributes {function.allow_witness} {
@@ -228,7 +228,7 @@ module attributes {llzk.lang} {
 // CHECK-NEXT:      function.return %[[VAL_4]] : !felt.type
 // CHECK-NEXT:    }
 // CHECK-NEXT:  }
-// CHECK-NEXT:  // -----
+// CHECK:  // -----
 module attributes {llzk.lang} {
   global.def @g : !felt.type = 1
 
@@ -257,7 +257,7 @@ module attributes {llzk.lang} {
 // CHECK-NEXT:      function.return %[[VAL_5]] : !felt.type
 // CHECK-NEXT:    }
 // CHECK-NEXT:  }
-// CHECK-NEXT:  // -----
+// CHECK:  // -----
 module attributes {llzk.lang} {
   function.def @ram_store_unknown_alias(%load_addr: index, %store_addr: index, %new: !felt.type)
       -> !felt.type attributes {function.allow_witness} {

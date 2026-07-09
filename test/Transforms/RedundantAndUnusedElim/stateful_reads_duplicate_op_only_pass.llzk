@@ -17,7 +17,7 @@
 // CHECK-NEXT:      function.return %[[VAL_3]] : !felt.type
 // CHECK-NEXT:    }
 // CHECK-NEXT:  }
-// CHECK-NEXT:  // -----
+// CHECK:  // -----
 module attributes {llzk.lang} {
   global.def @g : !felt.type = 1
 
