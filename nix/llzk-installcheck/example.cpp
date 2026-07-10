@@ -1,3 +1,4 @@
+#include "llzk/Dialect/InitDialects.h"
 #include "llzk/Dialect/LLZK/IR/Dialect.h"
 
 #include <mlir/IR/MLIRContext.h>
