@@ -1,3 +1,10 @@
-#include "llzk/Dialect/InitDialects.h"
+#include "llzk/Dialect/LLZK/IR/Dialect.h"
 
-int main() { return 0; }
+#include <mlir/IR/MLIRContext.h>
+
+int main() {
+  mlir::MLIRContext context;
+  context.loadDialect<llzk::LLZKDialect>();
+  return 0;
+}
+
