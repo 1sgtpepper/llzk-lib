@@ -30,7 +30,6 @@
 #include <llvm/ADT/PostOrderIterator.h>
 #include <llvm/ADT/SmallVector.h>
 
-
 // Include the generated base pass class definitions.
 namespace llzk {
 #define GEN_PASS_DEF_REDUNDANTOPERATIONELIMINATIONPASS
