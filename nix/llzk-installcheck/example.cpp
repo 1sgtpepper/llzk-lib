@@ -7,4 +7,3 @@ int main() {
   context.loadDialect<llzk::LLZKDialect>();
   return 0;
 }
-
