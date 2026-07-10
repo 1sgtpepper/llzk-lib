@@ -267,8 +267,9 @@ class PassImpl : public llzk::impl::RedundantOperationEliminationPassBase<PassIm
 
     while (!unusedOps.empty()) {
       Operation *op = unusedOps.pop_back_val();
-      // Member reads have no observable effect, but do not implement MLIR's
-      // MemoryEffectOpInterface and are therefore not trivially dead.
+      // Preserve the pass's existing cleanup of unused member reads. They do
+      // not implement MemoryEffectOpInterface, so isOpTriviallyDead cannot
+      // express that established legality rule.
       if (!isOpTriviallyDead(op) && !(isa<MemberReadOp>(op) && op->use_empty())) {
         continue;
       }
