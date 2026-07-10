@@ -24,12 +24,12 @@
 #include <mlir/Dialect/SCF/IR/SCF.h>
 #include <mlir/IR/BuiltinOps.h>
 #include <mlir/IR/Dominance.h>
+#include <mlir/IR/Operation.h>
 
 #include <llvm/ADT/DenseMap.h>
 #include <llvm/ADT/PostOrderIterator.h>
 #include <llvm/ADT/SmallVector.h>
 
-#include <deque>
 
 // Include the generated base pass class definitions.
 namespace llzk {
@@ -238,8 +238,14 @@ class PassImpl : public llzk::impl::RedundantOperationEliminationPassBase<PassIm
       return WalkResult::advance();
     });
 
-    // Track the operands of removed ops.
-    std::deque<Value> operands;
+    SmallVector<Operation *> unusedOps;
+    DenseSet<Operation *> queuedUnusedOps;
+    auto enqueueUnusedDef = [&](Value value) {
+      if (Operation *definingOp = value.getDefiningOp();
+          definingOp && queuedUnusedOps.insert(definingOp).second) {
+        unusedOps.push_back(definingOp);
+      }
+    };
 
     for (auto *op : redundantOps) {
       LLVM_DEBUG(llvm::dbgs() << "Removing op: " << *op << '\n');
@@ -254,32 +260,21 @@ class PassImpl : public llzk::impl::RedundantOperationEliminationPassBase<PassIm
         }
       }
       for (Value operand : op->getOperands()) {
-        operands.push_back(operand);
+        enqueueUnusedDef(operand);
       }
       op->erase();
     }
 
-    // Check if any of the operands are unused. If so, remove them, and check
-    // their operands until all operands have been checked.
-
-    // Make sure operands aren't freed multiple times
-    DenseSet<Value> checkedOperands;
-    while (!operands.empty()) {
-      Value operand = operands.front();
-      operands.pop_front();
-      checkedOperands.insert(operand);
-
-      // We only want to remove operands that are defined by an operation and
-      // are not block arguments.
-      if (auto *op = operand.getDefiningOp(); op && operand.getUsers().empty()) {
-        for (auto parentOperand : op->getOperands()) {
-          if (checkedOperands.find(parentOperand) == checkedOperands.end()) {
-            operands.push_back(parentOperand);
-          }
-        }
-        LLVM_DEBUG(llvm::dbgs() << "Removing unused operand: " << operand << '\n');
-        op->erase();
+    while (!unusedOps.empty()) {
+      Operation *op = unusedOps.pop_back_val();
+      if (!isOpTriviallyDead(op)) {
+        continue;
       }
+      for (Value operand : op->getOperands()) {
+        enqueueUnusedDef(operand);
+      }
+      LLVM_DEBUG(llvm::dbgs() << "Removing unused operation: " << *op << '\n');
+      op->erase();
     }
   }
 };
