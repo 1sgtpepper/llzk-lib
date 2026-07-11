@@ -10,7 +10,6 @@ module attributes {llzk.lang} {
     function.return %sum : !felt.type
   }
 }
-
 // CHECK-LABEL: module attributes {llzk.lang} {
 // CHECK-NEXT:    global.def @g : !felt.type =  1
 // CHECK-NEXT:    function.def @global_read_reuse() -> !felt.type attributes {function.allow_witness} {
@@ -19,8 +18,6 @@ module attributes {llzk.lang} {
 // CHECK-NEXT:      function.return %[[VAL_1]] : !felt.type
 // CHECK-NEXT:    }
 // CHECK-NEXT:  }
-// CHECK:  // -----
-
 // -----
 
 module attributes {llzk.lang} {
@@ -35,7 +32,6 @@ module attributes {llzk.lang} {
     function.return %sum : !felt.type
   }
 }
-
 // CHECK-LABEL: module attributes {llzk.lang} {
 // CHECK-NEXT:    global.def @g : !felt.type =  1
 // CHECK-NEXT:    function.def @global_write_updates_known_value(%[[VAL_0:[0-9a-zA-Z_\.]+]]: !felt.type) -> !felt.type attributes {function.allow_witness} {
@@ -45,8 +41,6 @@ module attributes {llzk.lang} {
 // CHECK-NEXT:      function.return %[[VAL_2]] : !felt.type
 // CHECK-NEXT:    }
 // CHECK-NEXT:  }
-// CHECK:  // -----
-
 // -----
 
 module attributes {llzk.lang} {
@@ -63,7 +57,6 @@ module attributes {llzk.lang} {
     function.return %sum : !felt.type
   }
 }
-
 // CHECK-LABEL: module attributes {llzk.lang} {
 // CHECK-NEXT:    global.def @g : !felt.type =  1
 // CHECK-NEXT:    function.def @global_conditional_write_keeps_read(%[[VAL_0:[0-9a-zA-Z_\.]+]]: !felt.type, %[[VAL_1:[0-9a-zA-Z_\.]+]]: i1) -> !felt.type attributes {function.allow_witness} {
@@ -76,8 +69,6 @@ module attributes {llzk.lang} {
 // CHECK-NEXT:      function.return %[[VAL_4]] : !felt.type
 // CHECK-NEXT:    }
 // CHECK-NEXT:  }
-// CHECK:  // -----
-
 // -----
 
 module attributes {llzk.lang} {
@@ -93,7 +84,6 @@ module attributes {llzk.lang} {
     function.return %sum : !felt.type
   }
 }
-
 // CHECK-LABEL: module attributes {llzk.lang} {
 // CHECK-NEXT:    global.def @g : !felt.type =  1
 // CHECK-NEXT:    global.def @h : !felt.type =  2
@@ -104,8 +94,6 @@ module attributes {llzk.lang} {
 // CHECK-NEXT:      function.return %[[VAL_2]] : !felt.type
 // CHECK-NEXT:    }
 // CHECK-NEXT:  }
-// CHECK:  // -----
-
 // -----
 
 module attributes {llzk.lang} {
@@ -126,7 +114,6 @@ module attributes {llzk.lang} {
     function.return %sum : !felt.type
   }
 }
-
 // CHECK-LABEL: module attributes {llzk.lang} {
 // CHECK-NEXT:    global.def @g : !felt.type =  1
 // CHECK-NEXT:    function.def @mutate_global(%[[VAL_0:[0-9a-zA-Z_\.]+]]: !felt.type) attributes {function.allow_witness} {
@@ -141,8 +128,6 @@ module attributes {llzk.lang} {
 // CHECK-NEXT:      function.return %[[VAL_4]] : !felt.type
 // CHECK-NEXT:    }
 // CHECK-NEXT:  }
-// CHECK:  // -----
-
 // -----
 
 module attributes {llzk.lang} {
@@ -154,7 +139,6 @@ module attributes {llzk.lang} {
     function.return %sum : !felt.type
   }
 }
-
 // CHECK-LABEL: module attributes {llzk.lang} {
 // CHECK-NEXT:    function.def @ram_load_reuse(%[[VAL_0:[0-9a-zA-Z_\.]+]]: index) -> !felt.type attributes {function.allow_witness} {
 // CHECK-NEXT:      %[[VAL_1:[0-9a-zA-Z_\.]+]] = ram.load %[[VAL_0]] : !felt.type
@@ -162,8 +146,6 @@ module attributes {llzk.lang} {
 // CHECK-NEXT:      function.return %[[VAL_2]] : !felt.type
 // CHECK-NEXT:    }
 // CHECK-NEXT:  }
-// CHECK:  // -----
-
 // -----
 
 module attributes {llzk.lang} {
@@ -174,15 +156,12 @@ module attributes {llzk.lang} {
     function.return %loaded : !felt.type
   }
 }
-
 // CHECK-LABEL: module attributes {llzk.lang} {
 // CHECK-NEXT:    function.def @ram_store_updates_known_value(%[[VAL_0:[0-9a-zA-Z_\.]+]]: index, %[[VAL_1:[0-9a-zA-Z_\.]+]]: !felt.type) -> !felt.type attributes {function.allow_witness} {
 // CHECK-NEXT:      ram.store %[[VAL_0]], %[[VAL_1]] : !felt.type
 // CHECK-NEXT:      function.return %[[VAL_1]] : !felt.type
 // CHECK-NEXT:    }
 // CHECK-NEXT:  }
-// CHECK:  // -----
-
 // -----
 
 module attributes {llzk.lang} {
@@ -197,7 +176,6 @@ module attributes {llzk.lang} {
     function.return %sum : !felt.type
   }
 }
-
 // CHECK-LABEL: module attributes {llzk.lang} {
 // CHECK-NEXT:    function.def @ram_conditional_store_keeps_load(%[[VAL_0:[0-9a-zA-Z_\.]+]]: index, %[[VAL_1:[0-9a-zA-Z_\.]+]]: !felt.type, %[[VAL_2:[0-9a-zA-Z_\.]+]]: i1) -> !felt.type attributes {function.allow_witness} {
 // CHECK-NEXT:      %[[VAL_3:[0-9a-zA-Z_\.]+]] = ram.load %[[VAL_0]] : !felt.type
@@ -209,8 +187,6 @@ module attributes {llzk.lang} {
 // CHECK-NEXT:      function.return %[[VAL_5]] : !felt.type
 // CHECK-NEXT:    }
 // CHECK-NEXT:  }
-// CHECK:  // -----
-
 // -----
 
 module attributes {llzk.lang} {
@@ -228,7 +204,6 @@ module attributes {llzk.lang} {
     function.return %sum : !felt.type
   }
 }
-
 // CHECK-LABEL: module attributes {llzk.lang} {
 // CHECK-NEXT:    global.def @g : !felt.type =  1
 // CHECK-NEXT:    function.def @ram_load_conditional_global_write_reuses_load(%[[VAL_0:[0-9a-zA-Z_\.]+]]: index, %[[VAL_1:[0-9a-zA-Z_\.]+]]: !felt.type, %[[VAL_2:[0-9a-zA-Z_\.]+]]: i1) -> !felt.type attributes {function.allow_witness} {
@@ -240,8 +215,6 @@ module attributes {llzk.lang} {
 // CHECK-NEXT:      function.return %[[VAL_4]] : !felt.type
 // CHECK-NEXT:    }
 // CHECK-NEXT:  }
-// CHECK:  // -----
-
 // -----
 
 module attributes {llzk.lang} {
@@ -254,7 +227,6 @@ module attributes {llzk.lang} {
     function.return %sum : !felt.type
   }
 }
-
 // CHECK-LABEL: module attributes {llzk.lang} {
 // CHECK-NEXT:    function.def @ram_store_unknown_alias(%[[VAL_0:[0-9a-zA-Z_\.]+]]: index, %[[VAL_1:[0-9a-zA-Z_\.]+]]: index, %[[VAL_2:[0-9a-zA-Z_\.]+]]: !felt.type) -> !felt.type attributes {function.allow_witness} {
 // CHECK-NEXT:      %[[VAL_3:[0-9a-zA-Z_\.]+]] = ram.load %[[VAL_0]] : !felt.type
@@ -264,8 +236,6 @@ module attributes {llzk.lang} {
 // CHECK-NEXT:      function.return %[[VAL_5]] : !felt.type
 // CHECK-NEXT:    }
 // CHECK-NEXT:  }
-// CHECK:  // -----
-
 // -----
 
 module attributes {llzk.lang} {
@@ -284,7 +254,6 @@ module attributes {llzk.lang} {
     function.return %sum : !felt.type
   }
 }
-
 // CHECK-LABEL: module attributes {llzk.lang} {
 // CHECK-NEXT:    function.def @mutate_ram(%[[VAL_0:[0-9a-zA-Z_\.]+]]: index, %[[VAL_1:[0-9a-zA-Z_\.]+]]: !felt.type) attributes {function.allow_witness} {
 // CHECK-NEXT:      ram.store %[[VAL_0]], %[[VAL_1]] : !felt.type

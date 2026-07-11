@@ -12,7 +12,6 @@ module attributes {llzk.lang} {
     function.return %sum : !felt.type
   }
 }
-
 // CHECK-LABEL: module attributes {llzk.lang} {
 // CHECK-NEXT:    global.def @g : !felt.type =  1
 // CHECK-NEXT:    function.def @global_write_barrier(%[[VAL_0:[0-9a-zA-Z_\.]+]]: !felt.type) -> !felt.type attributes {function.allow_witness} {
@@ -23,8 +22,6 @@ module attributes {llzk.lang} {
 // CHECK-NEXT:      function.return %[[VAL_3]] : !felt.type
 // CHECK-NEXT:    }
 // CHECK-NEXT:  }
-// CHECK:  // -----
-
 // -----
 
 module attributes {llzk.lang} {
@@ -37,7 +34,6 @@ module attributes {llzk.lang} {
     function.return %sum : !felt.type
   }
 }
-
 // CHECK-LABEL: module attributes {llzk.lang} {
 // CHECK-NEXT:    function.def @ram_store_barrier(%[[VAL_0:[0-9a-zA-Z_\.]+]]: index, %[[VAL_1:[0-9a-zA-Z_\.]+]]: !felt.type) -> !felt.type attributes {function.allow_witness} {
 // CHECK-NEXT:      %[[VAL_2:[0-9a-zA-Z_\.]+]] = ram.load %[[VAL_0]] : !felt.type
