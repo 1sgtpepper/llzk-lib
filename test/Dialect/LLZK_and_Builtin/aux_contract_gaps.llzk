@@ -1,0 +1,83 @@
+// RUN: llzk-opt -split-input-file --verify-each %s > /dev/null
+
+// The current verifier accepts an auxiliary with no constraining equality.
+module attributes {llzk.lang} {
+  struct.def @UnconstrainedAux {
+    function.def @compute() -> !struct.type<@UnconstrainedAux> {
+      %self = struct.new : !struct.type<@UnconstrainedAux>
+      function.return %self : !struct.type<@UnconstrainedAux>
+    }
+
+    function.def @constrain(%self: !struct.type<@UnconstrainedAux>) {
+      %aux = llzk.aux : !felt.type
+      function.return
+    }
+  }
+}
+
+// -----
+
+// The current verifier does not require a unique constraining equality.
+module attributes {llzk.lang} {
+  struct.def @MultiplyConstrainedAux {
+    function.def @compute(%a: !felt.type, %b: !felt.type) -> !struct.type<@MultiplyConstrainedAux> {
+      %self = struct.new : !struct.type<@MultiplyConstrainedAux>
+      function.return %self : !struct.type<@MultiplyConstrainedAux>
+    }
+
+    function.def @constrain(
+        %self: !struct.type<@MultiplyConstrainedAux>,
+        %a: !felt.type,
+        %b: !felt.type
+    ) {
+      %aux = llzk.aux : !felt.type
+      constrain.eq %aux, %a : !felt.type, !felt.type
+      constrain.eq %aux, %b : !felt.type, !felt.type
+      function.return
+    }
+  }
+}
+
+// -----
+
+// The current verifier accepts an auxiliary constrained on only one branch.
+module attributes {llzk.lang} {
+  struct.def @ConditionallyConstrainedAux {
+    function.def @compute(%a: !felt.type, %cond: i1) -> !struct.type<@ConditionallyConstrainedAux> {
+      %self = struct.new : !struct.type<@ConditionallyConstrainedAux>
+      function.return %self : !struct.type<@ConditionallyConstrainedAux>
+    }
+
+    function.def @constrain(
+        %self: !struct.type<@ConditionallyConstrainedAux>,
+        %a: !felt.type,
+        %cond: i1
+    ) {
+      %aux = llzk.aux : !felt.type
+      scf.if %cond {
+        constrain.eq %aux, %a : !felt.type, !felt.type
+      }
+      function.return
+    }
+  }
+}
+
+// -----
+
+// The current verifier accepts a use before the auxiliary's constraining equality.
+module attributes {llzk.lang} {
+  struct.def @UseBeforeConstraint {
+    function.def @compute(%a: !felt.type) -> !struct.type<@UseBeforeConstraint> {
+      %self = struct.new : !struct.type<@UseBeforeConstraint>
+      function.return %self : !struct.type<@UseBeforeConstraint>
+    }
+
+    function.def @constrain(%self: !struct.type<@UseBeforeConstraint>, %a: !felt.type) {
+      %aux = llzk.aux : !felt.type
+      %square = felt.mul %aux, %aux : !felt.type, !felt.type
+      constrain.eq %square, %a : !felt.type, !felt.type
+      constrain.eq %aux, %a : !felt.type, !felt.type
+      function.return
+    }
+  }
+}

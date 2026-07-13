@@ -1,0 +1,33 @@
+// RUN: not llzk-opt -I %S -llzk-poly-lowering-pass="max-degree=2" -mlir-print-ir-after-failure %s 2>&1 | FileCheck %s
+
+// The pass currently rewrites an earlier equality before discovering the
+// unsupported containment operation later in the same function.
+module attributes {llzk.lang} {
+  struct.def @PartialFailure {
+    function.def @compute(
+        %a: !felt.type,
+        %b: !felt.type,
+        %needle: !felt.type
+    ) -> !struct.type<@PartialFailure> {
+      %self = struct.new : !struct.type<@PartialFailure>
+      function.return %self : !struct.type<@PartialFailure>
+    }
+
+    function.def @constrain(
+        %self: !struct.type<@PartialFailure>,
+        %a: !felt.type,
+        %b: !felt.type,
+        %needle: !felt.type
+    ) {
+      %table = array.new %a, %b : !array.type<2 x !felt.type>
+      %product = felt.mul %a, %b : !felt.type, !felt.type
+      %quartic = felt.mul %product, %product : !felt.type, !felt.type
+      constrain.eq %quartic, %a : !felt.type, !felt.type
+      constrain.in %table, %needle : !array.type<2 x !felt.type>, !felt.type
+      function.return
+    }
+  }
+}
+
+// CHECK: error: EmitContainmentOp is unsupported for now in the lowering pass
+// CHECK: struct.member @__llzk_poly_lowering_pass_aux_member_0 : !felt.type
