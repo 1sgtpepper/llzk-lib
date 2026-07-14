@@ -1,0 +1,167 @@
+// RUN: llzk-opt -llzk-duplicate-read-write-elim %s 2>&1 | FileCheck --enable-var-scope %s
+
+module attributes {llzk.lang} {
+  global.def @g : !felt.type = 1
+
+  function.def @global_overwrite(%before: !felt.type, %after: !felt.type)
+      attributes {function.allow_witness} {
+    global.write @g = %before : !felt.type
+    global.write @g = %after : !felt.type
+    function.return
+  }
+
+  function.def @global_redundant_value(%value: !felt.type)
+      attributes {function.allow_witness} {
+    global.write @g = %value : !felt.type
+    global.write @g = %value : !felt.type
+    function.return
+  }
+
+  function.def @global_region_boundary(%before: !felt.type, %inside: !felt.type,
+      %after: !felt.type, %cond: i1) attributes {function.allow_witness} {
+    global.write @g = %before : !felt.type
+    scf.if %cond {
+      global.write @g = %inside : !felt.type
+    }
+    global.write @g = %after : !felt.type
+    function.return
+  }
+
+  function.def @ram_overwrite(%addr: index, %before: !felt.type, %after: !felt.type)
+      attributes {function.allow_witness} {
+    ram.store %addr, %before : !felt.type
+    ram.store %addr, %after : !felt.type
+    function.return
+  }
+
+  function.def @ram_redundant_value(%addr: index, %value: !felt.type)
+      attributes {function.allow_witness} {
+    ram.store %addr, %value : !felt.type
+    ram.store %addr, %value : !felt.type
+    function.return
+  }
+
+  function.def @ram_distinct_addresses(%first_addr: index, %second_addr: index,
+      %first: !felt.type, %second: !felt.type) attributes {function.allow_witness} {
+    ram.store %first_addr, %first : !felt.type
+    ram.store %second_addr, %second : !felt.type
+    function.return
+  }
+
+  function.def @ram_equal_constants_are_distinct_ssa(%first: !felt.type, %second: !felt.type)
+      attributes {function.allow_witness} {
+    %first_addr = arith.constant 0 : index
+    %second_addr = arith.constant 0 : index
+    ram.store %first_addr, %first : !felt.type
+    ram.store %second_addr, %second : !felt.type
+    function.return
+  }
+
+  function.def @ram_unreused_load_preserves_write(%store_addr: index, %load_addr: index,
+      %before: !felt.type, %after: !felt.type) -> !felt.type attributes {function.allow_witness} {
+    ram.store %store_addr, %before : !felt.type
+    %observed = ram.load %load_addr : !felt.type
+    ram.store %store_addr, %after : !felt.type
+    function.return %observed : !felt.type
+  }
+
+  function.def @ram_reused_load_does_not_preserve_write(%addr: index, %before: !felt.type,
+      %after: !felt.type) -> !felt.type attributes {function.allow_witness} {
+    ram.store %addr, %before : !felt.type
+    %observed = ram.load %addr : !felt.type
+    ram.store %addr, %after : !felt.type
+    function.return %observed : !felt.type
+  }
+
+  function.def @ram_region_boundary(%addr: index, %before: !felt.type, %inside: !felt.type,
+      %after: !felt.type, %cond: i1) attributes {function.allow_witness} {
+    ram.store %addr, %before : !felt.type
+    scf.if %cond {
+      ram.store %addr, %inside : !felt.type
+    }
+    ram.store %addr, %after : !felt.type
+    function.return
+  }
+
+  function.def @mutate_ram(%addr: index, %value: !felt.type)
+      attributes {function.allow_witness} {
+    ram.store %addr, %value : !felt.type
+    function.return
+  }
+
+  function.def @ram_call_boundary(%addr: index, %before: !felt.type, %during: !felt.type,
+      %after: !felt.type) attributes {function.allow_witness} {
+    ram.store %addr, %before : !felt.type
+    function.call @mutate_ram(%addr, %during) : (index, !felt.type) -> ()
+    ram.store %addr, %after : !felt.type
+    function.return
+  }
+}
+
+// CHECK-LABEL: module attributes {llzk.lang} {
+// CHECK-NEXT:    global.def @g : !felt.type =  1
+// CHECK-NEXT:    function.def @global_overwrite(%[[VAL_0:[0-9a-zA-Z_\.]+]]: !felt.type, %[[VAL_1:[0-9a-zA-Z_\.]+]]: !felt.type) attributes {function.allow_witness} {
+// CHECK-NEXT:      global.write @g = %[[VAL_1]] : !felt.type
+// CHECK-NEXT:      function.return
+// CHECK-NEXT:    }
+// CHECK-NEXT:    function.def @global_redundant_value(%[[VAL_2:[0-9a-zA-Z_\.]+]]: !felt.type) attributes {function.allow_witness} {
+// CHECK-NEXT:      global.write @g = %[[VAL_2]] : !felt.type
+// CHECK-NEXT:      function.return
+// CHECK-NEXT:    }
+// CHECK-NEXT:    function.def @global_region_boundary(%[[VAL_3:[0-9a-zA-Z_\.]+]]: !felt.type, %[[VAL_4:[0-9a-zA-Z_\.]+]]: !felt.type, %[[VAL_5:[0-9a-zA-Z_\.]+]]: !felt.type, %[[VAL_6:[0-9a-zA-Z_\.]+]]: i1) attributes {function.allow_witness} {
+// CHECK-NEXT:      global.write @g = %[[VAL_3]] : !felt.type
+// CHECK-NEXT:      scf.if %[[VAL_6]] {
+// CHECK-NEXT:        global.write @g = %[[VAL_4]] : !felt.type
+// CHECK-NEXT:      }
+// CHECK-NEXT:      global.write @g = %[[VAL_5]] : !felt.type
+// CHECK-NEXT:      function.return
+// CHECK-NEXT:    }
+// CHECK-NEXT:    function.def @ram_overwrite(%[[VAL_7:[0-9a-zA-Z_\.]+]]: index, %[[VAL_8:[0-9a-zA-Z_\.]+]]: !felt.type, %[[VAL_9:[0-9a-zA-Z_\.]+]]: !felt.type) attributes {function.allow_witness} {
+// CHECK-NEXT:      ram.store %[[VAL_7]], %[[VAL_9]] : !felt.type
+// CHECK-NEXT:      function.return
+// CHECK-NEXT:    }
+// CHECK-NEXT:    function.def @ram_redundant_value(%[[VAL_10:[0-9a-zA-Z_\.]+]]: index, %[[VAL_11:[0-9a-zA-Z_\.]+]]: !felt.type) attributes {function.allow_witness} {
+// CHECK-NEXT:      ram.store %[[VAL_10]], %[[VAL_11]] : !felt.type
+// CHECK-NEXT:      function.return
+// CHECK-NEXT:    }
+// CHECK-NEXT:    function.def @ram_distinct_addresses(%[[VAL_12:[0-9a-zA-Z_\.]+]]: index, %[[VAL_13:[0-9a-zA-Z_\.]+]]: index, %[[VAL_14:[0-9a-zA-Z_\.]+]]: !felt.type, %[[VAL_15:[0-9a-zA-Z_\.]+]]: !felt.type) attributes {function.allow_witness} {
+// CHECK-NEXT:      ram.store %[[VAL_12]], %[[VAL_14]] : !felt.type
+// CHECK-NEXT:      ram.store %[[VAL_13]], %[[VAL_15]] : !felt.type
+// CHECK-NEXT:      function.return
+// CHECK-NEXT:    }
+// CHECK-NEXT:    function.def @ram_equal_constants_are_distinct_ssa(%[[VAL_16:[0-9a-zA-Z_\.]+]]: !felt.type, %[[VAL_17:[0-9a-zA-Z_\.]+]]: !felt.type) attributes {function.allow_witness} {
+// CHECK-NEXT:      %[[VAL_18:[0-9a-zA-Z_\.]+]] = arith.constant 0 : index
+// CHECK-NEXT:      %[[VAL_19:[0-9a-zA-Z_\.]+]] = arith.constant 0 : index
+// CHECK-NEXT:      ram.store %[[VAL_18]], %[[VAL_16]] : !felt.type
+// CHECK-NEXT:      ram.store %[[VAL_19]], %[[VAL_17]] : !felt.type
+// CHECK-NEXT:      function.return
+// CHECK-NEXT:    }
+// CHECK-NEXT:    function.def @ram_unreused_load_preserves_write(%[[VAL_20:[0-9a-zA-Z_\.]+]]: index, %[[VAL_21:[0-9a-zA-Z_\.]+]]: index, %[[VAL_22:[0-9a-zA-Z_\.]+]]: !felt.type, %[[VAL_23:[0-9a-zA-Z_\.]+]]: !felt.type) -> !felt.type attributes {function.allow_witness} {
+// CHECK-NEXT:      ram.store %[[VAL_20]], %[[VAL_22]] : !felt.type
+// CHECK-NEXT:      %[[VAL_24:[0-9a-zA-Z_\.]+]] = ram.load %[[VAL_21]] : !felt.type
+// CHECK-NEXT:      ram.store %[[VAL_20]], %[[VAL_23]] : !felt.type
+// CHECK-NEXT:      function.return %[[VAL_24]] : !felt.type
+// CHECK-NEXT:    }
+// CHECK-NEXT:    function.def @ram_reused_load_does_not_preserve_write(%[[VAL_25:[0-9a-zA-Z_\.]+]]: index, %[[VAL_26:[0-9a-zA-Z_\.]+]]: !felt.type, %[[VAL_27:[0-9a-zA-Z_\.]+]]: !felt.type) -> !felt.type attributes {function.allow_witness} {
+// CHECK-NEXT:      ram.store %[[VAL_25]], %[[VAL_27]] : !felt.type
+// CHECK-NEXT:      function.return %[[VAL_26]] : !felt.type
+// CHECK-NEXT:    }
+// CHECK-NEXT:    function.def @ram_region_boundary(%[[VAL_28:[0-9a-zA-Z_\.]+]]: index, %[[VAL_29:[0-9a-zA-Z_\.]+]]: !felt.type, %[[VAL_30:[0-9a-zA-Z_\.]+]]: !felt.type, %[[VAL_31:[0-9a-zA-Z_\.]+]]: !felt.type, %[[VAL_32:[0-9a-zA-Z_\.]+]]: i1) attributes {function.allow_witness} {
+// CHECK-NEXT:      ram.store %[[VAL_28]], %[[VAL_29]] : !felt.type
+// CHECK-NEXT:      scf.if %[[VAL_32]] {
+// CHECK-NEXT:        ram.store %[[VAL_28]], %[[VAL_30]] : !felt.type
+// CHECK-NEXT:      }
+// CHECK-NEXT:      ram.store %[[VAL_28]], %[[VAL_31]] : !felt.type
+// CHECK-NEXT:      function.return
+// CHECK-NEXT:    }
+// CHECK-NEXT:    function.def @mutate_ram(%[[VAL_33:[0-9a-zA-Z_\.]+]]: index, %[[VAL_34:[0-9a-zA-Z_\.]+]]: !felt.type) attributes {function.allow_witness} {
+// CHECK-NEXT:      ram.store %[[VAL_33]], %[[VAL_34]] : !felt.type
+// CHECK-NEXT:      function.return
+// CHECK-NEXT:    }
+// CHECK-NEXT:    function.def @ram_call_boundary(%[[VAL_35:[0-9a-zA-Z_\.]+]]: index, %[[VAL_36:[0-9a-zA-Z_\.]+]]: !felt.type, %[[VAL_37:[0-9a-zA-Z_\.]+]]: !felt.type, %[[VAL_38:[0-9a-zA-Z_\.]+]]: !felt.type) attributes {function.allow_witness} {
+// CHECK-NEXT:      ram.store %[[VAL_35]], %[[VAL_36]] : !felt.type
+// CHECK-NEXT:      function.call @mutate_ram(%[[VAL_35]], %[[VAL_37]]) : (index, !felt.type) -> ()
+// CHECK-NEXT:      ram.store %[[VAL_35]], %[[VAL_38]] : !felt.type
+// CHECK-NEXT:      function.return
+// CHECK-NEXT:    }
+// CHECK-NEXT:  }

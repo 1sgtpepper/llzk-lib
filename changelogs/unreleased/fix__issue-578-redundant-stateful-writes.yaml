@@ -1,0 +1,2 @@
+fixed:
+  - Remove redundant global writes and RAM stores when the same target is overwritten; RAM stores require an identical translated address SSA value.
