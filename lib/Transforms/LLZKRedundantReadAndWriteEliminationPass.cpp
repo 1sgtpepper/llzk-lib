@@ -787,6 +787,7 @@ class PassImpl : public llzk::impl::RedundantReadAndWriteEliminationPassBase<Pas
       if (!doStatefulRead(load.getVal(), state.ram, ReferenceID(address))) {
         writeCandidates.ram.clear();
       }
+      state.ramExact[address] = translate(load.getVal());
     } else if (auto store = dyn_cast<ram::StoreOp>(op)) {
       Value address = translate(store.getAddr());
       Value value = translate(store.getVal());

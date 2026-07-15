@@ -96,6 +96,20 @@ module attributes {llzk.lang} {
     ram.store %addr, %after : !felt.type
     function.return
   }
+
+  function.def @ram_loaded_value_is_redundant(%addr: index) -> !felt.type
+      attributes {function.allow_witness} {
+    %value = ram.load %addr : !felt.type
+    ram.store %addr, %value : !felt.type
+    function.return %value : !felt.type
+  }
+
+  function.def @ram_loaded_value_distinct_ssa(%load_addr: index, %store_addr: index)
+      -> !felt.type attributes {function.allow_witness} {
+    %value = ram.load %load_addr : !felt.type
+    ram.store %store_addr, %value : !felt.type
+    function.return %value : !felt.type
+  }
 }
 
 // CHECK-LABEL: module attributes {llzk.lang} {
@@ -163,5 +177,14 @@ module attributes {llzk.lang} {
 // CHECK-NEXT:      function.call @mutate_ram(%[[VAL_35]], %[[VAL_37]]) : (index, !felt.type) -> ()
 // CHECK-NEXT:      ram.store %[[VAL_35]], %[[VAL_38]] : !felt.type
 // CHECK-NEXT:      function.return
+// CHECK-NEXT:    }
+// CHECK-NEXT:    function.def @ram_loaded_value_is_redundant(%[[VAL_39:[0-9a-zA-Z_\.]+]]: index) -> !felt.type attributes {function.allow_witness} {
+// CHECK-NEXT:      %[[VAL_40:[0-9a-zA-Z_\.]+]] = ram.load %[[VAL_39]] : !felt.type
+// CHECK-NEXT:      function.return %[[VAL_40]] : !felt.type
+// CHECK-NEXT:    }
+// CHECK-NEXT:    function.def @ram_loaded_value_distinct_ssa(%[[VAL_41:[0-9a-zA-Z_\.]+]]: index, %[[VAL_42:[0-9a-zA-Z_\.]+]]: index) -> !felt.type attributes {function.allow_witness} {
+// CHECK-NEXT:      %[[VAL_43:[0-9a-zA-Z_\.]+]] = ram.load %[[VAL_41]] : !felt.type
+// CHECK-NEXT:      ram.store %[[VAL_42]], %[[VAL_43]] : !felt.type
+// CHECK-NEXT:      function.return %[[VAL_43]] : !felt.type
 // CHECK-NEXT:    }
 // CHECK-NEXT:  }
