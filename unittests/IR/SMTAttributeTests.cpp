@@ -36,7 +36,7 @@ std::optional<APIntStorageCollision> findAPIntStorageCollision() {
   constexpr unsigned maxWidth = 4096;
   constexpr uint64_t maxValue = 100000;
 
-  llvm::DenseMap<unsigned, unsigned> widthByHash;
+  llvm::DenseMap<uint64_t, unsigned> widthByHash;
   widthByHash.reserve(maxWidth - minWidth + 1);
 
   for (uint64_t value = 0; value < maxValue; ++value) {
