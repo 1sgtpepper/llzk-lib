@@ -1,0 +1,57 @@
+// RUN: split-file %s %t
+// RUN: llzk-witgen %t/multiplier.llzk --inputs %t/multiplier-input.json --check-output %t/multiplier-output.json | FileCheck %s
+// RUN: llzk-witgen %t/multiplier.llzk --inputs %t/multiplier-input.json --backend=execution-engine --check-output %t/multiplier-output.json | FileCheck %s
+// RUN: llzk-witgen %S/../FrontendLang/Circom/large_const_main.llzk --inputs %t/constant-input.json --check-output %t/constant-output.json | FileCheck %s
+// RUN: llzk-witgen %S/../FrontendLang/Circom/large_const_main.llzk --inputs %t/constant-input.json --backend=execution-engine --check-output %t/constant-output.json | FileCheck %s
+
+// Keep the large-constant case tied to the frontend fixture so this test covers
+// the exact parameterized Circom IR shape rather than a hand-flattened copy.
+// CHECK: output matched expected JSON
+
+//--- multiplier.llzk
+
+// template Multiplier2() {
+//   signal input a;
+//   signal input b;
+//   signal output out;
+//   out <== a * b;
+// }
+// component main = Multiplier2();
+
+module attributes {llzk.lang, llzk.main = !struct.type<@Multiplier2::@Multiplier2<[]>>} {
+  poly.template @Multiplier2 {
+    struct.def @Multiplier2 {
+      struct.member @out : !felt.type<"bn128"> {llzk.pub}
+      function.def @compute(
+        %a: !felt.type<"bn128">, %b: !felt.type<"bn128">
+      ) -> !struct.type<@Multiplier2::@Multiplier2<[]>> attributes {function.allow_non_native_field_ops, function.allow_witness} {
+        %self = struct.new : !struct.type<@Multiplier2::@Multiplier2<[]>>
+        %out = felt.mul %a, %b : !felt.type<"bn128">, !felt.type<"bn128">
+        struct.writem %self[@out] = %out : !struct.type<@Multiplier2::@Multiplier2<[]>>, !felt.type<"bn128">
+        function.return %self : !struct.type<@Multiplier2::@Multiplier2<[]>>
+      }
+      function.def @constrain(
+        %self: !struct.type<@Multiplier2::@Multiplier2<[]>>,
+        %a: !felt.type<"bn128">,
+        %b: !felt.type<"bn128">
+      ) attributes {function.allow_constraint, function.allow_non_native_field_ops} {
+        %out = struct.readm %self[@out] : !struct.type<@Multiplier2::@Multiplier2<[]>>, !felt.type<"bn128">
+        %expected = felt.mul %a, %b : !felt.type<"bn128">, !felt.type<"bn128">
+        constrain.eq %out, %expected : !felt.type<"bn128">, !felt.type<"bn128">
+        function.return
+      }
+    }
+  }
+}
+
+//--- multiplier-input.json
+[3, 11]
+
+//--- multiplier-output.json
+{"out": "33"}
+
+//--- constant-input.json
+[2]
+
+//--- constant-output.json
+{"out": "21888242871839275222246405745257275088548364400416034343698204186575808495616"}

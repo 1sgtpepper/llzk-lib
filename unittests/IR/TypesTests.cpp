@@ -10,6 +10,7 @@
 #include "../LLZKTestBase.h"
 
 #include "llzk/Dialect/Array/IR/Types.h"
+#include "llzk/Dialect/Felt/IR/Attrs.h"
 #include "llzk/Dialect/Felt/IR/Types.h"
 #include "llzk/Dialect/Polymorphic/IR/Types.h"
 
@@ -116,6 +117,16 @@ TEST_F(TypeTests, testShortString) {
   OpBuilder bldr(&ctx);
   EXPECT_EQ("b", BuildShortTypeString::from(bldr.getIntegerType(1)));
   EXPECT_EQ("i", BuildShortTypeString::from(bldr.getIndexType()));
+  EXPECT_EQ("f<35>", BuildShortTypeString::from(FeltConstAttr::get(&ctx, llvm::APInt(6, 35))));
+  EXPECT_EQ("f<35>", BuildShortTypeString::from(FeltConstAttr::get(&ctx, llvm::APInt(7, 35))));
+  EXPECT_EQ(
+      "f<35:bn128>",
+      BuildShortTypeString::from(FeltConstAttr::get(&ctx, llvm::APInt(6, 35), "bn128"))
+  );
+  EXPECT_EQ(
+      "f<35:bn128>",
+      BuildShortTypeString::from(FeltConstAttr::get(&ctx, llvm::APInt(7, 35), "bn128"))
+  );
   EXPECT_EQ(
       "!t<@A>", BuildShortTypeString::from(TypeVarType::get(FlatSymbolRefAttr::get(&ctx, "A")))
   );

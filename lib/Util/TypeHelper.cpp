@@ -163,6 +163,13 @@ BuildShortTypeString &BuildShortTypeString::append(Attribute a) {
     Type ty = ia.getType();
     bool isUnsigned = ty.isUnsignedInteger() || ty.isSignlessInteger(1);
     ia.getValue().print(ss, !isUnsigned);
+  } else if (auto fa = llvm::dyn_cast<FeltConstAttr>(a)) {
+    ss << "f<";
+    fa.getValue().print(ss, false);
+    if (StringAttr fieldName = fa.getFieldName()) {
+      ss << ':' << fieldName.getValue();
+    }
+    ss << '>';
   } else if (auto sra = llvm::dyn_cast<SymbolRefAttr>(a)) {
     appendSymRef(sra);
   } else if (auto ta = llvm::dyn_cast<TypeAttr>(a)) {

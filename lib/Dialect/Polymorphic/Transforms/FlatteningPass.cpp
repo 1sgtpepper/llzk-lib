@@ -333,7 +333,13 @@ public:
   LogicalResult handleRewrite(
       Attribute, ConstReadOp op, OpAdaptor, ConversionPatternRewriter &rewriter, FeltConstAttr a
   ) const {
-    replaceOpWithNewOp<FeltConstantOp>(rewriter, op, a);
+    FeltType ty = llvm::dyn_cast<FeltType>(op.getType());
+    if (!ty) {
+      return op->emitOpError().append("unexpected result type ", op.getType());
+    }
+    replaceOpWithNewOp<FeltConstantOp>(
+        rewriter, op, FeltConstAttr::get(getContext(), a.getValue(), ty)
+    );
     return success();
   }
 };
@@ -383,6 +389,9 @@ template <bool AllowStructParams = true> AttrConcreteness classifyAttrConcretene
   }
   if (IntegerAttr intAttr = dyn_cast<IntegerAttr>(a)) {
     return isDynamic(intAttr) ? AttrConcreteness::Wildcard : AttrConcreteness::Concrete;
+  }
+  if (isa<FeltConstAttr>(a)) {
+    return AttrConcreteness::Concrete;
   }
   return AttrConcreteness::NonConcrete;
 }
@@ -452,12 +461,14 @@ evaluateExpr(TemplateExprOp exprOp, const DenseMap<Attribute, Attribute> &paramN
       if (it == paramNameToConcrete.end()) {
         return std::nullopt; // a referenced param is not concrete
       }
-      // If the attribute type is `FeltType` but it's stored as an IntegerAttr, promote to
-      // a `FeltConstAttr`.
+      // Interpret numeric template values in the read's field so folding observes the same type
+      // that body conversion will materialize.
       Attribute val = it->second;
-      if (auto intAttr = llvm::dyn_cast<IntegerAttr>(val)) {
-        if (auto feltTy = llvm::dyn_cast<FeltType>(constReadOp.getResult().getType())) {
+      if (auto feltTy = llvm::dyn_cast<FeltType>(constReadOp.getType())) {
+        if (auto intAttr = llvm::dyn_cast<IntegerAttr>(val)) {
           val = FeltConstAttr::get(bodyOp.getContext(), intAttr.getValue(), feltTy);
+        } else if (auto feltAttr = llvm::dyn_cast<FeltConstAttr>(val)) {
+          val = FeltConstAttr::get(bodyOp.getContext(), feltAttr.getValue(), feltTy);
         }
       }
       valueMap[constReadOp.getResult()] = val;

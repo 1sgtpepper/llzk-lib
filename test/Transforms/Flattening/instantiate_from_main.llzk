@@ -30,6 +30,50 @@ module attributes {llzk.lang, llzk.main = !struct.type<@TBar::@Bar<[]>>} {
 // CHECK-NEXT:  }
 // -----
 
+module attributes {llzk.lang, llzk.main = !struct.type<@TFelt::@Felt<[#felt<const 35>]>>} {
+  poly.template @TFelt {
+    poly.param @N
+    poly.expr @Twice {
+      %n = poly.read_const @N : !felt.type<"bn128">
+      %twice = felt.add %n, %n : !felt.type<"bn128">, !felt.type<"bn128">
+      poly.yield %twice : !felt.type<"bn128">
+    }
+    struct.def @Felt {
+      struct.member @direct : !felt.type<"bn128">
+      struct.member @folded : !felt.type<"bn128">
+      function.def @compute() -> !struct.type<@TFelt::@Felt<[@N]>> {
+        %self = struct.new : <@TFelt::@Felt<[@N]>>
+        %direct = poly.read_const @N : !felt.type<"bn128">
+        %folded = poly.read_const @Twice : !felt.type<"bn128">
+        struct.writem %self[@direct] = %direct : <@TFelt::@Felt<[@N]>>, !felt.type<"bn128">
+        struct.writem %self[@folded] = %folded : <@TFelt::@Felt<[@N]>>, !felt.type<"bn128">
+        function.return %self : !struct.type<@TFelt::@Felt<[@N]>>
+      }
+      function.def @constrain(%self: !struct.type<@TFelt::@Felt<[@N]>>) {
+        function.return
+      }
+    }
+  }
+}
+// CHECK-LABEL: module attributes {llzk.lang, llzk.main = !struct.type<@"TFelt_f<35>_Felt">} {
+// CHECK-NEXT:    struct.def @"TFelt_f<35>_Felt" {
+// CHECK-NEXT:      struct.member @direct : !felt.type<"bn128">
+// CHECK-NEXT:      struct.member @folded : !felt.type<"bn128">
+// CHECK-NEXT:      function.def @compute() -> !struct.type<@"TFelt_f<35>_Felt"> attributes {function.allow_witness} {
+// CHECK-DAG:         %[[DIRECT:[0-9a-zA-Z_\.]+]] = felt.const{{ +}}35 : <"bn128">
+// CHECK-DAG:         %[[FOLDED:[0-9a-zA-Z_\.]+]] = felt.const{{ +}}70 : <"bn128">
+// CHECK-NEXT:        %[[SELF:[0-9a-zA-Z_\.]+]] = struct.new : <@"TFelt_f<35>_Felt">
+// CHECK-NEXT:        struct.writem %[[SELF]][@direct] = %[[DIRECT]] : <@"TFelt_f<35>_Felt">, !felt.type<"bn128">
+// CHECK-NEXT:        struct.writem %[[SELF]][@folded] = %[[FOLDED]] : <@"TFelt_f<35>_Felt">, !felt.type<"bn128">
+// CHECK-NEXT:        function.return %[[SELF]] : !struct.type<@"TFelt_f<35>_Felt">
+// CHECK-NEXT:      }
+// CHECK-NEXT:      function.def @constrain(%[[ARG:[0-9a-zA-Z_\.]+]]: !struct.type<@"TFelt_f<35>_Felt">) attributes {function.allow_constraint} {
+// CHECK-NEXT:        function.return
+// CHECK-NEXT:      }
+// CHECK-NEXT:    }
+// CHECK-NEXT:  }
+// -----
+
 module attributes {llzk.lang, llzk.main = !struct.type<@TFoo::@Foo<[27]>>} {
   poly.template @TFoo {
     poly.param @N : index

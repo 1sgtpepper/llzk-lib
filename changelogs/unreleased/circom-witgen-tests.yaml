@@ -1,0 +1,3 @@
+fixed:
+  - Allow flattening and `llzk-witgen` to handle template instantiations with felt constant
+    parameters.
