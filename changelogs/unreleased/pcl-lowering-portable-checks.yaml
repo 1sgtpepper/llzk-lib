@@ -1,0 +1,2 @@
+fixed:
+  - Preserve SMT bit-vector widths when uniquing attributes.
