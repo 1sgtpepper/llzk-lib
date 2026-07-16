@@ -18,4 +18,12 @@ class APIntParameter<string desc = "">
   let comparator = "::llvm::APInt::isSameValue($_lhs, $_rhs)";
 }
 
+// APInts whose bitwidth is part of their identity. Check it before operator==,
+// which requires equal widths.
+class WidthSensitiveAPIntParameter<string desc = "">
+    : AttrOrTypeParameter<"::llvm::APInt", desc> {
+  let comparator =
+      "$_lhs.getBitWidth() == $_rhs.getBitWidth() && $_lhs == $_rhs";
+}
+
 #endif // LLZK_ATTRIBUTE_HELPER

@@ -18,14 +18,6 @@ include "llzk/Dialect/LLZK/IR/AttributeHelper.td"
 include "mlir/IR/EnumAttr.td"
 include "mlir/IR/BuiltinAttributeInterfaces.td"
 
-// Bit-vector width is part of storage identity. Check it before operator==,
-// which requires equal widths.
-class BitVectorAPIntParameter<string desc = "">
-    : AttrOrTypeParameter<"::llvm::APInt", desc> {
-  let comparator =
-      "$_lhs.getBitWidth() == $_rhs.getBitWidth() && $_lhs == $_rhs";
-}
-
 def BitVectorAttr
     : AttrDef<SMTDialect,
               "BitVector", [DeclareAttrInterfaceMethods<TypedAttrInterface>]> {
@@ -54,7 +46,7 @@ def BitVectorAttr
     present).
   }];
 
-  let parameters = (ins BitVectorAPIntParameter<"">:$value);
+  let parameters = (ins WidthSensitiveAPIntParameter<"">:$value);
 
   let hasCustomAssemblyFormat = true;
   let genVerifyDecl = true;
