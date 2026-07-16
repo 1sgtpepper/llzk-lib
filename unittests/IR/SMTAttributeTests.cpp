@@ -80,8 +80,7 @@ TEST_F(SMTAttributeTests, BitVectorStorageDoesNotAliasCollidingWidths) {
 
   BitVectorAttr narrow = BitVectorAttr::get(&ctx, collision->value, collision->narrowWidth);
   BitVectorAttr wide = BitVectorAttr::get(&ctx, collision->value, collision->wideWidth);
-  BitVectorAttr narrowAgain =
-      BitVectorAttr::get(&ctx, collision->value, collision->narrowWidth);
+  BitVectorAttr narrowAgain = BitVectorAttr::get(&ctx, collision->value, collision->narrowWidth);
 
   EXPECT_EQ(narrow, narrowAgain);
   EXPECT_NE(narrow, wide);
