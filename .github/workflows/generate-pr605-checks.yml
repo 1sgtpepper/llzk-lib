@@ -42,6 +42,7 @@ jobs:
             "$test_file" > /tmp/pcl-output.llzk
           scripts/generate-test-checks.py \
             /tmp/pcl-output.llzk \
+            --starts_from_scope=1 \
             -o /tmp/pcl-generated-with-banner.llzk
           sed \
             -e '1,/^$/d' \
