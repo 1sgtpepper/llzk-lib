@@ -16,7 +16,7 @@ include "mlir/IR/AttrTypeBase.td"
 class APIntParameter<string desc = "">
     : AttrOrTypeParameter<"::llzk::APIntValue", desc, "const ::llvm::APInt &"> {
   let parser = "::llzk::parseAPIntValue($_parser)";
-  let printer = "$_printer << $_self.getValue()";
+  let printer = "$_printer << $_self";
 }
 
 // APInts whose bitwidth is part of their identity. Check it before operator==,
