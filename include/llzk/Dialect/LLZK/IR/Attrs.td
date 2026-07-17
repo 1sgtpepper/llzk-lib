@@ -61,7 +61,6 @@ def LLZK_LoopBoundsAttr : LLZKDialectAttr<"LoopBounds", "loopbounds"> {
           APIntParameter<"Loop variable upper bound (exclusive)">:$upper,
           APIntParameter<"Loop variable step/increment">:$step);
 
-  let skipDefaultBuilders = 1;
   let builders = [AttrBuilder<
       (ins "::llvm::APInt":$lower, "::llvm::APInt":$upper,
           "::llvm::APInt":$step),
