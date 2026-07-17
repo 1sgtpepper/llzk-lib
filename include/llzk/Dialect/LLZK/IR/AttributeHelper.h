@@ -36,7 +36,7 @@ namespace llzk {
 /// Storage key for APInts whose numeric value is independent of bit width.
 class APIntValue {
 public:
-  APIntValue(llvm::APInt value) : value(std::move(value)) {}
+  APIntValue(llvm::APInt apInt) : value(std::move(apInt)) {}
 
   const llvm::APInt &getValue() const { return value; }
   operator const llvm::APInt &() const { return value; }
