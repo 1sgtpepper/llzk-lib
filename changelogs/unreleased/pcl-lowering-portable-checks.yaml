@@ -1,2 +1,4 @@
 fixed:
-  - Preserve SMT bit-vector widths when uniquing attributes.
+  - >-
+    Keep APInt attribute hashing consistent with numeric equality while preserving SMT bit-vector
+    widths.

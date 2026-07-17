@@ -12,10 +12,11 @@
 
 include "mlir/IR/AttrTypeBase.td"
 
-// APInts that allows comparison involving different bitwidths.
+// APInts whose numeric value is independent of bitwidth.
 class APIntParameter<string desc = "">
-    : AttrOrTypeParameter<"::llvm::APInt", desc> {
-  let comparator = "::llvm::APInt::isSameValue($_lhs, $_rhs)";
+    : AttrOrTypeParameter<"::llzk::APIntValue", desc, "const ::llvm::APInt &"> {
+  let parser = "::llzk::parseAPIntValue($_parser)";
+  let printer = "$_printer << $_self.getValue()";
 }
 
 // APInts whose bitwidth is part of their identity. Check it before operator==,

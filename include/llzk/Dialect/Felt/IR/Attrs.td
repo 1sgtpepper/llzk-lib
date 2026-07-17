@@ -27,9 +27,15 @@ def LLZK_FeltConstAttr
   let parameters = (ins APIntParameter<"The felt constant value">:$value,
       DefaultValuedParameter<"FeltType", "FeltType::get($_ctxt)">:$type);
 
+  let skipDefaultBuilders = 1;
   let hasCustomAssemblyFormat = 1;
 
   let builders = [
+      // Preserve the APInt-facing builder while using a canonical numeric
+      // storage key.
+      AttrBuilder<
+          (ins "::llvm::APInt":$value, "FeltType":$ty),
+          [{ return $_get(context, ::llzk::APIntValue(std::move(value)), ty); }]>,
       // Like the default builder but with convenience overloads for
       // constructing the APInt.
       AttrBuilder<
@@ -94,12 +100,16 @@ def LLZK_FieldSpecAttr : AttrDef<FeltDialect, "FieldSpec"> {
   let parameters = (ins "::mlir::StringAttr":$fieldName,
       APIntParameter<"The prime modulus">:$prime);
 
+  let skipDefaultBuilders = 1;
   // Format is [{ `<` $fieldName `,` $prime `>` }], but with custom parsing
   // to enable caching of the Field object definition.
   let hasCustomAssemblyFormat = 1;
 
   let builders =
-      [AttrBuilder<(ins "::llvm::StringRef":$fieldName, "unsigned":$numBits,
+      [AttrBuilder<
+           (ins "::mlir::StringAttr":$fieldName, "::llvm::APInt":$prime),
+           [{ return $_get(context, fieldName, ::llzk::APIntValue(std::move(prime))); }]>,
+       AttrBuilder<(ins "::llvm::StringRef":$fieldName, "unsigned":$numBits,
                        "::llvm::StringRef":$primeStr),
                    [{
       return $_get(context, ::mlir::StringAttr::get(context, fieldName), ::llvm::APInt(numBits, primeStr, 10));

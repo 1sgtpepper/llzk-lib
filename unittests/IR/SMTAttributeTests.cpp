@@ -9,6 +9,8 @@
 
 #include "../LLZKTestBase.h"
 
+#include "llzk/Dialect/Felt/IR/Attrs.h"
+#include "llzk/Dialect/LLZK/IR/AttributeHelper.h"
 #include "llzk/Dialect/SMT/IR/SMTAttributes.h"
 
 #include <llvm/ADT/APInt.h>
@@ -86,4 +88,22 @@ TEST_F(SMTAttributeTests, BitVectorStorageDoesNotAliasCollidingWidths) {
   EXPECT_NE(narrow, wide);
   EXPECT_EQ(narrow.getValue().getBitWidth(), collision->narrowWidth);
   EXPECT_EQ(wide.getValue().getBitWidth(), collision->wideWidth);
+}
+
+TEST_F(SMTAttributeTests, NumericAPIntStorageReusesEqualValuesAcrossWidths) {
+  auto expectStorageReuse = [&](const llvm::APInt &narrow, const llvm::APInt &wide) {
+    ASSERT_TRUE(llvm::APInt::isSameValue(narrow, wide));
+    EXPECT_EQ(
+        llvm::hash_combine(llzk::APIntValue(narrow)), llvm::hash_combine(llzk::APIntValue(wide))
+    );
+
+    llzk::felt::FeltConstAttr narrowAttr = llzk::felt::FeltConstAttr::get(&ctx, narrow);
+    llzk::felt::FeltConstAttr wideAttr = llzk::felt::FeltConstAttr::get(&ctx, wide);
+    EXPECT_EQ(narrowAttr, wideAttr);
+  };
+
+  expectStorageReuse(llvm::APInt(1, 0), llvm::APInt(128, 0));
+
+  llvm::APInt multiword = llvm::APInt::getOneBitSet(65, 64) | llvm::APInt(65, 7);
+  expectStorageReuse(multiword, multiword.zext(129));
 }
