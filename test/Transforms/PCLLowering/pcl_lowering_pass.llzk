@@ -368,10 +368,6 @@ module attributes {llzk.lang} {
 // CHECK-DAG:       %[[VAL_112:[0-9a-zA-Z_\.]+]] = pcl.asfelt %[[VAL_111]]
 // CHECK-DAG:       %[[VAL_113:[0-9a-zA-Z_\.]+]] = pcl.eq %[[VAL_112]], %[[VAL_37]]
 // CHECK-DAG:       pcl.assert %[[VAL_113]]
-// CHECK-DAG:       %[[VAL_115:[0-9a-zA-Z_\.]+]] = pcl.lt %[[VAL_36]], %[[VAL_29]]
-// CHECK-DAG:       %[[VAL_116:[0-9a-zA-Z_\.]+]] = pcl.asfelt %[[VAL_115]]
-// CHECK-DAG:       %[[VAL_117:[0-9a-zA-Z_\.]+]] = pcl.eq %[[VAL_116]], %[[VAL_37]]
-// CHECK-DAG:       pcl.assert %[[VAL_117]]
 // CHECK-DAG:       %[[VAL_118:[0-9a-zA-Z_\.]+]] = pcl.var "adapter_12" false
 // CHECK-DAG:       %[[VAL_119:[0-9a-zA-Z_\.]+]] = pcl.var "adapter_20" false
 // CHECK-DAG:       %[[VAL_120:[0-9a-zA-Z_\.]+]] = pcl.var "adapter_27" false
@@ -872,10 +868,6 @@ module attributes {llzk.lang} {
 // CHECK-DAG:       %[[VAL_103:[0-9a-zA-Z_\.]+]] = pcl.asfelt %[[VAL_102]]
 // CHECK-DAG:       %[[VAL_104:[0-9a-zA-Z_\.]+]] = pcl.eq %[[VAL_103]], %[[VAL_39]]
 // CHECK-DAG:       pcl.assert %[[VAL_104]]
-// CHECK-DAG:       %[[VAL_106:[0-9a-zA-Z_\.]+]] = pcl.lt %[[VAL_36]], %[[VAL_30]]
-// CHECK-DAG:       %[[VAL_107:[0-9a-zA-Z_\.]+]] = pcl.asfelt %[[VAL_106]]
-// CHECK-DAG:       %[[VAL_108:[0-9a-zA-Z_\.]+]] = pcl.eq %[[VAL_107]], %[[VAL_39]]
-// CHECK-DAG:       pcl.assert %[[VAL_108]]
 // CHECK-DAG:       %[[VAL_109:[0-9a-zA-Z_\.]+]] = pcl.mul %[[VAL_42]], %[[VAL_29]]
 // CHECK-DAG:       %[[VAL_110:[0-9a-zA-Z_\.]+]] = pcl.var "adapter_12" false
 // CHECK-DAG:       %[[VAL_111:[0-9a-zA-Z_\.]+]] = pcl.var "adapter_20" false
@@ -26224,10 +26216,6 @@ module attributes {llzk.lang} {
 // CHECK-DAG:       %[[VAL_2448:[0-9a-zA-Z_\.]+]] = pcl.asfelt %[[VAL_2447]]
 // CHECK-DAG:       %[[VAL_2449:[0-9a-zA-Z_\.]+]] = pcl.eq %[[VAL_2448]], %[[VAL_43]]
 // CHECK-DAG:       pcl.assert %[[VAL_2449]]
-// CHECK-DAG:       %[[VAL_2451:[0-9a-zA-Z_\.]+]] = pcl.lt %[[VAL_42]], %[[VAL_39]]
-// CHECK-DAG:       %[[VAL_2452:[0-9a-zA-Z_\.]+]] = pcl.asfelt %[[VAL_2451]]
-// CHECK-DAG:       %[[VAL_2453:[0-9a-zA-Z_\.]+]] = pcl.eq %[[VAL_2452]], %[[VAL_43]]
-// CHECK-DAG:       pcl.assert %[[VAL_2453]]
 // CHECK-DAG:       %[[VAL_2454:[0-9a-zA-Z_\.]+]] = pcl.var "adapter_12" false
 // CHECK-DAG:       %[[VAL_2455:[0-9a-zA-Z_\.]+]] = pcl.var "adapter_20" false
 // CHECK-DAG:       %[[VAL_2456:[0-9a-zA-Z_\.]+]] = pcl.var "adapter_27" false
@@ -29295,10 +29283,6 @@ module attributes {llzk.lang} {
 // CHECK-DAG:       %[[VAL_5018:[0-9a-zA-Z_\.]+]] = pcl.asfelt %[[VAL_5017]]
 // CHECK-DAG:       %[[VAL_5019:[0-9a-zA-Z_\.]+]] = pcl.eq %[[VAL_5018]], %[[VAL_2613]]
 // CHECK-DAG:       pcl.assert %[[VAL_5019]]
-// CHECK-DAG:       %[[VAL_5021:[0-9a-zA-Z_\.]+]] = pcl.lt %[[VAL_2612]], %[[VAL_2609]]
-// CHECK-DAG:       %[[VAL_5022:[0-9a-zA-Z_\.]+]] = pcl.asfelt %[[VAL_5021]]
-// CHECK-DAG:       %[[VAL_5023:[0-9a-zA-Z_\.]+]] = pcl.eq %[[VAL_5022]], %[[VAL_2613]]
-// CHECK-DAG:       pcl.assert %[[VAL_5023]]
 // CHECK-DAG:       %[[VAL_5024:[0-9a-zA-Z_\.]+]] = pcl.var "adapter_12" false
 // CHECK-DAG:       %[[VAL_5025:[0-9a-zA-Z_\.]+]] = pcl.var "adapter_20" false
 // CHECK-DAG:       %[[VAL_5026:[0-9a-zA-Z_\.]+]] = pcl.var "adapter_27" false
@@ -32366,10 +32350,6 @@ module attributes {llzk.lang} {
 // CHECK-DAG:       %[[VAL_7588:[0-9a-zA-Z_\.]+]] = pcl.asfelt %[[VAL_7587]]
 // CHECK-DAG:       %[[VAL_7589:[0-9a-zA-Z_\.]+]] = pcl.eq %[[VAL_7588]], %[[VAL_5183]]
 // CHECK-DAG:       pcl.assert %[[VAL_7589]]
-// CHECK-DAG:       %[[VAL_7591:[0-9a-zA-Z_\.]+]] = pcl.lt %[[VAL_5182]], %[[VAL_5179]]
-// CHECK-DAG:       %[[VAL_7592:[0-9a-zA-Z_\.]+]] = pcl.asfelt %[[VAL_7591]]
-// CHECK-DAG:       %[[VAL_7593:[0-9a-zA-Z_\.]+]] = pcl.eq %[[VAL_7592]], %[[VAL_5183]]
-// CHECK-DAG:       pcl.assert %[[VAL_7593]]
 // CHECK-DAG:       %[[VAL_7594:[0-9a-zA-Z_\.]+]] = pcl.var "adapter_12" false
 // CHECK-DAG:       %[[VAL_7595:[0-9a-zA-Z_\.]+]] = pcl.var "adapter_20" false
 // CHECK-DAG:       %[[VAL_7596:[0-9a-zA-Z_\.]+]] = pcl.var "adapter_27" false
@@ -35437,10 +35417,6 @@ module attributes {llzk.lang} {
 // CHECK-DAG:       %[[VAL_10158:[0-9a-zA-Z_\.]+]] = pcl.asfelt %[[VAL_10157]]
 // CHECK-DAG:       %[[VAL_10159:[0-9a-zA-Z_\.]+]] = pcl.eq %[[VAL_10158]], %[[VAL_7753]]
 // CHECK-DAG:       pcl.assert %[[VAL_10159]]
-// CHECK-DAG:       %[[VAL_10161:[0-9a-zA-Z_\.]+]] = pcl.lt %[[VAL_7752]], %[[VAL_7749]]
-// CHECK-DAG:       %[[VAL_10162:[0-9a-zA-Z_\.]+]] = pcl.asfelt %[[VAL_10161]]
-// CHECK-DAG:       %[[VAL_10163:[0-9a-zA-Z_\.]+]] = pcl.eq %[[VAL_10162]], %[[VAL_7753]]
-// CHECK-DAG:       pcl.assert %[[VAL_10163]]
 // CHECK-DAG:       %[[VAL_10164:[0-9a-zA-Z_\.]+]] = pcl.var "adapter_12" false
 // CHECK-DAG:       %[[VAL_10165:[0-9a-zA-Z_\.]+]] = pcl.var "adapter_20" false
 // CHECK-DAG:       %[[VAL_10166:[0-9a-zA-Z_\.]+]] = pcl.var "adapter_27" false
@@ -38508,10 +38484,6 @@ module attributes {llzk.lang} {
 // CHECK-DAG:       %[[VAL_12728:[0-9a-zA-Z_\.]+]] = pcl.asfelt %[[VAL_12727]]
 // CHECK-DAG:       %[[VAL_12729:[0-9a-zA-Z_\.]+]] = pcl.eq %[[VAL_12728]], %[[VAL_10322]]
 // CHECK-DAG:       pcl.assert %[[VAL_12729]]
-// CHECK-DAG:       %[[VAL_12731:[0-9a-zA-Z_\.]+]] = pcl.lt %[[VAL_10323]], %[[VAL_10319]]
-// CHECK-DAG:       %[[VAL_12732:[0-9a-zA-Z_\.]+]] = pcl.asfelt %[[VAL_12731]]
-// CHECK-DAG:       %[[VAL_12733:[0-9a-zA-Z_\.]+]] = pcl.eq %[[VAL_12732]], %[[VAL_10322]]
-// CHECK-DAG:       pcl.assert %[[VAL_12733]]
 // CHECK-DAG:       %[[VAL_12734:[0-9a-zA-Z_\.]+]] = pcl.var "adapter_12" false
 // CHECK-DAG:       %[[VAL_12735:[0-9a-zA-Z_\.]+]] = pcl.var "adapter_20" false
 // CHECK-DAG:       %[[VAL_12736:[0-9a-zA-Z_\.]+]] = pcl.var "adapter_27" false
@@ -41579,10 +41551,6 @@ module attributes {llzk.lang} {
 // CHECK-DAG:       %[[VAL_15298:[0-9a-zA-Z_\.]+]] = pcl.asfelt %[[VAL_15297]]
 // CHECK-DAG:       %[[VAL_15299:[0-9a-zA-Z_\.]+]] = pcl.eq %[[VAL_15298]], %[[VAL_12892]]
 // CHECK-DAG:       pcl.assert %[[VAL_15299]]
-// CHECK-DAG:       %[[VAL_15301:[0-9a-zA-Z_\.]+]] = pcl.lt %[[VAL_12893]], %[[VAL_12889]]
-// CHECK-DAG:       %[[VAL_15302:[0-9a-zA-Z_\.]+]] = pcl.asfelt %[[VAL_15301]]
-// CHECK-DAG:       %[[VAL_15303:[0-9a-zA-Z_\.]+]] = pcl.eq %[[VAL_15302]], %[[VAL_12892]]
-// CHECK-DAG:       pcl.assert %[[VAL_15303]]
 // CHECK-DAG:       %[[VAL_15304:[0-9a-zA-Z_\.]+]] = pcl.var "adapter_12" false
 // CHECK-DAG:       %[[VAL_15305:[0-9a-zA-Z_\.]+]] = pcl.var "adapter_20" false
 // CHECK-DAG:       %[[VAL_15306:[0-9a-zA-Z_\.]+]] = pcl.var "adapter_27" false
@@ -44650,10 +44618,6 @@ module attributes {llzk.lang} {
 // CHECK-DAG:       %[[VAL_17868:[0-9a-zA-Z_\.]+]] = pcl.asfelt %[[VAL_17867]]
 // CHECK-DAG:       %[[VAL_17869:[0-9a-zA-Z_\.]+]] = pcl.eq %[[VAL_17868]], %[[VAL_15462]]
 // CHECK-DAG:       pcl.assert %[[VAL_17869]]
-// CHECK-DAG:       %[[VAL_17871:[0-9a-zA-Z_\.]+]] = pcl.lt %[[VAL_15463]], %[[VAL_15459]]
-// CHECK-DAG:       %[[VAL_17872:[0-9a-zA-Z_\.]+]] = pcl.asfelt %[[VAL_17871]]
-// CHECK-DAG:       %[[VAL_17873:[0-9a-zA-Z_\.]+]] = pcl.eq %[[VAL_17872]], %[[VAL_15462]]
-// CHECK-DAG:       pcl.assert %[[VAL_17873]]
 // CHECK-DAG:       %[[VAL_17874:[0-9a-zA-Z_\.]+]] = pcl.var "adapter_12" false
 // CHECK-DAG:       %[[VAL_17875:[0-9a-zA-Z_\.]+]] = pcl.var "adapter_20" false
 // CHECK-DAG:       %[[VAL_17876:[0-9a-zA-Z_\.]+]] = pcl.var "adapter_27" false
@@ -47721,10 +47685,6 @@ module attributes {llzk.lang} {
 // CHECK-DAG:       %[[VAL_20438:[0-9a-zA-Z_\.]+]] = pcl.asfelt %[[VAL_20437]]
 // CHECK-DAG:       %[[VAL_20439:[0-9a-zA-Z_\.]+]] = pcl.eq %[[VAL_20438]], %[[VAL_18032]]
 // CHECK-DAG:       pcl.assert %[[VAL_20439]]
-// CHECK-DAG:       %[[VAL_20441:[0-9a-zA-Z_\.]+]] = pcl.lt %[[VAL_18033]], %[[VAL_18029]]
-// CHECK-DAG:       %[[VAL_20442:[0-9a-zA-Z_\.]+]] = pcl.asfelt %[[VAL_20441]]
-// CHECK-DAG:       %[[VAL_20443:[0-9a-zA-Z_\.]+]] = pcl.eq %[[VAL_20442]], %[[VAL_18032]]
-// CHECK-DAG:       pcl.assert %[[VAL_20443]]
 // CHECK-DAG:       %[[VAL_20444:[0-9a-zA-Z_\.]+]] = pcl.var "adapter_12" false
 // CHECK-DAG:       %[[VAL_20445:[0-9a-zA-Z_\.]+]] = pcl.var "adapter_20" false
 // CHECK-DAG:       %[[VAL_20446:[0-9a-zA-Z_\.]+]] = pcl.var "adapter_27" false
