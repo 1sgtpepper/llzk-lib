@@ -910,6 +910,10 @@ class PassImpl : public llzk::impl::RedundantReadAndWriteEliminationPassBase<Pas
       state.ram.clear();
       state.ramExact.clear();
       writeCandidates.clear();
+    } else if (hasReadEffect(op)) {
+      // A read does not invalidate known values, but it can observe a pending
+      // write and therefore prevents removing that write as overwritten.
+      writeCandidates.clear();
     }
   }
 };
