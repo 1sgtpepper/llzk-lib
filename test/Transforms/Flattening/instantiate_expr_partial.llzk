@@ -11,12 +11,18 @@ module attributes {llzk.lang, llzk.main = !struct.type<@Outer::@Wrapper<[7]>>} {
       %result = arith.muli %m, %two : index
       poly.yield %result : index
     }
+    poly.expr @NPlusM {
+      %n = poly.read_const @N : index
+      %m = poly.read_const @M : index
+      %result = arith.addi %n, %m : index
+      poly.yield %result : index
+    }
     struct.def @Value {
       struct.member @values : !array.type<#id x !felt.type>
       function.def @compute() -> !struct.type<@Inner::@Value<[@N, @M]>> {
-        %twice = poly.read_const @TwiceM : index
+        %sum = poly.read_const @NPlusM : index
         %self = struct.new : <@Inner::@Value<[@N, @M]>>
-        %values = array.new{(%twice)[]} : !array.type<#id x !felt.type>
+        %values = array.new{(%sum)[]} : !array.type<#id x !felt.type>
         struct.writem %self[@values] = %values : <@Inner::@Value<[@N, @M]>>, !array.type<#id x !felt.type>
         function.return %self : !struct.type<@Inner::@Value<[@N, @M]>>
       }
@@ -42,14 +48,18 @@ module attributes {llzk.lang, llzk.main = !struct.type<@Outer::@Wrapper<[7]>>} {
 }
 
 // CHECK-LABEL: struct.def @Inner_5_7_Value {
-// CHECK:         struct.member @values : !array.type<14 x !felt.type>
-// CHECK-NOT:     poly.read_const @TwiceM
+// CHECK:         struct.member @values : !array.type<12 x !felt.type>
+// CHECK-NOT:     poly.read_const @NPlusM
 // CHECK-LABEL: poly.template @"Inner_5_\1A" {
 // CHECK:         poly.param @M : index
 // CHECK:         poly.expr @TwiceM {
 // CHECK:           poly.read_const @M : index
+// CHECK:         poly.expr @NPlusM {
+// CHECK:           arith.constant 5 : index
+// CHECK:           poly.read_const @M : index
+// CHECK-NOT:       poly.read_const @N
 // CHECK:         struct.def @Value {
-// CHECK:           poly.read_const @TwiceM : index
+// CHECK:           poly.read_const @NPlusM : index
 // -----
 
 module attributes {llzk.lang} {
@@ -62,9 +72,15 @@ module attributes {llzk.lang} {
       %result = arith.muli %m, %two : index
       poly.yield %result : index
     }
+    poly.expr @NPlusM {
+      %n = poly.read_const @N : index
+      %m = poly.read_const @M : index
+      %result = arith.addi %n, %m : index
+      poly.yield %result : index
+    }
     function.def @value(%input: !array.type<@N,@M x !felt.type>) -> index {
-      %twice = poly.read_const @TwiceM : index
-      function.return %twice : index
+      %sum = poly.read_const @NPlusM : index
+      function.return %sum : index
     }
   }
 
@@ -89,8 +105,8 @@ module attributes {llzk.lang} {
 }
 
 // CHECK-LABEL: function.def @InnerFunc_5_7_value(
-// CHECK:         arith.constant 14 : index
-// CHECK-NOT:     poly.read_const @TwiceM
+// CHECK:         arith.constant 12 : index
+// CHECK-NOT:     poly.read_const @NPlusM
 // -----
 
 module attributes {llzk.lang} {
@@ -103,9 +119,15 @@ module attributes {llzk.lang} {
       %result = arith.muli %m, %two : index
       poly.yield %result : index
     }
+    poly.expr @NPlusM {
+      %n = poly.read_const @N : index
+      %m = poly.read_const @M : index
+      %result = arith.addi %n, %m : index
+      poly.yield %result : index
+    }
     function.def @value(%input: !array.type<@N,@M x !felt.type>) -> index {
-      %twice = poly.read_const @TwiceM : index
-      function.return %twice : index
+      %sum = poly.read_const @NPlusM : index
+      function.return %sum : index
     }
   }
 
@@ -122,5 +144,155 @@ module attributes {llzk.lang} {
 // CHECK:         poly.param @M : index
 // CHECK:         poly.expr @TwiceM {
 // CHECK:           poly.read_const @M : index
+// CHECK:         poly.expr @NPlusM {
+// CHECK:           arith.constant 5 : index
+// CHECK:           poly.read_const @M : index
+// CHECK-NOT:       poly.read_const @N
 // CHECK:         function.def @value
-// CHECK:           poly.read_const @TwiceM : index
+// CHECK:           poly.read_const @NPlusM : index
+// -----
+
+module attributes {llzk.lang} {
+  poly.template @Inner {
+    poly.param @Num
+    poly.param @Ty : !poly.tvar<@Ty>
+    poly.param @M
+    poly.expr @Sum {
+      %m = poly.read_const @M : !felt.type<"bn128">
+      %num = poly.read_const @Num : !poly.tvar<@Ty>
+      %cast = poly.unifiable_cast %num : (!poly.tvar<@Ty>) -> !felt.type<"bn128">
+      %sum = felt.add %m, %cast : !felt.type<"bn128">, !felt.type<"bn128">
+      poly.yield %sum : !felt.type<"bn128">
+    }
+    struct.def @Value {
+      function.def @compute() -> !struct.type<@Inner::@Value<[@Num, @Ty, @M]>> {
+        %sum = poly.read_const @Sum : !felt.type<"bn128">
+        %self = struct.new : <@Inner::@Value<[@Num, @Ty, @M]>>
+        function.return %self : !struct.type<@Inner::@Value<[@Num, @Ty, @M]>>
+      }
+      function.def @constrain(%self: !struct.type<@Inner::@Value<[@Num, @Ty, @M]>>) {
+        function.return
+      }
+    }
+  }
+
+  poly.template @Outer {
+    poly.param @M
+    struct.def @Wrapper {
+      struct.member @value : !struct.type<@Inner::@Value<[35, !felt.type<"bn128">, @M]>>
+      function.def @compute() -> !struct.type<@Outer::@Wrapper<[@M]>> {
+        %self = struct.new : <@Outer::@Wrapper<[@M]>>
+        function.return %self : !struct.type<@Outer::@Wrapper<[@M]>>
+      }
+      function.def @constrain(%self: !struct.type<@Outer::@Wrapper<[@M]>>) {
+        function.return
+      }
+    }
+  }
+}
+
+// CHECK-LABEL: poly.template @"Inner_35_f_\1A" {
+// CHECK:         poly.param @M
+// CHECK:         poly.expr @Sum {
+// CHECK:           felt.const 35 : <"bn128">
+// CHECK:           poly.read_const @M : !felt.type<"bn128">
+// CHECK:           poly.unifiable_cast {{.*}} : (!felt.type<"bn128">) -> !felt.type<"bn128">
+// CHECK-NOT:       !poly.tvar<@Ty>
+// CHECK:         struct.def @Value {
+// -----
+
+module attributes {llzk.lang} {
+  poly.template @Inner {
+    poly.param @Num
+    poly.param @Ty : !poly.tvar<@Ty>
+    poly.param @M
+    poly.expr @Sum {
+      %m = poly.read_const @M : !felt.type<"bn128">
+      %num = poly.read_const @Num : !poly.tvar<@Ty>
+      %cast = poly.unifiable_cast %num : (!poly.tvar<@Ty>) -> !felt.type<"bn128">
+      %sum = felt.add %m, %cast : !felt.type<"bn128">, !felt.type<"bn128">
+      poly.yield %sum : !felt.type<"bn128">
+    }
+    function.def @value() -> !felt.type<"bn128"> {
+      %sum = poly.read_const @Sum : !felt.type<"bn128">
+      function.return %sum : !felt.type<"bn128">
+    }
+  }
+
+  poly.template @Outer {
+    poly.param @M
+    function.def @value() -> !felt.type<"bn128"> {
+      %sum = function.call @Inner::@value<[#felt<const 35 : !felt.type<"bn128">>, !felt.type<"bn128">, @M]>()
+        : () -> !felt.type<"bn128">
+      function.return %sum : !felt.type<"bn128">
+    }
+  }
+}
+
+// CHECK-LABEL: poly.template @"Inner_f<35:5:bn128>_f_\1A" {
+// CHECK:         poly.param @M
+// CHECK:         poly.expr @Sum {
+// CHECK:           felt.const 35 : <"bn128">
+// CHECK:           poly.read_const @M : !felt.type<"bn128">
+// CHECK:           poly.unifiable_cast {{.*}} : (!felt.type<"bn128">) -> !felt.type<"bn128">
+// CHECK-NOT:       !poly.tvar<@Ty>
+// CHECK:         function.def @value
+// -----
+
+module attributes {llzk.lang} {
+  poly.template @Inner {
+    poly.param @Num
+    poly.param @Ty : !poly.tvar<@Ty>
+    poly.param @M
+    poly.expr @Chosen {
+      %num = poly.read_const @Num : !poly.tvar<@Ty>
+      %cast = poly.unifiable_cast %num : (!poly.tvar<@Ty>) -> !felt.type<"bn128">
+      %m = poly.read_const @M : !felt.type<"bn128">
+      %sum = felt.add %m, %cast : !felt.type<"bn128">, !felt.type<"bn128">
+      poly.yield %sum : !felt.type<"bn128">
+    }
+    struct.def @Value {
+      function.def @compute() -> !struct.type<@Inner::@Value<[@Num, @Ty, @M]>> {
+        %chosen = poly.read_const @Chosen : !felt.type<"bn128">
+        %self = struct.new : <@Inner::@Value<[@Num, @Ty, @M]>>
+        function.return %self : !struct.type<@Inner::@Value<[@Num, @Ty, @M]>>
+      }
+      function.def @constrain(%self: !struct.type<@Inner::@Value<[@Num, @Ty, @M]>>) {
+        function.return
+      }
+    }
+    function.def @value() -> !felt.type<"bn128"> {
+      %chosen = poly.read_const @Chosen : !felt.type<"bn128">
+      function.return %chosen : !felt.type<"bn128">
+    }
+  }
+
+  poly.template @Outer {
+    poly.param @Ty : !poly.tvar<@Ty>
+    poly.param @M
+    struct.def @Wrapper {
+      struct.member @value : !struct.type<@Inner::@Value<[35, @Ty, @M]>>
+      function.def @compute() -> !struct.type<@Outer::@Wrapper<[@Ty, @M]>> {
+        %self = struct.new : <@Outer::@Wrapper<[@Ty, @M]>>
+        function.return %self : !struct.type<@Outer::@Wrapper<[@Ty, @M]>>
+      }
+      function.def @constrain(%self: !struct.type<@Outer::@Wrapper<[@Ty, @M]>>) {
+        function.return
+      }
+    }
+    function.def @value() -> !felt.type<"bn128"> {
+      %chosen = function.call @Inner::@value<[35, @Ty, @M]>()
+        : () -> !felt.type<"bn128">
+      function.return %chosen : !felt.type<"bn128">
+    }
+  }
+}
+
+// CHECK-NOT:   poly.template @"Inner_35_{{.*}}"
+// CHECK-LABEL: poly.template @Inner {
+// CHECK:         poly.param @Num
+// CHECK:         poly.param @Ty : !poly.tvar<@Ty>
+// CHECK:         poly.param @M
+// CHECK-LABEL: poly.template @Outer {
+// CHECK:         struct.member @value : !struct.type<@Inner::@Value<[35, @Ty, @M]>>
+// CHECK:         function.call @Inner::@value<[35, @Ty, @M]>()
