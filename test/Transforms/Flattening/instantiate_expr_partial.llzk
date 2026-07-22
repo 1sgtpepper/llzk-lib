@@ -173,6 +173,57 @@ module attributes {llzk.lang} {
 // -----
 
 // CHECK-LABEL: module attributes {llzk.lang} {
+// CHECK-NEXT:    poly.template @"Inner_5_\1A" {
+// CHECK-NEXT:      poly.param @M : index
+// CHECK-NEXT:      poly.expr @NestedM {
+// CHECK-NEXT:        %[[VAL_0:[0-9a-zA-Z_\.]+]] = scf.execute_region -> index {
+// CHECK-NEXT:          %[[VAL_1:[0-9a-zA-Z_\.]+]] = poly.read_const @M : index
+// CHECK-NEXT:          scf.yield %[[VAL_1]] : index
+// CHECK-NEXT:        }
+// CHECK-NEXT:        poly.yield %[[VAL_0]] : index
+// CHECK-NEXT:      }
+// CHECK-NEXT:      function.def @value() -> index {
+// CHECK-NEXT:        %[[VAL_2:[0-9a-zA-Z_\.]+]] = poly.read_const @NestedM : index
+// CHECK-NEXT:        function.return %[[VAL_2]] : index
+// CHECK-NEXT:      }
+// CHECK-NEXT:    }
+// CHECK-NEXT:    poly.template @Outer {
+// CHECK-NEXT:      poly.param @M : index
+// CHECK-NEXT:      function.def @value() -> index {
+// CHECK-NEXT:        %[[VAL_3:[0-9a-zA-Z_\.]+]] = function.call @"Inner_5_\1A"::@value<[@M]>() : () -> index
+// CHECK-NEXT:        function.return %[[VAL_3]] : index
+// CHECK-NEXT:      }
+// CHECK-NEXT:    }
+// CHECK-NEXT:  }
+module attributes {llzk.lang} {
+  poly.template @Inner {
+    poly.param @N : index
+    poly.param @M : index
+    poly.expr @NestedM {
+      %value = scf.execute_region -> index {
+        %m = poly.read_const @M : index
+        scf.yield %m : index
+      }
+      poly.yield %value : index
+    }
+    function.def @value() -> index {
+      %value = poly.read_const @NestedM : index
+      function.return %value : index
+    }
+  }
+
+  poly.template @Outer {
+    poly.param @M : index
+    function.def @value() -> index {
+      %value = function.call @Inner::@value<[5, @M]>() : () -> index
+      function.return %value : index
+    }
+  }
+}
+
+// -----
+
+// CHECK-LABEL: module attributes {llzk.lang} {
 // CHECK-NEXT:    poly.template @"InnerFunc_5_\1A" {
 // CHECK-NEXT:      poly.param @M : index
 // CHECK-NEXT:      poly.expr @TwiceM {

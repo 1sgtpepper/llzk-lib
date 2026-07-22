@@ -598,10 +598,11 @@ static FailureOr<std::optional<Attribute>>
 evaluateExpr(TemplateExprOp exprOp, const DenseMap<Attribute, Attribute> &paramNameToConcrete) {
   // Deferral depends on the expression's complete parameter set, not operation order. Do not
   // diagnose a non-foldable prefix while a later read still requires partial instantiation.
-  if (llvm::any_of(
-          exprOp.getInitializerRegion().front().getOps<ConstReadOp>(),
-          [&](ConstReadOp op) { return !paramNameToConcrete.contains(op.getConstNameAttr()); }
-      )) {
+  WalkResult unresolvedParam = exprOp.walk([&](ConstReadOp op) {
+    return paramNameToConcrete.contains(op.getConstNameAttr()) ? WalkResult::advance()
+                                                               : WalkResult::interrupt();
+  });
+  if (unresolvedParam.wasInterrupted()) {
     return std::optional<Attribute>();
   }
 
