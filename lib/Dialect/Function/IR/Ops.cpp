@@ -663,9 +663,12 @@ CallOp::verifyTemplateParamCompatibility(Attribute paramFromCallOp, TemplatePara
       }
     } else if (llvm::isa<TypeVarType>(*declaredType)) {
       compatible = llvm::isa<TypeAttr>(paramFromCallOp);
-    } else if (llvm::isa<FeltType>(*declaredType)) {
-      compatible = llvm::isa<FeltConstAttr, IntegerAttr>(paramFromCallOp) &&
-                   isValidConstReadType(llvm::cast<TypedAttr>(paramFromCallOp).getType());
+    } else if (auto feltType = llvm::dyn_cast<FeltType>(*declaredType)) {
+      if (auto feltValue = llvm::dyn_cast<FeltConstAttr>(paramFromCallOp)) {
+        compatible = succeeded(feltValue.getMaterializedType(feltType));
+      } else if (auto intValue = llvm::dyn_cast<IntegerAttr>(paramFromCallOp)) {
+        compatible = isValidConstReadType(intValue.getType());
+      }
     } else if (llvm::isa<IndexType, IntegerType>(*declaredType)) {
       // Note: Just like struct type instantiation, there is no restriction on passing a
       // larger value to an `i1`. The flattening pass will treat 0 as false and any other
