@@ -1,0 +1,2 @@
+fixed:
+  - Prevent specialization names from colliding with user symbols or reserved placeholder bytes

@@ -86,6 +86,14 @@ struct InstantiationLayout {
   mlir::SmallVector<mlir::Attribute> remainingNames;
   std::string templateNameWithAttrs;
   mlir::ArrayAttr rewrittenCallParams;
+  mlir::ArrayAttr concreteParamKey;
+};
+
+/// Identifies whether an instantiation name came from source IR or a prior partial instantiation.
+/// Only generated partial names may contain placeholders that later instantiations should replace.
+enum class InstantiationNameOrigin {
+  SourceTemplate,
+  GeneratedPartialTemplate,
 };
 
 /// Derive the instantiated template name and the remaining explicit parameters that should stay on
@@ -93,14 +101,18 @@ struct InstantiationLayout {
 /// placeholder character at the position of each non-concrete parameter.
 inline InstantiationLayout buildInstantiationLayout(
     TemplateOp parentTemplate, mlir::ArrayAttr callParams,
-    const llvm::DenseMap<mlir::Attribute, mlir::Attribute> &paramNameToConcrete
+    const llvm::DenseMap<mlir::Attribute, mlir::Attribute> &paramNameToConcrete,
+    InstantiationNameOrigin nameOrigin
 ) {
   mlir::SmallVector<mlir::Attribute> remainingNames;
   mlir::SmallVector<mlir::Attribute> attrsForInstantiatedNameSuffix;
+  mlir::SmallVector<mlir::Attribute> concreteParamKey;
   for (mlir::Attribute paramName : parentTemplate.getConstNames<TemplateParamOp>()) {
     auto it = paramNameToConcrete.find(paramName);
     if (it != paramNameToConcrete.end()) {
       attrsForInstantiatedNameSuffix.push_back(it->second);
+      concreteParamKey.push_back(paramName);
+      concreteParamKey.push_back(it->second);
     } else {
       attrsForInstantiatedNameSuffix.push_back(nullptr);
       remainingNames.push_back(paramName);
@@ -120,10 +132,19 @@ inline InstantiationLayout buildInstantiationLayout(
     rewrittenCallParams = mlir::ArrayAttr::get(parentTemplate.getContext(), remainingCallParams);
   }
 
+  std::string templateNameWithAttrs =
+      nameOrigin == InstantiationNameOrigin::GeneratedPartialTemplate
+          ? BuildShortTypeString::from(
+                parentTemplate.getSymName().str(), attrsForInstantiatedNameSuffix
+            )
+          : BuildShortTypeString::fromRawName(
+                parentTemplate.getSymName(), attrsForInstantiatedNameSuffix
+            );
   return {
       std::move(remainingNames),
-      BuildShortTypeString::from(parentTemplate.getSymName().str(), attrsForInstantiatedNameSuffix),
+      std::move(templateNameWithAttrs),
       rewrittenCallParams,
+      mlir::ArrayAttr::get(parentTemplate.getContext(), concreteParamKey),
   };
 }
 
