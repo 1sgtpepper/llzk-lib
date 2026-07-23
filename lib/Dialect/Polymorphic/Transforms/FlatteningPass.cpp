@@ -155,10 +155,12 @@ public:
     modified = true;
   }
 
+  /// Record a pass-created partial template whose placeholder bytes remain replaceable.
   void recordGeneratedPartialTemplate(TemplateOp instantiatedTemplate) {
     generatedPartialTemplates.insert(instantiatedTemplate.getOperation());
   }
 
+  /// Return whether `templateOp` was created by partial instantiation in this pass run.
   bool isGeneratedPartialTemplate(TemplateOp templateOp) const {
     return generatedPartialTemplates.contains(templateOp.getOperation());
   }
