@@ -528,6 +528,30 @@ module attributes {llzk.lang} {
 // CHECK-NEXT:      verif.ensure_compute %[[VAL_5]]
 // CHECK-NEXT:    }
 // CHECK-NEXT:  }
+
+// -----
+
+// Fieldless and explicitly matching felt constants both satisfy a felt restriction.
+module attributes {llzk.lang} {
+  poly.template @SpecTemplate {
+    poly.param @N : !felt.type<"bn128">
+
+    function.def @token() { function.return }
+
+    verif.contract @Base for @SpecTemplate::@token () {
+      %ok = arith.constant true
+      verif.ensure_compute %ok
+    }
+
+    verif.contract @Wrapper for @SpecTemplate::@token () {
+      verif.include @SpecTemplate::@Base<[#felt<const 9>]>() : () -> ()
+      verif.include @SpecTemplate::@Base<[#felt<const 9 : !felt.type<"bn128">>]>() : () -> ()
+    }
+  }
+}
+// CHECK-LABEL: verif.contract @Wrapper
+// CHECK:         verif.include @SpecTemplate::@Base<[#felt<const 9>]>()
+// CHECK:         verif.include @SpecTemplate::@Base<[#felt<const 9 : !felt.type<"bn128">>]>()
 // -----
 
 module attributes {llzk.lang} {
