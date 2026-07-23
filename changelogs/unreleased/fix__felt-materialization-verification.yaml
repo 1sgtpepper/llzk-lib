@@ -1,0 +1,2 @@
+fixed:
+  - Reject felt template arguments whose explicit field differs from the parameter restriction
