@@ -86,12 +86,14 @@ struct InstantiationLayout {
   mlir::SmallVector<mlir::Attribute> remainingNames;
   std::string templateNameWithAttrs;
   mlir::ArrayAttr rewrittenCallParams;
+  /// Ordered parameter-name/value pairs used with the source definition as specialization identity.
   mlir::ArrayAttr concreteParamKey;
 };
 
 /// Derive the instantiated template name and the remaining explicit parameters that should stay on
-/// the rewritten use site. Partially-instantiated names contain the `BuildShortTypeString`
-/// placeholder character at the position of each non-concrete parameter.
+/// the rewritten use site. Also preserve the ordered concrete bindings for identity-based reuse.
+/// Partially-instantiated names contain the `BuildShortTypeString` placeholder character at the
+/// position of each non-concrete parameter.
 inline InstantiationLayout buildInstantiationLayout(
     TemplateOp parentTemplate, mlir::ArrayAttr callParams,
     const llvm::DenseMap<mlir::Attribute, mlir::Attribute> &paramNameToConcrete

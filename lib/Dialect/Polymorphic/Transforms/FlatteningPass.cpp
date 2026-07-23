@@ -99,6 +99,7 @@ static void reportDelayedDiagnostics(CallOp caller, SmallVector<Diagnostic> &&di
 }
 
 class ConversionTracker {
+  /// Exact specialization identity: source definition plus ordered concrete parameter bindings.
   using FuncInstantiationKey = std::pair<Operation *, ArrayAttr>;
 
   /// Tracks if some step performed a modification of the code such that another pass should be run.
@@ -111,6 +112,7 @@ class ConversionTracker {
   /// Tracks original free function definitions for which instantiated clones were created.
   DenseSet<SymbolRefAttr> funcInstantiations;
   /// Generated spelling is not specialization identity because user symbols can collide with it.
+  /// These caches are queried during instantiation, before cleanup can erase source definitions.
   DenseMap<FuncInstantiationKey, StringAttr> fullFuncInstantiations;
   DenseMap<FuncInstantiationKey, TemplateOp> partialFuncInstantiations;
   /// Maps new remote type (i.e., the values in 'structInstantiations') to a list of Diagnostic
