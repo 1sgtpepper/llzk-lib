@@ -1,0 +1,75 @@
+// RUN: llzk-opt -split-input-file %s -llzk-flatten | FileCheck --enable-var-scope %s
+
+module attributes {llzk.lang} {
+  poly.template @T {
+    poly.param @N : !felt.type<"bn128">
+
+    function.def @value() -> !felt.type<"bn128"> {
+      %n = poly.read_const @N : !felt.type<"bn128">
+      function.return %n : !felt.type<"bn128">
+    }
+  }
+
+  function.def @main() -> !felt.type<"bn128"> {
+    %n = function.call @T::@value<[#felt<const 35>]>() : () -> !felt.type<"bn128">
+    function.return %n : !felt.type<"bn128">
+  }
+}
+// CHECK-LABEL: module attributes {llzk.lang} {
+// CHECK:         felt.const 35 : <"bn128">
+// CHECK-LABEL:   function.def @main() -> !felt.type<"bn128">
+
+// -----
+
+module attributes {
+  llzk.lang,
+  llzk.main = !struct.type<@T::@S<[#felt<const 35>]>>
+} {
+  poly.template @T {
+    poly.param @N : !felt.type<"bn128">
+
+    struct.def @S {
+      struct.member @value : !felt.type<"bn128">
+
+      function.def @compute() -> !struct.type<@T::@S<[@N]>> {
+        %n = poly.read_const @N : !felt.type<"bn128">
+        %self = struct.new : <@T::@S<[@N]>>
+        struct.writem %self[@value] = %n : !struct.type<@T::@S<[@N]>>, !felt.type<"bn128">
+        function.return %self : !struct.type<@T::@S<[@N]>>
+      }
+
+      function.def @constrain(%self: !struct.type<@T::@S<[@N]>>) {
+        function.return
+      }
+    }
+  }
+}
+// CHECK-LABEL: module attributes {
+// CHECK:         felt.const 35 : <"bn128">
+
+// -----
+
+module attributes {llzk.lang} {
+  poly.template @T {
+    poly.param @N : !felt.type<"bn128">
+    poly.expr @Next {
+      %n = poly.read_const @N : !felt.type<"bn128">
+      %one = felt.const 1 <"bn128">
+      %next = felt.add %n, %one : !felt.type<"bn128">, !felt.type<"bn128">
+      poly.yield %next : !felt.type<"bn128">
+    }
+
+    function.def @value() -> !felt.type<"bn128"> {
+      %next = poly.read_const @Next : !felt.type<"bn128">
+      function.return %next : !felt.type<"bn128">
+    }
+  }
+
+  function.def @main() -> !felt.type<"bn128"> {
+    %next = function.call @T::@value<[#felt<const 35>]>() : () -> !felt.type<"bn128">
+    function.return %next : !felt.type<"bn128">
+  }
+}
+// CHECK-LABEL: module attributes {llzk.lang} {
+// CHECK:         felt.const 36 : <"bn128">
+// CHECK-LABEL:   function.def @main() -> !felt.type<"bn128">
