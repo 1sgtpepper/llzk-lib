@@ -591,10 +591,9 @@ class StructCloner {
   };
 
   class ClonedStructMemberReadOpPattern
-      : public SymbolUserHelper<
-            ClonedStructMemberReadOpPattern, MemberReadOp, IntegerAttr, FeltConstAttr> {
+      : public SymbolUserHelper<ClonedStructMemberReadOpPattern, MemberReadOp, IntegerAttr> {
     using super =
-        SymbolUserHelper<ClonedStructMemberReadOpPattern, MemberReadOp, IntegerAttr, FeltConstAttr>;
+        SymbolUserHelper<ClonedStructMemberReadOpPattern, MemberReadOp, IntegerAttr>;
 
   public:
     ClonedStructMemberReadOpPattern(
@@ -616,14 +615,6 @@ class StructCloner {
       });
 
       return success();
-    }
-
-    LogicalResult handleRewrite(
-        Attribute, MemberReadOp op, OpAdaptor, ConversionPatternRewriter &, FeltConstAttr a
-    ) const {
-      return op->emitOpError().append(
-          "table offset requires an integer template value, but found ", a
-      );
     }
 
     LogicalResult matchAndRewrite(
