@@ -506,6 +506,8 @@ static inline bool tableOffsetIsntSymbol(MemberReadOp op) {
   return !llvm::isa_and_present<SymbolRefAttr>(op.getTableOffset().value_or(nullptr));
 }
 
+/// Materialize symbolic member table offsets only from integer template bindings. Member tables are
+/// index-addressed, so other concrete attribute kinds must diagnose instead of being coerced.
 class ClonedMemberReadOpPattern
     : public SymbolUserHelper<ClonedMemberReadOpPattern, MemberReadOp, IntegerAttr> {
   using super = SymbolUserHelper<ClonedMemberReadOpPattern, MemberReadOp, IntegerAttr>;
