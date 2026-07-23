@@ -608,15 +608,22 @@ class StructCloner {
       return op.getTableOffset().value_or(nullptr);
     }
 
-    template <typename Attr>
     LogicalResult handleRewrite(
-        Attribute, MemberReadOp op, OpAdaptor, ConversionPatternRewriter &rewriter, Attr a
+        Attribute, MemberReadOp op, OpAdaptor, ConversionPatternRewriter &rewriter, IntegerAttr a
     ) const {
       rewriter.modifyOpInPlace(op, [&]() {
         op.setTableOffsetAttr(rewriter.getIndexAttr(fromAPInt(a.getValue())));
       });
 
       return success();
+    }
+
+    LogicalResult handleRewrite(
+        Attribute, MemberReadOp op, OpAdaptor, ConversionPatternRewriter &, FeltConstAttr a
+    ) const {
+      return op->emitOpError().append(
+          "table offset requires an integer template value, but found ", a
+      );
     }
 
     LogicalResult matchAndRewrite(
