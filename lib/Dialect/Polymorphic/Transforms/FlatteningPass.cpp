@@ -99,6 +99,8 @@ static void reportDelayedDiagnostics(CallOp caller, SmallVector<Diagnostic> &&di
 }
 
 class ConversionTracker {
+  using FuncInstantiationKey = std::pair<Operation *, ArrayAttr>;
+
   /// Published result of one successful partial-function conversion.
   ///
   /// The source operation and concrete key live in the surrounding map; these names are only the
@@ -118,6 +120,9 @@ class ConversionTracker {
   DenseMap<StructType, StructType> reverseInstantiations;
   /// Tracks original free function definitions for which instantiated clones were created.
   DenseSet<SymbolRefAttr> funcInstantiations;
+  /// Full function specializations are keyed by source definition and exact concrete bindings.
+  /// Generated symbol spelling is only a value because user symbols can collide with it.
+  DenseMap<FuncInstantiationKey, StringAttr> fullFuncInstantiations;
   /// Successful partial functions keyed by their source operation and exact concrete bindings.
   /// The rendered symbol names are only values; they are never used as cache identity.
   DenseMap<Operation *, SmallVector<PartialFuncInstantiation>> partialFuncInstantiations;
@@ -163,6 +168,20 @@ public:
   void recordInstantiation(SymbolRefAttr funcName) {
     funcInstantiations.insert(funcName);
     modified = true;
+  }
+
+  std::optional<StringAttr>
+  getFullFuncInstantiation(Operation *sourceFunc, ArrayAttr concreteParams) const {
+    auto it = fullFuncInstantiations.find({sourceFunc, concreteParams});
+    return it == fullFuncInstantiations.end() ? std::nullopt : std::make_optional(it->second);
+  }
+
+  void recordFullFuncInstantiation(
+      Operation *sourceFunc, ArrayAttr concreteParams, StringAttr instantiatedName
+  ) {
+    [[maybe_unused]] auto [it, inserted] =
+        fullFuncInstantiations.try_emplace({sourceFunc, concreteParams}, instantiatedName);
+    assert((inserted || it->second == instantiatedName) && "instantiation identity is stable");
   }
 
   /// Return the successfully converted partial function for this exact source/key pair, if any.
@@ -1422,7 +1441,7 @@ public:
         layout.remainingNames.empty()
             ? instantiateFully(
                   op, rewriter, symTables, callTgt, parentTemplate, parentModule,
-                  layout.templateNameWithAttrs, paramNameToConcrete
+                  layout.templateNameWithAttrs, layout.concreteParamKey, paramNameToConcrete, tracker_
               )
             : instantiatePartially(
                   op, rewriter, symTables, callTgt, parentTemplate, parentModule, layout,
@@ -1583,13 +1602,21 @@ private:
   static FailureOr<SymbolRefAttr> instantiateFully(
       CallOp op, PatternRewriter &rewriter, SymbolTableCollection &symTables, FuncDefOp callTgt,
       TemplateOp parentTemplate, ModuleOp parentModule, StringRef templateNameWithAttrs,
-      const DenseMap<Attribute, Attribute> &paramNameToConcrete
+      ArrayAttr concreteParamKey, const DenseMap<Attribute, Attribute> &paramNameToConcrete,
+      ConversionTracker &tracker
   ) {
     MLIRContext *ctx = op.getContext();
     std::string newFuncName =
         (mlir::Twine(templateNameWithAttrs) + "_" + callTgt.getSymName()).str();
     StringRef actualNewFuncName = newFuncName;
-    if (!symTables.getSymbolTable(parentModule).lookup(newFuncName)) {
+    if (std::optional<StringAttr> cached =
+            tracker.getFullFuncInstantiation(callTgt.getOperation(), concreteParamKey)) {
+      actualNewFuncName = cached->getValue();
+      LLVM_DEBUG(
+          llvm::dbgs() << "[InstantiateFuncAtCallOp]  reusing full instantiation function: "
+                       << actualNewFuncName << '\n'
+      );
+    } else {
       FuncDefOp newFunc = callTgt.clone();
       newFunc.setSymName(newFuncName);
       convertCalleesInPlace(newFunc, paramNameToConcrete);
@@ -1610,10 +1637,8 @@ private:
           diag.append("failure while creating instantiated function '", actualNewFuncName, '\'');
         });
       }
-    } else {
-      LLVM_DEBUG(
-          llvm::dbgs() << "[InstantiateFuncAtCallOp]  reusing full instantiation function: "
-                       << actualNewFuncName << '\n'
+      tracker.recordFullFuncInstantiation(
+          callTgt.getOperation(), concreteParamKey, newFunc.getSymNameAttr()
       );
     }
 
