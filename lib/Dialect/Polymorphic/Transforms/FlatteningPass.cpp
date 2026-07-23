@@ -502,11 +502,57 @@ evaluateTemplateExprs(TemplateOp templateOp, DenseMap<Attribute, Attribute> &par
   );
 }
 
-namespace Step1_InstantiateStructs {
-
 static inline bool tableOffsetIsntSymbol(MemberReadOp op) {
   return !llvm::isa_and_present<SymbolRefAttr>(op.getTableOffset().value_or(nullptr));
 }
+
+class ClonedMemberReadOpPattern
+    : public SymbolUserHelper<ClonedMemberReadOpPattern, MemberReadOp, IntegerAttr> {
+  using super = SymbolUserHelper<ClonedMemberReadOpPattern, MemberReadOp, IntegerAttr>;
+
+public:
+  ClonedMemberReadOpPattern(
+      TypeConverter &converter, MLIRContext *ctx,
+      const DenseMap<Attribute, Attribute> &paramNameToInstantiatedValue
+  )
+      // benefit>0 so this applies instead of GeneralTypeReplacePattern<MemberReadOp>
+      : super(converter, ctx, /*patternBenefit=*/1, paramNameToInstantiatedValue) {}
+
+  Attribute getNameAttr(MemberReadOp op) const override {
+    return op.getTableOffset().value_or(nullptr);
+  }
+
+  LogicalResult handleRewrite(
+      Attribute, MemberReadOp op, OpAdaptor, ConversionPatternRewriter &rewriter, IntegerAttr a
+  ) const {
+    rewriter.modifyOpInPlace(op, [&]() {
+      op.setTableOffsetAttr(rewriter.getIndexAttr(fromAPInt(a.getValue())));
+    });
+
+    return success();
+  }
+
+  LogicalResult handleDefaultRewrite(
+      Attribute, MemberReadOp op, OpAdaptor, ConversionPatternRewriter &, Attribute a
+  ) const override {
+    return op->emitOpError().append(
+        "table offset requires an integer template value, but found ", a
+    );
+  }
+
+  LogicalResult matchAndRewrite(
+      MemberReadOp op, OpAdaptor adaptor, ConversionPatternRewriter &rewriter
+  ) const override {
+    LLVM_DEBUG(llvm::dbgs() << "[ClonedMemberReadOpPattern]   MemberReadOp: " << op << '\n';);
+    if (tableOffsetIsntSymbol(op)) {
+      return failure();
+    }
+
+    return super::matchAndRewrite(op, adaptor, rewriter);
+  }
+};
+
+namespace Step1_InstantiateStructs {
 
 /// Implements cloning a `StructDefOp` for a specific instantiation site, using the concrete
 /// parameters from the instantiation to replace parameters from the original `StructDefOp`.
@@ -587,54 +633,6 @@ class StructCloner {
         }
         return inputTy;
       });
-    }
-  };
-
-  class ClonedStructMemberReadOpPattern
-      : public SymbolUserHelper<ClonedStructMemberReadOpPattern, MemberReadOp, IntegerAttr> {
-    using super = SymbolUserHelper<ClonedStructMemberReadOpPattern, MemberReadOp, IntegerAttr>;
-
-  public:
-    ClonedStructMemberReadOpPattern(
-        TypeConverter &converter, MLIRContext *ctx,
-        const DenseMap<Attribute, Attribute> &paramNameToInstantiatedValue
-    )
-        // benefit>0 so this applies instead of GeneralTypeReplacePattern<MemberReadOp>
-        : super(converter, ctx, /*patternBenefit=*/1, paramNameToInstantiatedValue) {}
-
-    Attribute getNameAttr(MemberReadOp op) const override {
-      return op.getTableOffset().value_or(nullptr);
-    }
-
-    LogicalResult handleRewrite(
-        Attribute, MemberReadOp op, OpAdaptor, ConversionPatternRewriter &rewriter, IntegerAttr a
-    ) const {
-      rewriter.modifyOpInPlace(op, [&]() {
-        op.setTableOffsetAttr(rewriter.getIndexAttr(fromAPInt(a.getValue())));
-      });
-
-      return success();
-    }
-
-    LogicalResult handleDefaultRewrite(
-        Attribute, MemberReadOp op, OpAdaptor, ConversionPatternRewriter &, Attribute a
-    ) const override {
-      return op->emitOpError().append(
-          "table offset requires an integer template value, but found ", a
-      );
-    }
-
-    LogicalResult matchAndRewrite(
-        MemberReadOp op, OpAdaptor adaptor, ConversionPatternRewriter &rewriter
-    ) const override {
-      LLVM_DEBUG(
-          llvm::dbgs() << "[ClonedStructMemberReadOpPattern]   MemberReadOp: " << op << '\n';
-      );
-      if (tableOffsetIsntSymbol(op)) {
-        return failure();
-      }
-
-      return super::matchAndRewrite(op, adaptor, rewriter);
     }
   };
 
@@ -786,7 +784,7 @@ class StructCloner {
     patterns.add<ClonedBodyConstReadOpPattern>(
         tyConv, ctx, paramNameToConcrete, tracker_.delayedDiagnosticSet(newLocalType)
     );
-    patterns.add<ClonedStructMemberReadOpPattern>(tyConv, ctx, paramNameToConcrete);
+    patterns.add<ClonedMemberReadOpPattern>(tyConv, ctx, paramNameToConcrete);
     if (failed(applyFullConversion(newStruct, target, std::move(patterns)))) {
       LLVM_DEBUG(llvm::dbgs() << "[StructCloner]   instantiating body of struct failed \n");
       return failure();
@@ -1273,7 +1271,7 @@ static LogicalResult applyBodyConversions(
 ) {
   MLIRContext *ctx = op.getContext();
   FuncInstTypeConverter tyConv(paramNameToConcrete);
-  ConversionTarget target = newConverterDefinedTarget<>(tyConv, ctx);
+  ConversionTarget target = newConverterDefinedTarget<>(tyConv, ctx, tableOffsetIsntSymbol);
   target.addDynamicallyLegalOp<ConstReadOp>([&tyConv](ConstReadOp p) {
     // Legal if it's not in the map of concrete attribute instantiations
     return !tyConv.containsParam(p.getConstNameAttr());
@@ -1284,6 +1282,7 @@ static LogicalResult applyBodyConversions(
       tyConv, ctx, tyConv.getParamMap(), delayedDiagnostics
   );
   bodyPatterns.add<ClonedBodyArrayReadOpPattern, ClonedBodyArrayWriteOpPattern>(tyConv, ctx);
+  bodyPatterns.add<ClonedMemberReadOpPattern>(tyConv, ctx, paramNameToConcrete);
   if (failed(applyFullConversion(newFunc, target, std::move(bodyPatterns)))) {
     return failure();
   }

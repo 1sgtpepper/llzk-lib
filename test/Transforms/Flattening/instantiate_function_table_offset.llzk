@@ -1,0 +1,34 @@
+// RUN: llzk-opt -llzk-flatten %s | FileCheck %s
+
+module attributes {llzk.lang} {
+  struct.def @Data {
+    struct.member @value : !felt.type<"bn128"> {column, llzk.pub}
+
+    function.def @compute() -> !struct.type<@Data> {
+      %self = struct.new : !struct.type<@Data>
+      function.return %self : !struct.type<@Data>
+    }
+
+    function.def @constrain(%self: !struct.type<@Data>) {
+      function.return
+    }
+  }
+
+  poly.template @OffsetTemplate {
+    poly.param @Offset
+
+    function.def @read(%data: !struct.type<@Data>) -> !felt.type<"bn128"> {
+      %value = struct.readm %data[@value] : <@Data>, !felt.type<"bn128"> {tableOffset = @Offset}
+      function.return %value : !felt.type<"bn128">
+    }
+  }
+
+  function.def @main(%data: !struct.type<@Data>) -> !felt.type<"bn128"> {
+    %value = function.call @OffsetTemplate::@read<[2]>(%data) : (!struct.type<@Data>) -> !felt.type<"bn128">
+    function.return %value : !felt.type<"bn128">
+  }
+}
+// CHECK-LABEL: function.def @OffsetTemplate_2_read(
+// CHECK:         struct.readm {{.*}} {tableOffset = 2 : index}
+// CHECK-LABEL: function.def @main(
+// CHECK:         function.call @OffsetTemplate_2_read(
