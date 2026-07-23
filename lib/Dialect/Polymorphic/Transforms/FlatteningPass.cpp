@@ -1398,15 +1398,15 @@ public:
 
     SymbolRefAttr originalCalleeAttr = op.getCalleeAttr();
     FailureOr<SymbolRefAttr> newCalleeAttr =
-        layout.remainingNames.empty()
-            ? instantiateFully(
-                  op, rewriter, symTables, callTgt, parentTemplate, parentModule,
-                  layout.templateNameWithAttrs, layout.concreteParamKey, paramNameToConcrete, tracker_
-              )
-            : instantiatePartially(
-                  op, rewriter, symTables, callTgt, parentTemplate, parentModule, layout,
-                  paramNameToConcrete, tracker_
-              );
+        layout.remainingNames.empty() ? instantiateFully(
+                                            op, rewriter, symTables, callTgt, parentTemplate,
+                                            parentModule, layout.templateNameWithAttrs,
+                                            layout.concreteParamKey, paramNameToConcrete, tracker_
+                                        )
+                                      : instantiatePartially(
+                                            op, rewriter, symTables, callTgt, parentTemplate,
+                                            parentModule, layout, paramNameToConcrete, tracker_
+                                        );
     if (failed(newCalleeAttr)) {
       return failure();
     }
