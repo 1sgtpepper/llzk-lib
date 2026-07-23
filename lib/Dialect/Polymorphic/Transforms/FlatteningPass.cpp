@@ -99,6 +99,7 @@ static void reportDelayedDiagnostics(CallOp caller, SmallVector<Diagnostic> &&di
 }
 
 class ConversionTracker {
+  /// Exact specialization identity: source definition plus ordered concrete parameter bindings.
   using FuncInstantiationKey = std::pair<Operation *, ArrayAttr>;
 
   /// Published result of one successful partial-function conversion.
@@ -123,6 +124,7 @@ class ConversionTracker {
   DenseSet<SymbolRefAttr> funcInstantiations;
   /// Full function specializations are keyed by source definition and exact concrete bindings.
   /// Generated symbol spelling is only a value because user symbols can collide with it.
+  /// These caches are queried during instantiation, before cleanup can erase source definitions.
   DenseMap<FuncInstantiationKey, StringAttr> fullFuncInstantiations;
   /// Successful partial functions keyed by their source operation and exact concrete bindings.
   /// The rendered symbol names are only values; they are never used as cache identity.
