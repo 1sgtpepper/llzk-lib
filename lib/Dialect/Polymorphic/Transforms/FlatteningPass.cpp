@@ -507,7 +507,7 @@ static inline bool tableOffsetIsntSymbol(MemberReadOp op) {
 }
 
 /// Materialize symbolic member table offsets only from integer template bindings. Member tables are
-/// index-addressed, so other concrete attribute kinds must diagnose instead of being coerced.
+/// index-addressed, so other concrete attribute kinds emit diagnostics instead of being coerced.
 class ClonedMemberReadOpPattern
     : public SymbolUserHelper<ClonedMemberReadOpPattern, MemberReadOp, IntegerAttr> {
   using super = SymbolUserHelper<ClonedMemberReadOpPattern, MemberReadOp, IntegerAttr>;
