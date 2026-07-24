@@ -23,6 +23,47 @@ module attributes {llzk.lang} {
 }
 
 // -----
+
+// Repeated target parameters must infer one value; conflicting arguments are not an implicit
+// choice for either omitted or explicit instantiations.
+module attributes {llzk.lang} {
+  poly.template @BoxTemplate {
+    poly.param @M
+
+    struct.def @Box {
+      function.def @compute() -> !struct.type<@BoxTemplate::@Box<[@M]>> {
+        %self = struct.new : <@BoxTemplate::@Box<[@M]>>
+        function.return %self : !struct.type<@BoxTemplate::@Box<[@M]>>
+      }
+
+      function.def @constrain(%self: !struct.type<@BoxTemplate::@Box<[@M]>>) { function.return }
+    }
+  }
+
+  poly.template @Target {
+    poly.param @N : !felt.type<"bn128">
+
+    function.def @accept(
+        %left: !struct.type<@BoxTemplate::@Box<[@N]>>,
+        %right: !struct.type<@BoxTemplate::@Box<[@N]>>
+    ) {
+      function.return
+    }
+  }
+
+  function.def @rejectConflictingInference(
+      %goldilocks: !struct.type<@BoxTemplate::@Box<[#felt<const 35 : !felt.type<"goldilocks">>]>>,
+      %bn128: !struct.type<@BoxTemplate::@Box<[#felt<const 35 : !felt.type<"bn128">>]>>
+  ) {
+    // expected-error@+1 {{'function.call' op cannot infer a unique template instantiation value for parameter "@N" from function type signature}}
+    function.call @Target::@accept(%goldilocks, %bn128) : (!struct.type<@BoxTemplate::@Box<[#felt<const 35 : !felt.type<"goldilocks">>]>>, !struct.type<@BoxTemplate::@Box<[#felt<const 35 : !felt.type<"bn128">>]>>) -> ()
+    // expected-error@+1 {{'function.call' op cannot infer a unique template instantiation value for parameter "@N" from function type signature}}
+    function.call @Target::@accept<[#felt<const 35>]>(%goldilocks, %bn128) : (!struct.type<@BoxTemplate::@Box<[#felt<const 35 : !felt.type<"goldilocks">>]>>, !struct.type<@BoxTemplate::@Box<[#felt<const 35 : !felt.type<"bn128">>]>>) -> ()
+    function.return
+  }
+}
+
+// -----
 module attributes {llzk.lang} {
   poly.template @GlobalFunc {
     poly.param @A

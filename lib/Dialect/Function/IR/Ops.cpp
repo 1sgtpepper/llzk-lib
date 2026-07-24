@@ -713,9 +713,16 @@ LogicalResult CallOp::verifyTemplateParamsMatchInferred(
   if (isNullOrEmpty(callParams)) {
     for (TemplateParamOp paramOp : targetParamDefs) {
       auto it = unifications.find({FlatSymbolRefAttr::get(paramOp.getSymNameAttr()), Side::RHS});
-      if (it != unifications.end() && it->second &&
-          failed(verifyTemplateParamCompatibility(it->second, paramOp))) {
-        return failure();
+      if (it != unifications.end()) {
+        if (!it->second) {
+          return this->emitOpError().append(
+              "cannot infer a unique template instantiation value for parameter \"@",
+              paramOp.getName(), "\" from function type signature"
+          );
+        }
+        if (failed(verifyTemplateParamCompatibility(it->second, paramOp))) {
+          return failure();
+        }
       }
     }
     return success();
@@ -732,6 +739,12 @@ LogicalResult CallOp::verifyTemplateParamsMatchInferred(
     }
     auto it = unifications.find({FlatSymbolRefAttr::get(paramOp.getSymNameAttr()), Side::RHS});
     Attribute inferred = it != unifications.end() ? it->second : nullptr;
+    if (it != unifications.end() && !inferred) {
+      return this->emitOpError().append(
+          "cannot infer a unique template instantiation value for parameter \"@", paramOp.getName(),
+          "\" from function type signature"
+      );
+    }
     if (inferred && failed(verifyTemplateParamCompatibility(inferred, paramOp))) {
       return failure();
     }
