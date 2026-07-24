@@ -712,6 +712,12 @@ LogicalResult CallOp::verifyTemplateParamsMatchInferred(
   ArrayAttr callParams = this->getTemplateParamsAttr();
   if (isNullOrEmpty(callParams)) {
     for (TemplateParamOp paramOp : targetParamDefs) {
+      // Type-variable inference owns omitted type-variable arguments. Verify other omitted
+      // values against their declared restrictions now.
+      if (std::optional<Type> declaredType = paramOp.getTypeOpt();
+          declaredType && llvm::isa<TypeVarType>(*declaredType)) {
+        continue;
+      }
       auto it = unifications.find({FlatSymbolRefAttr::get(paramOp.getSymNameAttr()), Side::RHS});
       if (it == unifications.end()) {
         return this->emitOpError().append(
@@ -724,9 +730,6 @@ LogicalResult CallOp::verifyTemplateParamsMatchInferred(
             "cannot infer a unique template instantiation value for parameter \"@",
             paramOp.getName(), "\" from function type signature"
         );
-      }
-      if (llvm::isa<SymbolRefAttr>(it->second)) {
-        continue;
       }
       if (failed(verifyTemplateParamCompatibility(it->second, paramOp))) {
         return failure();
@@ -1202,19 +1205,9 @@ FunctionType CallOp::getTypeSignature() {
 
 FailureOr<UnificationMap> CallOp::unifyTypeSignature(FunctionType other) {
   UnificationMap unifications;
-  if (functionTypesUnify(getTypeSignature(), other, {}, &unifications)) {
-    llvm::SmallDenseSet<SymbolRefAttr> sourceSymbols;
-    llzk::getSymbolsUsedIn(getTypeSignature().getInputs(), sourceSymbols);
-    llzk::getSymbolsUsedIn(getTypeSignature().getResults(), sourceSymbols);
-    llvm::SmallDenseSet<SymbolRefAttr> targetSymbols;
-    llzk::getSymbolsUsedIn(other.getInputs(), targetSymbols);
-    llzk::getSymbolsUsedIn(other.getResults(), targetSymbols);
-    for (SymbolRefAttr symbol : sourceSymbols) {
-      if (targetSymbols.contains(symbol)) {
-        unifications.try_emplace({symbol, Side::LHS}, symbol);
-        unifications.try_emplace({symbol, Side::RHS}, symbol);
-      }
-    }
+  if (functionTypesUnify(
+          getTypeSignature(), other, {}, &unifications, /*trackEqualSymbolRefs=*/true
+      )) {
     return unifications;
   } else {
     return failure();

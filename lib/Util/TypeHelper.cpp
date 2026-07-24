@@ -653,13 +653,18 @@ using AffineInstantiations = DenseMap<std::pair<AffineMapAttr, Side>, IntegerAtt
 struct UnifierImpl {
   ArrayRef<StringRef> rhsRevPrefix;
   UnificationMap *unifications;
+  bool trackEqualSymbolRefs;
   AffineInstantiations *affineToIntTracker;
   // This optional function can be used to provide an exception to the standard unification
   // rules and return a true/success result when it otherwise may not.
   llvm::function_ref<bool(Type oldTy, Type newTy)> overrideSuccess;
 
-  UnifierImpl(UnificationMap *unificationMap, ArrayRef<StringRef> rhsReversePrefix = {})
-      : rhsRevPrefix(rhsReversePrefix), unifications(unificationMap), affineToIntTracker(nullptr),
+  UnifierImpl(
+      UnificationMap *unificationMap, ArrayRef<StringRef> rhsReversePrefix = {},
+      bool trackEqualSymbolRefsFlag = false
+  )
+      : rhsRevPrefix(rhsReversePrefix), unifications(unificationMap),
+        trackEqualSymbolRefs(trackEqualSymbolRefsFlag), affineToIntTracker(nullptr),
         overrideSuccess(nullptr) {}
 
   UnifierImpl &trackAffineToInt(AffineInstantiations *tracker) {
@@ -766,6 +771,9 @@ struct UnifierImpl {
 
   bool typesUnify(Type lhs, Type rhs) {
     if (lhs == rhs) {
+      if (trackEqualSymbolRefs) {
+        lhs.walk([this](SymbolRefAttr symRef) { track(Side::LHS, symRef, symRef); });
+      }
       return true;
     }
     if (overrideSuccess && overrideSuccess(lhs, rhs)) {
@@ -858,6 +866,11 @@ private:
     assertValidAttrForParamOfType(rhsAttr);
     // Straightforward equality check.
     if (lhsAttr == rhsAttr) {
+      if (trackEqualSymbolRefs) {
+        if (SymbolRefAttr symRef = llvm::dyn_cast<SymbolRefAttr>(lhsAttr)) {
+          track(Side::LHS, symRef, symRef);
+        }
+      }
       return true;
     }
     // AffineMapAttr can unify with IntegerAttr (other than kDynamic) because struct parameter
@@ -965,9 +978,10 @@ bool podTypesUnify(
 
 bool functionTypesUnify(
     FunctionType lhs, FunctionType rhs, ArrayRef<StringRef> rhsReversePrefix,
-    UnificationMap *unifications
+    UnificationMap *unifications, bool trackEqualSymbolRefs
 ) {
-  return UnifierImpl(unifications, rhsReversePrefix).functionTypesUnify(lhs, rhs);
+  return UnifierImpl(unifications, rhsReversePrefix, trackEqualSymbolRefs)
+      .functionTypesUnify(lhs, rhs);
 }
 
 bool typesUnify(
