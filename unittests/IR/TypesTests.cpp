@@ -207,7 +207,6 @@ TEST_F(TypeTests, testShortStringDistinguishesDelimitedFeltFieldNames) {
     Field::addField(fieldC, prime, nullptr);
     return true;
   }();
-
   auto felt = [&](uint64_t value, llvm::StringRef field) {
     return FeltConstAttr::get(&ctx, llvm::APInt(7, value), field);
   };
