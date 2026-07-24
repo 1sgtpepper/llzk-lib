@@ -781,7 +781,25 @@ LogicalResult IncludeOp::verifyTemplateParamCompatibility(
   if (std::optional<Type> declaredType = targetParam.getTypeOpt()) {
     // Note: `declaredType` is restricted by `isValidConstReadType()`
     bool compatible = false;
-    if (llvm::isa<TypeVarType>(*declaredType)) {
+    if (auto sym = llvm::dyn_cast<SymbolRefAttr>(paramFromIncludeOp)) {
+      if (sym.getNestedReferences().empty()) {
+        SymbolTableCollection tables;
+        FailureOr<TemplateOp> parentTemplate = getConstResolutionTemplate(tables, *this);
+        if (failed(parentTemplate)) {
+          return failure();
+        }
+        if (TemplateOp p = *parentTemplate) {
+          auto binding = p.getConstNamed<TemplateSymbolBindingOpInterface>(sym.getRootReference());
+          if (binding) {
+            if (std::optional<Type> actualType = binding.getTypeOpt()) {
+              compatible = typesUnify(*actualType, *declaredType);
+            } else {
+              compatible = true;
+            }
+          }
+        }
+      }
+    } else if (llvm::isa<TypeVarType>(*declaredType)) {
       compatible = llvm::isa<TypeAttr>(paramFromIncludeOp);
     } else if (auto feltType = llvm::dyn_cast<FeltType>(*declaredType)) {
       if (auto feltValue = llvm::dyn_cast<FeltConstAttr>(paramFromIncludeOp)) {
@@ -830,6 +848,12 @@ LogicalResult IncludeOp::verifyTemplateParamsMatchInferred(
   ArrayAttr callParams = this->getTemplateParamsAttr();
   if (isNullOrEmpty(callParams)) {
     for (TemplateParamOp paramOp : targetParamDefs) {
+      // Type-variable inference owns omitted type-variable arguments. Verify other omitted
+      // values against their declared restrictions now.
+      if (std::optional<Type> declaredType = paramOp.getTypeOpt();
+          declaredType && llvm::isa<TypeVarType>(*declaredType)) {
+        continue;
+      }
       auto it = unifications.find({FlatSymbolRefAttr::get(paramOp.getSymNameAttr()), Side::RHS});
       if (it == unifications.end()) {
         return this->emitOpError().append(
@@ -842,9 +866,6 @@ LogicalResult IncludeOp::verifyTemplateParamsMatchInferred(
             "cannot infer a unique template instantiation value for parameter \"@",
             paramOp.getName(), "\" from contract type signature"
         );
-      }
-      if (llvm::isa<SymbolRefAttr>(it->second)) {
-        continue;
       }
       if (failed(verifyTemplateParamCompatibility(it->second, paramOp))) {
         return failure();
@@ -1089,17 +1110,9 @@ FunctionType IncludeOp::getTypeSignature() {
 
 FailureOr<UnificationMap> IncludeOp::unifyTypeSignature(FunctionType other) {
   UnificationMap unifications;
-  if (functionTypesUnify(getTypeSignature(), other, {}, &unifications)) {
-    llvm::SmallDenseSet<SymbolRefAttr> sourceSymbols;
-    llzk::getSymbolsUsedIn(getTypeSignature().getInputs(), sourceSymbols);
-    llvm::SmallDenseSet<SymbolRefAttr> targetSymbols;
-    llzk::getSymbolsUsedIn(other.getInputs(), targetSymbols);
-    for (SymbolRefAttr symbol : sourceSymbols) {
-      if (targetSymbols.contains(symbol)) {
-        unifications.try_emplace({symbol, Side::LHS}, symbol);
-        unifications.try_emplace({symbol, Side::RHS}, symbol);
-      }
-    }
+  if (functionTypesUnify(
+          getTypeSignature(), other, {}, &unifications, /*trackEqualSymbolRefs=*/true
+      )) {
     return unifications;
   }
   return failure();
