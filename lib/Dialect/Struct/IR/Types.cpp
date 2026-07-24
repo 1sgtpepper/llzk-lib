@@ -61,7 +61,7 @@ FailureOr<SymbolLookupResult<StructDefOp>> StructType::getDefinition(
           continue;
         }
         auto feltType = llvm::dyn_cast<llzk::felt::FeltType>(*restriction);
-        if (!feltType || failed(feltValue.getMaterializedType(feltType))) {
+        if (!feltType || failed(feltValue.materializeAs(feltType))) {
           return op->emitError() << "instantiation value '" << value
                                  << "' is not compatible with parameter \"@" << paramOp.getName()
                                  << "\" type restriction " << *restriction;

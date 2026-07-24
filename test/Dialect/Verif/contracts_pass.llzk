@@ -549,9 +549,22 @@ module attributes {llzk.lang} {
     }
   }
 }
-// CHECK-LABEL: verif.contract @Wrapper
-// CHECK:         verif.include @SpecTemplate::@Base<[#felt<const 9>]>()
-// CHECK:         verif.include @SpecTemplate::@Base<[#felt<const 9 : <"bn128">>]>()
+// CHECK-LABEL: module attributes {llzk.lang} {
+// CHECK-NEXT:    poly.template @SpecTemplate {
+// CHECK-NEXT:      poly.param @N : !felt.type<"bn128">
+// CHECK-NEXT:      function.def @token() {
+// CHECK-NEXT:        function.return
+// CHECK-NEXT:      }
+// CHECK-NEXT:      verif.contract @Base for @SpecTemplate::@token () {
+// CHECK-NEXT:        %[[VAL_0:[0-9a-zA-Z_\.]+]] = arith.constant true
+// CHECK-NEXT:        verif.ensure_compute %[[VAL_0]]
+// CHECK-NEXT:      }
+// CHECK-NEXT:      verif.contract @Wrapper for @SpecTemplate::@token () {
+// CHECK-NEXT:        verif.include @SpecTemplate::@Base<[#felt<const 9>]>() : () -> ()
+// CHECK-NEXT:        verif.include @SpecTemplate::@Base<[#felt<const 9 : <"bn128">>]>() : () -> ()
+// CHECK-NEXT:      }
+// CHECK-NEXT:    }
+// CHECK-NEXT:  }
 
 // -----
 
@@ -593,8 +606,36 @@ module attributes {llzk.lang} {
     verif.include @Target::@Base<[#felt<const 35>]>(%value) : (!struct.type<@BoxTemplate::@Box<[#felt<const 35 : !felt.type<"bn128">>]>>) -> ()
   }
 }
-// CHECK-LABEL: verif.contract @MatchingFieldlessExplicitWithInferredField
-// CHECK:         verif.include @Target::@Base<[#felt<const 35>]>
+// CHECK-LABEL: module attributes {llzk.lang} {
+// CHECK-NEXT:    poly.template @BoxTemplate {
+// CHECK-NEXT:      poly.param @P
+// CHECK-NEXT:      struct.def @Box {
+// CHECK-NEXT:        function.def @compute() -> !struct.type<@BoxTemplate::@Box<[@P]>> attributes {function.allow_witness} {
+// CHECK-NEXT:          %[[VAL_0:[0-9a-zA-Z_\.]+]] = struct.new : <@BoxTemplate::@Box<[@P]>>
+// CHECK-NEXT:          function.return %[[VAL_0]] : !struct.type<@BoxTemplate::@Box<[@P]>>
+// CHECK-NEXT:        }
+// CHECK-NEXT:        function.def @constrain(%[[VAL_1:[0-9a-zA-Z_\.]+]]: !struct.type<@BoxTemplate::@Box<[@P]>>) attributes {function.allow_constraint} {
+// CHECK-NEXT:          function.return
+// CHECK-NEXT:        }
+// CHECK-NEXT:      }
+// CHECK-NEXT:    }
+// CHECK-NEXT:    poly.template @Target {
+// CHECK-NEXT:      poly.param @N : !felt.type<"bn128">
+// CHECK-NEXT:      function.def @token(%[[VAL_2:[0-9a-zA-Z_\.]+]]: !struct.type<@BoxTemplate::@Box<[@N]>>) {
+// CHECK-NEXT:        function.return
+// CHECK-NEXT:      }
+// CHECK-NEXT:      verif.contract @Base for @Target::@token (%[[VAL_3:[0-9a-zA-Z_\.]+]]: !struct.type<@BoxTemplate::@Box<[@N]>>) {
+// CHECK-NEXT:        %[[VAL_4:[0-9a-zA-Z_\.]+]] = arith.constant true
+// CHECK-NEXT:        verif.ensure_compute %[[VAL_4]]
+// CHECK-NEXT:      }
+// CHECK-NEXT:    }
+// CHECK-NEXT:    function.def @caller(%[[VAL_5:[0-9a-zA-Z_\.]+]]: !struct.type<@BoxTemplate::@Box<[#felt<const 35 : <"bn128">>]>>) {
+// CHECK-NEXT:      function.return
+// CHECK-NEXT:    }
+// CHECK-NEXT:    verif.contract @MatchingFieldlessExplicitWithInferredField for @caller (%[[VAL_6:[0-9a-zA-Z_\.]+]]: !struct.type<@BoxTemplate::@Box<[#felt<const 35 : <"bn128">>]>>) {
+// CHECK-NEXT:      verif.include @Target::@Base<[#felt<const 35>]>(%[[VAL_6]]) : (!struct.type<@BoxTemplate::@Box<[#felt<const 35 : <"bn128">>]>>) -> ()
+// CHECK-NEXT:    }
+// CHECK-NEXT:  }
 
 // -----
 

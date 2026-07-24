@@ -665,7 +665,7 @@ CallOp::verifyTemplateParamCompatibility(Attribute paramFromCallOp, TemplatePara
       compatible = llvm::isa<TypeAttr>(paramFromCallOp);
     } else if (auto feltType = llvm::dyn_cast<FeltType>(*declaredType)) {
       if (auto feltValue = llvm::dyn_cast<FeltConstAttr>(paramFromCallOp)) {
-        compatible = succeeded(feltValue.getMaterializedType(feltType));
+        compatible = succeeded(feltValue.materializeAs(feltType));
       } else if (auto intValue = llvm::dyn_cast<IntegerAttr>(paramFromCallOp)) {
         compatible = isValidConstReadType(intValue.getType());
       }
@@ -762,9 +762,9 @@ LogicalResult CallOp::verifyTemplateParamsMatchInferred(
       if (auto feltType = llvm::dyn_cast<FeltType>(*declaredType)) {
         auto materialize = [&](Attribute value) -> Attribute {
           if (auto feltValue = llvm::dyn_cast_or_null<FeltConstAttr>(value)) {
-            FailureOr<FeltType> materializedType = feltValue.getMaterializedType(feltType);
-            assert(succeeded(materializedType) && "template parameter compatibility was verified");
-            return FeltConstAttr::get(getContext(), feltValue.getValue(), *materializedType);
+            FailureOr<FeltConstAttr> materialized = feltValue.materializeAs(feltType);
+            assert(succeeded(materialized) && "template parameter compatibility was verified");
+            return *materialized;
           }
           return value;
         };

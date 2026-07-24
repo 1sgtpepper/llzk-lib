@@ -125,9 +125,23 @@ module attributes {llzk.lang} {
     function.return
   }
 }
-// CHECK-LABEL: function.def @matchingFeltFields(
-// CHECK-SAME:    %{{.*}}: !struct.type<@T::@S<[#felt<const 35>]>>,
-// CHECK-SAME:    %{{.*}}: !struct.type<@T::@S<[#felt<const 35 : <"bn128">>]>>
+// CHECK-LABEL: module attributes {llzk.lang} {
+// CHECK-NEXT:    poly.template @T {
+// CHECK-NEXT:      poly.param @N : !felt.type<"bn128">
+// CHECK-NEXT:      struct.def @S {
+// CHECK-NEXT:        function.def @compute() -> !struct.type<@T::@S<[@N]>> attributes {function.allow_witness} {
+// CHECK-NEXT:          %[[VAL_0:[0-9a-zA-Z_\.]+]] = struct.new : <@T::@S<[@N]>>
+// CHECK-NEXT:          function.return %[[VAL_0]] : !struct.type<@T::@S<[@N]>>
+// CHECK-NEXT:        }
+// CHECK-NEXT:        function.def @constrain(%[[VAL_1:[0-9a-zA-Z_\.]+]]: !struct.type<@T::@S<[@N]>>) attributes {function.allow_constraint} {
+// CHECK-NEXT:          function.return
+// CHECK-NEXT:        }
+// CHECK-NEXT:      }
+// CHECK-NEXT:    }
+// CHECK-NEXT:    function.def @matchingFeltFields(%[[VAL_2:[0-9a-zA-Z_\.]+]]: !struct.type<@T::@S<[#felt<const 35>]>>, %[[VAL_3:[0-9a-zA-Z_\.]+]]: !struct.type<@T::@S<[#felt<const 35 : <"bn128">>]>>) {
+// CHECK-NEXT:      function.return
+// CHECK-NEXT:    }
+// CHECK-NEXT:  }
 
 // -----
 module attributes {llzk.lang} {

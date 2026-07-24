@@ -264,9 +264,20 @@ module attributes {llzk.lang} {
     function.return
   }
 }
-// CHECK-LABEL: function.def @matchingFeltFields()
-// CHECK:         function.call @GlobalFunc::@id<[#felt<const 35>]>()
-// CHECK:         function.call @GlobalFunc::@id<[#felt<const 35 : <"bn128">>]>()
+// CHECK-LABEL: module attributes {llzk.lang} {
+// CHECK-NEXT:    poly.template @GlobalFunc {
+// CHECK-NEXT:      poly.param @A : !felt.type<"bn128">
+// CHECK-NEXT:      function.def @id() -> index {
+// CHECK-NEXT:        %[[VAL_0:[0-9a-zA-Z_\.]+]] = arith.constant 7 : index
+// CHECK-NEXT:        function.return %[[VAL_0]] : index
+// CHECK-NEXT:      }
+// CHECK-NEXT:    }
+// CHECK-NEXT:    function.def @matchingFeltFields() {
+// CHECK-NEXT:      %[[VAL_1:[0-9a-zA-Z_\.]+]] = function.call @GlobalFunc::@id<[#felt<const 35>]>() : () -> index
+// CHECK-NEXT:      %[[VAL_2:[0-9a-zA-Z_\.]+]] = function.call @GlobalFunc::@id<[#felt<const 35 : <"bn128">>]>() : () -> index
+// CHECK-NEXT:      function.return
+// CHECK-NEXT:    }
+// CHECK-NEXT:  }
 
 // -----
 
@@ -298,8 +309,30 @@ module attributes {llzk.lang} {
     function.return
   }
 }
-// CHECK-LABEL: function.def @matchingFieldlessExplicitWithInferredField
-// CHECK:         function.call @Target::@accept<[#felt<const 35>]>
+// CHECK-LABEL: module attributes {llzk.lang} {
+// CHECK-NEXT:    poly.template @BoxTemplate {
+// CHECK-NEXT:      poly.param @P
+// CHECK-NEXT:      struct.def @Box {
+// CHECK-NEXT:        function.def @compute() -> !struct.type<@BoxTemplate::@Box<[@P]>> attributes {function.allow_witness} {
+// CHECK-NEXT:          %[[VAL_0:[0-9a-zA-Z_\.]+]] = struct.new : <@BoxTemplate::@Box<[@P]>>
+// CHECK-NEXT:          function.return %[[VAL_0]] : !struct.type<@BoxTemplate::@Box<[@P]>>
+// CHECK-NEXT:        }
+// CHECK-NEXT:        function.def @constrain(%[[VAL_1:[0-9a-zA-Z_\.]+]]: !struct.type<@BoxTemplate::@Box<[@P]>>) attributes {function.allow_constraint} {
+// CHECK-NEXT:          function.return
+// CHECK-NEXT:        }
+// CHECK-NEXT:      }
+// CHECK-NEXT:    }
+// CHECK-NEXT:    poly.template @Target {
+// CHECK-NEXT:      poly.param @N : !felt.type<"bn128">
+// CHECK-NEXT:      function.def @accept(%[[VAL_2:[0-9a-zA-Z_\.]+]]: !struct.type<@BoxTemplate::@Box<[@N]>>) {
+// CHECK-NEXT:        function.return
+// CHECK-NEXT:      }
+// CHECK-NEXT:    }
+// CHECK-NEXT:    function.def @matchingFieldlessExplicitWithInferredField(%[[VAL_3:[0-9a-zA-Z_\.]+]]: !struct.type<@BoxTemplate::@Box<[#felt<const 35 : <"bn128">>]>>) {
+// CHECK-NEXT:      function.call @Target::@accept<[#felt<const 35>]>(%[[VAL_3]]) : (!struct.type<@BoxTemplate::@Box<[#felt<const 35 : <"bn128">>]>>) -> ()
+// CHECK-NEXT:      function.return
+// CHECK-NEXT:    }
+// CHECK-NEXT:  }
 
 // -----
 

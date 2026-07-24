@@ -401,15 +401,13 @@ public:
     if (!ty) {
       return op->emitOpError().append("unexpected result type ", newResTy);
     }
-    FailureOr<FeltType> materializedType = a.getMaterializedType(ty);
-    if (failed(materializedType)) {
+    FailureOr<FeltConstAttr> materialized = a.materializeAs(ty);
+    if (failed(materialized)) {
       return rewriter.notifyMatchFailure(op, [&](Diagnostic &diag) {
         diag << "cannot materialize constant from field '" << a.getType() << "' as '" << ty << "'";
       });
     }
-    replaceOpWithNewOp<FeltConstantOp>(
-        rewriter, op, FeltConstAttr::get(getContext(), a.getValue(), *materializedType)
-    );
+    replaceOpWithNewOp<FeltConstantOp>(rewriter, op, *materialized);
     return success();
   }
 };
@@ -515,11 +513,11 @@ evaluateExpr(TemplateExprOp exprOp, const DenseMap<Attribute, Attribute> &paramN
         if (auto intAttr = llvm::dyn_cast<IntegerAttr>(val)) {
           val = FeltConstAttr::get(bodyOp.getContext(), intAttr.getValue(), feltTy);
         } else if (auto feltAttr = llvm::dyn_cast<FeltConstAttr>(val)) {
-          FailureOr<FeltType> materializedType = feltAttr.getMaterializedType(feltTy);
-          if (failed(materializedType)) {
+          FailureOr<FeltConstAttr> materialized = feltAttr.materializeAs(feltTy);
+          if (failed(materialized)) {
             return std::nullopt;
           }
-          val = FeltConstAttr::get(bodyOp.getContext(), feltAttr.getValue(), *materializedType);
+          val = *materialized;
         }
       }
       valueMap[constReadOp.getResult()] = val;
