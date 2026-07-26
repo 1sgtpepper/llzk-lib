@@ -91,3 +91,51 @@ module attributes {llzk.lang} {
 // CHECK-NEXT:      function.return %[[VAL_4]] : index
 // CHECK-NEXT:    }
 // CHECK-NEXT:  }
+
+// -----
+
+module attributes {
+  llzk.fields = [
+    #felt.field<"x\1A", 101>,
+    #felt.field<"x%1A", 101>
+  ],
+  llzk.lang
+} {
+  poly.template @T {
+    poly.param @N : !felt.type
+
+    function.def @value() -> index {
+      %value = arith.constant 7 : index
+      function.return %value : index
+    }
+  }
+
+  function.def @main() -> index {
+    %first = function.call @T::@value<[#felt<const 35 : !felt.type<"x\1A">>]>() : () -> index
+    %second = function.call @T::@value<[#felt<const 35 : !felt.type<"x%1A">>]>() : () -> index
+    function.return %second : index
+  }
+}
+
+// CHECK-LABEL: module attributes {llzk.fields = [#felt.field<"x\1A", 101>, #felt.field<"x%1A", 101>], llzk.lang} {
+// CHECK-NEXT:    function.def @"T_f<35:4:x%1A>_value"() -> index {
+// CHECK-NEXT:      %[[VAL_0:[0-9a-zA-Z_\.]+]] = arith.constant 7 : index
+// CHECK-NEXT:      function.return %[[VAL_0]] : index
+// CHECK-NEXT:    }
+// CHECK-NEXT:    function.def @"T_f<35:6:x%251A>_value"() -> index {
+// CHECK-NEXT:      %[[VAL_1:[0-9a-zA-Z_\.]+]] = arith.constant 7 : index
+// CHECK-NEXT:      function.return %[[VAL_1]] : index
+// CHECK-NEXT:    }
+// CHECK-NEXT:    poly.template @T {
+// CHECK-NEXT:      poly.param @N : !felt.type
+// CHECK-NEXT:      function.def @value() -> index {
+// CHECK-NEXT:        %[[VAL_2:[0-9a-zA-Z_\.]+]] = arith.constant 7 : index
+// CHECK-NEXT:        function.return %[[VAL_2]] : index
+// CHECK-NEXT:      }
+// CHECK-NEXT:    }
+// CHECK-NEXT:    function.def @main() -> index {
+// CHECK-NEXT:      %[[VAL_3:[0-9a-zA-Z_\.]+]] = function.call @"T_f<35:4:x%1A>_value"() : () -> index
+// CHECK-NEXT:      %[[VAL_4:[0-9a-zA-Z_\.]+]] = function.call @"T_f<35:6:x%251A>_value"() : () -> index
+// CHECK-NEXT:      function.return %[[VAL_4]] : index
+// CHECK-NEXT:    }
+// CHECK-NEXT:  }
