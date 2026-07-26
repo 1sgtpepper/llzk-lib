@@ -906,7 +906,7 @@ struct KnownTargetVerifier : public CallOpVerifier {
       auto realParams = tgtOpParent.getConstOps<TemplateParamOp>();
       ArrayAttr callParams = callOp->getTemplateParamsAttr();
 
-      // When there is no instantiation list, just ensure that it's not required.
+      // When every parameter appears in the signature, infer and validate omitted arguments.
       if (isNullOrEmpty(callParams)) {
         llvm::SmallDenseSet<SymbolRefAttr> referencedInSignature;
         llzk::getSymbolsUsedIn(tgtType.getInputs(), referencedInSignature);

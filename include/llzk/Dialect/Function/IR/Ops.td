@@ -534,10 +534,10 @@ def CallOp : FunctionDialectOp<
         ::llvm::iterator_range<::mlir::Region::op_iterator<::llzk::polymorphic::TemplateParamOp>> targetParamDefs
     );
 
-    /// Verify that each template parameter value provided in this `CallOp` is consistent with
-    /// the value inferred for the target `TemplateParamOp` in the given `UnificationMap`. The
-    /// `UnificationMap` is expected to contain the unification results of this `CallOp` against
-    /// the target function type signature.
+    /// Verify template arguments after unifying this `CallOp` with the target function type
+    /// signature. If the instantiation list is omitted, each non-type-variable parameter must
+    /// have a unique inferred value compatible with its declared type. If the list is present,
+    /// each non-wildcard value must be consistent with any inferred value.
     ///
     /// When the instantiation list is present, it must contain one entry per template parameter.
     ::mlir::LogicalResult verifyTemplateParamsMatchInferred(

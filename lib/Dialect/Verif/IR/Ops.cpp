@@ -966,18 +966,18 @@ struct KnownTargetVerifier : public IncludeOpVerifier {
   LogicalResult verifyTemplateParams() override {
     Operation *tgtOp = tgt.getOperation();
     if (TemplateOp tgtOpParent = getParentOfType<TemplateOp>(tgtOp)) {
-      // When the target function is a free function within a TemplateOp, the IncludeOp may have
+      // When the target contract is within a TemplateOp, the IncludeOp may have
       // template parameter instantiations that must be checked against the template parameters.
-      // - If the function type signature references all template parameters, then the parameter
+      // - If the contract type signature references all template parameters, then the parameter
       //   instantiation list on the IncludeOp is optional, otherwise it's required.
       // - If present, the instantiation list must provide a value for every template parameter
       //   and the value must be type-compatible with the parameter's declared type (if any).
-      // - If present, the instantiation list must result in a function type signature that can
-      //   be unified with the IncludeOp's operand and result types.
+      // - If present, the instantiation list must result in a contract type signature that can
+      //   be unified with the IncludeOp's operand types.
       auto realParams = tgtOpParent.getConstOps<TemplateParamOp>();
       ArrayAttr callParams = includeOp->getTemplateParamsAttr();
 
-      // When there is no instantiation list, just ensure that it's not required.
+      // When every parameter appears in the signature, infer and validate omitted arguments.
       if (isNullOrEmpty(callParams)) {
         llvm::SmallDenseSet<SymbolRefAttr> referencedInSignature;
         llzk::getSymbolsUsedIn(tgtType.getInputs(), referencedInSignature);
@@ -1022,7 +1022,7 @@ struct KnownTargetVerifier : public IncludeOpVerifier {
       }
 
       // Check that the provided instantiation values are consistent with what type unification
-      // of the target function types against the call's operand and result types would determine.
+      // of the target contract type against the include's operand types would determine.
       FailureOr<UnificationMap> unifyResult = includeOp->unifyTypeSignature(tgtType);
       // This is already checked by `verifyInputs()`, but `verifyTemplateParams()` is called
       // even if `verifyInputs()` fails for error aggregation, so we still need to return
