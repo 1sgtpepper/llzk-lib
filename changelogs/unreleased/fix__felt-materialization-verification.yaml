@@ -1,2 +1,2 @@
 fixed:
-  - Allow flattening and `llzk-witgen` to materialize felt template arguments in the required field while rejecting explicit field mismatches
+  - Allow field-aware verification and materialization of felt template arguments while rejecting explicit field mismatches

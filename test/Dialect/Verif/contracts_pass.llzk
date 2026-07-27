@@ -594,6 +594,10 @@ module attributes {llzk.lang} {
     }
   }
 
+  module @globals {
+    global.def const @N : !felt.type<"bn128"> = 35
+  }
+
   function.def @caller(
       %value: !struct.type<@BoxTemplate::@Box<[#felt<const 35 : !felt.type<"bn128">>]>>
   ) {
@@ -604,6 +608,24 @@ module attributes {llzk.lang} {
       %value: !struct.type<@BoxTemplate::@Box<[#felt<const 35 : !felt.type<"bn128">>]>>
   ) {
     verif.include @Target::@Base<[#felt<const 35>]>(%value) : (!struct.type<@BoxTemplate::@Box<[#felt<const 35 : !felt.type<"bn128">>]>>) -> ()
+  }
+
+  function.def @normalizedCaller(
+      %felt: !struct.type<@BoxTemplate::@Box<[#felt<const 35 : !felt.type<"bn128">>]>>,
+      %integer: !struct.type<@BoxTemplate::@Box<[35]>>,
+      %global: !struct.type<@BoxTemplate::@Box<[@globals::@N]>>
+  ) {
+    function.return
+  }
+
+  verif.contract @NormalizedArguments for @normalizedCaller (
+      %felt: !struct.type<@BoxTemplate::@Box<[#felt<const 35 : !felt.type<"bn128">>]>>,
+      %integer: !struct.type<@BoxTemplate::@Box<[35]>>,
+      %global: !struct.type<@BoxTemplate::@Box<[@globals::@N]>>
+  ) {
+    verif.include @Target::@Base<[35]>(%felt) : (!struct.type<@BoxTemplate::@Box<[#felt<const 35 : !felt.type<"bn128">>]>>) -> ()
+    verif.include @Target::@Base<[#felt<const 35>]>(%integer) : (!struct.type<@BoxTemplate::@Box<[35]>>) -> ()
+    verif.include @Target::@Base(%global) : (!struct.type<@BoxTemplate::@Box<[@globals::@N]>>) -> ()
   }
 }
 // CHECK-LABEL: module attributes {llzk.lang} {
@@ -629,11 +651,22 @@ module attributes {llzk.lang} {
 // CHECK-NEXT:        verif.ensure_compute %[[VAL_4]]
 // CHECK-NEXT:      }
 // CHECK-NEXT:    }
+// CHECK-NEXT:    module @globals {
+// CHECK-NEXT:      global.def const @N : !felt.type<"bn128"> = 35
+// CHECK-NEXT:    }
 // CHECK-NEXT:    function.def @caller(%[[VAL_5:[0-9a-zA-Z_\.]+]]: !struct.type<@BoxTemplate::@Box<[#felt<const 35 : <"bn128">>]>>) {
 // CHECK-NEXT:      function.return
 // CHECK-NEXT:    }
 // CHECK-NEXT:    verif.contract @MatchingFieldlessExplicitWithInferredField for @caller (%[[VAL_6:[0-9a-zA-Z_\.]+]]: !struct.type<@BoxTemplate::@Box<[#felt<const 35 : <"bn128">>]>>) {
 // CHECK-NEXT:      verif.include @Target::@Base<[#felt<const 35>]>(%[[VAL_6]]) : (!struct.type<@BoxTemplate::@Box<[#felt<const 35 : <"bn128">>]>>) -> ()
+// CHECK-NEXT:    }
+// CHECK-NEXT:    function.def @normalizedCaller(%[[VAL_7:[0-9a-zA-Z_\.]+]]: !struct.type<@BoxTemplate::@Box<[#felt<const 35 : <"bn128">>]>>, %[[VAL_8:[0-9a-zA-Z_\.]+]]: !struct.type<@BoxTemplate::@Box<[35]>>, %[[VAL_9:[0-9a-zA-Z_\.]+]]: !struct.type<@BoxTemplate::@Box<[@globals::@N]>>) {
+// CHECK-NEXT:      function.return
+// CHECK-NEXT:    }
+// CHECK-NEXT:    verif.contract @NormalizedArguments for @normalizedCaller (%[[VAL_10:[0-9a-zA-Z_\.]+]]: !struct.type<@BoxTemplate::@Box<[#felt<const 35 : <"bn128">>]>>, %[[VAL_11:[0-9a-zA-Z_\.]+]]: !struct.type<@BoxTemplate::@Box<[35]>>, %[[VAL_12:[0-9a-zA-Z_\.]+]]: !struct.type<@BoxTemplate::@Box<[@globals::@N]>>) {
+// CHECK-NEXT:      verif.include @Target::@Base<[35]>(%[[VAL_10]]) : (!struct.type<@BoxTemplate::@Box<[#felt<const 35 : <"bn128">>]>>) -> ()
+// CHECK-NEXT:      verif.include @Target::@Base<[#felt<const 35>]>(%[[VAL_11]]) : (!struct.type<@BoxTemplate::@Box<[35]>>) -> ()
+// CHECK-NEXT:      verif.include @Target::@Base(%[[VAL_12]]) : (!struct.type<@BoxTemplate::@Box<[@globals::@N]>>) -> ()
 // CHECK-NEXT:    }
 // CHECK-NEXT:  }
 

@@ -18,6 +18,7 @@
 #include "llzk/Dialect/Felt/IR/Attrs.h"
 #include "llzk/Dialect/Felt/IR/Types.h"
 #include "llzk/Dialect/Function/IR/Dialect.h"
+#include "llzk/Dialect/Global/IR/Ops.h"
 #include "llzk/Dialect/LLZK/IR/AttributeHelper.h"
 #include "llzk/Dialect/LLZK/IR/Versioning.h"
 #include "llzk/Dialect/Polymorphic/IR/Types.h"
@@ -661,6 +662,14 @@ CallOp::verifyTemplateParamCompatibility(Attribute paramFromCallOp, TemplatePara
           }
         }
       }
+      if (!compatible) {
+        // A qualified reference can name a global constant rather than a template binding.
+        SymbolTableCollection tables;
+        if (auto global = lookupTopLevelSymbol<global::GlobalDefOp>(tables, sym, *this, false);
+            succeeded(global)) {
+          compatible = typesUnify(global->getType(), *declaredType);
+        }
+      }
     } else if (llvm::isa<TypeVarType>(*declaredType)) {
       compatible = llvm::isa<TypeAttr>(paramFromCallOp);
     } else if (auto feltType = llvm::dyn_cast<FeltType>(*declaredType)) {
@@ -761,6 +770,11 @@ LogicalResult CallOp::verifyTemplateParamsMatchInferred(
     if (std::optional<Type> declaredType = paramOp.getTypeOpt()) {
       if (auto feltType = llvm::dyn_cast<FeltType>(*declaredType)) {
         auto materialize = [&](Attribute value) -> Attribute {
+          if (auto intValue = llvm::dyn_cast_or_null<IntegerAttr>(value);
+              intValue && !isDynamic(intValue)) {
+            // Flattening materializes integer template values as fielded felt constants too.
+            return FeltConstAttr::get(getContext(), intValue.getValue(), feltType);
+          }
           if (auto feltValue = llvm::dyn_cast_or_null<FeltConstAttr>(value)) {
             FailureOr<FeltConstAttr> materialized = feltValue.materializeAs(feltType);
             assert(succeeded(materialized) && "template parameter compatibility was verified");
