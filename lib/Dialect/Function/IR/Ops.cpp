@@ -667,7 +667,7 @@ CallOp::verifyTemplateParamCompatibility(Attribute paramFromCallOp, TemplatePara
         SymbolTableCollection tables;
         if (auto global = lookupTopLevelSymbol<global::GlobalDefOp>(tables, sym, *this, false);
             succeeded(global)) {
-          compatible = typesUnify(global->getType(), *declaredType);
+          compatible = typesUnify(global->get().getType(), *declaredType);
         }
       }
     } else if (llvm::isa<TypeVarType>(*declaredType)) {
