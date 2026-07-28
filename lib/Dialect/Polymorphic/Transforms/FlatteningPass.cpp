@@ -1021,7 +1021,7 @@ public:
       if (!changed && newElemTy == inputTy.getElementType()) {
         return inputTy;
       }
-      return flattenInstantiatedArrayType(
+      return flattenArrayElementType(
           inputTy.cloneWith(inputTy.getElementType(), updated), newElemTy
       );
     });
