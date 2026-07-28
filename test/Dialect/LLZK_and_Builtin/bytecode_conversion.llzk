@@ -1,6 +1,6 @@
 // RUN: llzk-opt -emit-bytecode %s | llzk-opt - 2>&1 | FileCheck --enable-var-scope %s
 // RUN: llzk-opt %s | llzk-opt - 2>&1 | FileCheck --enable-var-scope %s
-// COM: This chained `llzk-opt` construction converts text -> bytecode -> text
+// COM: These chained invocations verify text -> bytecode -> text and text -> text.
 
 module attributes {
     llzk.fields = #felt.field<"profilefield", 28948022309329048855892746252171976963363056481941560715954676764349967630337>,
