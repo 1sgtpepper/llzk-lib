@@ -36,4 +36,4 @@ module attributes {llzk.lang} {
 // CHECK:       scf.for
 // CHECK-NOT:   array.read
 // CHECK:       constrain.eq %[[FIRST:[0-9a-zA-Z_\.]+]], %[[EXPECTED:[0-9a-zA-Z_\.]+]] : !felt.type
-// CHECK:       array.write %{{.*}}[%{{.*}}] = %{{.*}} : !array.type<2 x !felt.type>, !felt.type
+// CHECK:       array.write %{{.*}}[%{{.*}}] = %{{.*}} : <2 x !felt.type>, !felt.type
