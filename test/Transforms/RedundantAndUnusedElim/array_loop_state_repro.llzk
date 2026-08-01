@@ -2,8 +2,10 @@
 
 // A loop executes its body more than once.  The array contains %first on the
 // first iteration, but the body writes %second before the next iteration.
-// The pass carries the pre-loop array tree into the body and removes the read
-// as if the initial element were invariant across iterations.
+// The carried %expected value makes the original constraints satisfiable:
+// iteration 0 expects %first and iteration 1 expects %second.  The pass carries
+// the pre-loop array tree into the body and removes the read as if the initial
+// element were invariant across iterations.
 module attributes {llzk.lang} {
   struct.def @LoopState {
     struct.member @out : !felt.type
@@ -16,16 +18,17 @@ module attributes {llzk.lang} {
     function.def @constrain(%self: !struct.type<@LoopState>) {
       %first = felt.const 1
       %second = felt.const 2
-      %expected = felt.const 1
       %arr = array.new %first, %first : !array.type<2 x !felt.type>
       %zero = arith.constant 0 : index
       %lb = arith.constant 0 : index
       %ub = arith.constant 2 : index
       %step = arith.constant 1 : index
-      scf.for %iv = %lb to %ub step %step {
+      %final_expected = scf.for %iv = %lb to %ub step %step
+          iter_args(%expected_iter = %first) -> !felt.type {
         %observed = array.read %arr[%zero] : !array.type<2 x !felt.type>, !felt.type
-        constrain.eq %observed, %expected : !felt.type
+        constrain.eq %observed, %expected_iter : !felt.type
         array.write %arr[%zero] = %second : !array.type<2 x !felt.type>, !felt.type
+        scf.yield %second : !felt.type
       }
       function.return
     }
@@ -42,15 +45,15 @@ module attributes {llzk.lang} {
 // CHECK-NEXT:      function.def @constrain(%[[VAL_1:[0-9a-zA-Z_\.]+]]: !struct.type<@LoopState>) attributes {function.allow_constraint} {
 // CHECK-NEXT:        %[[VAL_2:[0-9a-zA-Z_\.]+]] = felt.const  1
 // CHECK-NEXT:        %[[VAL_3:[0-9a-zA-Z_\.]+]] = felt.const  2
-// CHECK-NEXT:        %[[VAL_4:[0-9a-zA-Z_\.]+]] = felt.const  1
-// CHECK-NEXT:        %[[VAL_5:[0-9a-zA-Z_\.]+]] = array.new %[[VAL_2]], %[[VAL_2]] : <2 x !felt.type>
+// CHECK-NEXT:        %[[VAL_4:[0-9a-zA-Z_\.]+]] = array.new %[[VAL_2]], %[[VAL_2]] : <2 x !felt.type>
+// CHECK-NEXT:        %[[VAL_5:[0-9a-zA-Z_\.]+]] = arith.constant 0 : index
 // CHECK-NEXT:        %[[VAL_6:[0-9a-zA-Z_\.]+]] = arith.constant 0 : index
-// CHECK-NEXT:        %[[VAL_7:[0-9a-zA-Z_\.]+]] = arith.constant 0 : index
-// CHECK-NEXT:        %[[VAL_8:[0-9a-zA-Z_\.]+]] = arith.constant 2 : index
-// CHECK-NEXT:        %[[VAL_9:[0-9a-zA-Z_\.]+]] = arith.constant 1 : index
-// CHECK-NEXT:        scf.for %[[VAL_10:[0-9a-zA-Z_\.]+]] = %[[VAL_7]] to %[[VAL_8]] step %[[VAL_9]] {
-// CHECK-NEXT:          constrain.eq %[[VAL_2]], %[[VAL_4]] : !felt.type, !felt.type
-// CHECK-NEXT:          array.write %[[VAL_5]]{{\[}}%[[VAL_6]]] = %[[VAL_3]] : <2 x !felt.type>, !felt.type
+// CHECK-NEXT:        %[[VAL_7:[0-9a-zA-Z_\.]+]] = arith.constant 2 : index
+// CHECK-NEXT:        %[[VAL_8:[0-9a-zA-Z_\.]+]] = arith.constant 1 : index
+// CHECK-NEXT:        %[[VAL_9:[0-9a-zA-Z_\.]+]] = scf.for %[[VAL_10:[0-9a-zA-Z_\.]+]] = %[[VAL_6]] to %[[VAL_7]] step %[[VAL_8]] iter_args(%[[VAL_11:[0-9a-zA-Z_\.]+]] = %[[VAL_2]]) -> (!felt.type) {
+// CHECK-NEXT:          constrain.eq %[[VAL_2]], %[[VAL_11]] : !felt.type, !felt.type
+// CHECK-NEXT:          array.write %[[VAL_4]]{{\[}}%[[VAL_5]]] = %[[VAL_3]] : <2 x !felt.type>, !felt.type
+// CHECK-NEXT:          scf.yield %[[VAL_3]] : !felt.type
 // CHECK-NEXT:        }
 // CHECK-NEXT:        function.return
 // CHECK-NEXT:      }
