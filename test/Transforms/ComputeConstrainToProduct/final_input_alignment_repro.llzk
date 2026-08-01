@@ -57,3 +57,4 @@ module attributes {llzk.lang} {
 // CHECK-LABEL: struct.def @Main {
 // CHECK:       function.def @product(%[[SAME:[0-9a-zA-Z_\.]+]]: !felt.type, %[[COMPUTE_TAG:[0-9a-zA-Z_\.]+]]: !felt.type)
 // CHECK:       function.call @Child::@product(%[[SAME]], %[[COMPUTE_TAG]])
+// CHECK:       LLZK_AUDIT_CAPTURE

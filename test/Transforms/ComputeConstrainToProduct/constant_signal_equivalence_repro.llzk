@@ -62,3 +62,4 @@ module attributes {llzk.lang} {
 // CHECK:       function.def @product
 // CHECK:       %[[ZERO:[0-9a-zA-Z_\.]+]] = felt.const{{ *}}0
 // CHECK:       function.call @Child::@product(%[[ZERO]], %{{.*}})
+// CHECK:       LLZK_AUDIT_CAPTURE

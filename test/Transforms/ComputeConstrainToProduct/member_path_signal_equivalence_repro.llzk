@@ -63,3 +63,4 @@ module attributes {llzk.lang} {
 // CHECK:       function.def @product
 // CHECK:       %[[FROM_A:[0-9a-zA-Z_\.]+]] = struct.readm %{{.*}}[@a] : <@Main>, !felt.type
 // CHECK:       function.call @Child::@product(%[[FROM_A]], %{{.*}})
+// CHECK:       LLZK_AUDIT_CAPTURE

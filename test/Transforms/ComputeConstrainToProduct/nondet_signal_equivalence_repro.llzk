@@ -66,3 +66,4 @@ module attributes {llzk.lang} {
 // CHECK-LABEL: struct.def @Main {
 // CHECK:       function.def @product
 // CHECK:       function.call @Child::@product(%{{.*}}, %{{.*}})
+// CHECK:       LLZK_AUDIT_CAPTURE

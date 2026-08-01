@@ -40,3 +40,4 @@ module attributes {llzk.lang} {
 // CHECK:       function.call @mutate
 // CHECK-NOT:   array.read
 // CHECK:       struct.writem %{{.*}}[@out] = %{{.*}}
+// CHECK:       LLZK_AUDIT_CAPTURE

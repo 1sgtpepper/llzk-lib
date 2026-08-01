@@ -20,3 +20,4 @@ module attributes {llzk.lang} {
 // CHECK:       array.write %{{.*}}[%[[IDX:[0-9a-zA-Z_\.]+]]] = %[[FIRST:[0-9a-zA-Z_\.]+]]
 // CHECK:       array.write %{{.*}}[%{{.*}}] = %[[SECOND:[0-9a-zA-Z_\.]+]]
 // CHECK:       function.return %[[FIRST]] : !felt.type
+// CHECK:       LLZK_AUDIT_CAPTURE

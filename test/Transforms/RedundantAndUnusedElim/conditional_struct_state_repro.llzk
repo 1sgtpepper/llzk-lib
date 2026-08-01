@@ -36,3 +36,4 @@ module attributes {llzk.lang} {
 // CHECK:       struct.writem %{{.*}}[@value] = %[[AFTER:[0-9a-zA-Z_\.]+]]
 // CHECK-NOT:   struct.readm
 // CHECK:       struct.writem %{{.*}}[@out] = %[[AFTER]]
+// CHECK:       LLZK_AUDIT_CAPTURE
