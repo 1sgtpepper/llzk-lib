@@ -119,4 +119,3 @@ module attributes {llzk.lang} {
 // CHECK-NEXT:      }
 // CHECK-NEXT:    }
 // CHECK-NEXT:  }
-// CHECK-NEXT:  /build/source/test/Transforms/ComputeConstrainToProduct/member_path_signal_equivalence_repro.llzk:66:11: error: CHECK: expected string not found in input

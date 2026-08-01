@@ -25,4 +25,3 @@ module attributes {llzk.lang} {
 // CHECK-NEXT:      function.return %[[VAL_1]] : !felt.type
 // CHECK-NEXT:    }
 // CHECK-NEXT:  }
-// CHECK-NEXT:  /build/source/test/Transforms/RedundantAndUnusedElim/array_dynamic_constant_alias_repro.llzk:23:11: error: CHECK: expected string not found in input

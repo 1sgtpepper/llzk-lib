@@ -47,4 +47,3 @@ module attributes {llzk.lang} {
 // CHECK-NEXT:      }
 // CHECK-NEXT:    }
 // CHECK-NEXT:  }
-// CHECK-NEXT:  /build/source/test/Transforms/RedundantAndUnusedElim/conditional_struct_state_repro.llzk:39:11: error: CHECK: expected string not found in input

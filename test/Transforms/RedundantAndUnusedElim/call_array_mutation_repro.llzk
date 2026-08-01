@@ -56,4 +56,3 @@ module attributes {llzk.lang} {
 // CHECK-NEXT:      function.return
 // CHECK-NEXT:    }
 // CHECK-NEXT:  }
-// CHECK-NEXT:  /build/source/test/Transforms/RedundantAndUnusedElim/call_array_mutation_repro.llzk:43:11: error: CHECK: expected string not found in input
