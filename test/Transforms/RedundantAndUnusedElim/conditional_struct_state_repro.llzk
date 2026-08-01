@@ -7,30 +7,26 @@
 module attributes {llzk.lang} {
   struct.def @Cell {
     struct.member @value : !felt.type
+    struct.member @out : !felt.type
 
-    function.def @compute(%before: !felt.type) -> !struct.type<@Cell> {
+    function.def @branch(
+        %cond: i1, %before: !felt.type, %after: !felt.type
+    ) -> !struct.type<@Cell> attributes {function.allow_witness} {
       %self = struct.new : !struct.type<@Cell>
-      struct.writem %self[@value] = %before : !struct.type<@Cell>, !felt.type
-      function.return %self : !struct.type<@Cell>
-    }
-
-    function.def @constrain(
-        %self: !struct.type<@Cell>, %cond: i1, %before: !felt.type, %after: !felt.type
-    ) {
       struct.writem %self[@value] = %before : !struct.type<@Cell>, !felt.type
       scf.if %cond {
         struct.writem %self[@value] = %after : !struct.type<@Cell>, !felt.type
       }
       %observed = struct.readm %self[@value] : !struct.type<@Cell>, !felt.type
-      constrain.eq %observed, %before : !felt.type
-      function.return
+      struct.writem %self[@out] = %observed : !struct.type<@Cell>, !felt.type
+      function.return %self : !struct.type<@Cell>
     }
   }
 }
 
 // CHECK-LABEL: struct.def @Cell {
-// CHECK:       function.def @constrain(
+// CHECK:       function.def @branch(
 // CHECK:       scf.if %{{.*}} {
 // CHECK:       struct.writem %{{.*}}[@value] = %[[AFTER:[0-9a-zA-Z_\.]+]]
 // CHECK-NOT:   struct.readm
-// CHECK:       constrain.eq %[[AFTER]], %{{.*}} : !felt.type, !felt.type
+// CHECK:       struct.writem %{{.*}}[@out] = %[[AFTER]]

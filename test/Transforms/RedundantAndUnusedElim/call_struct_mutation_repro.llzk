@@ -1,51 +1,34 @@
 // RUN: llzk-opt -llzk-duplicate-read-write-elim %s 2>&1 | FileCheck %s
 
-// The child constrain function mutates its struct argument.  The call is an
+// The free witness function mutates its struct argument.  The call is an
 // effect barrier for global/RAM facts, but the current pass leaves the
 // caller's struct-member tree unchanged and reuses %before after the call.
 module attributes {llzk.lang} {
   struct.def @Cell {
     struct.member @value : !felt.type {llzk.pub}
-
-    function.def @compute(%initial: !felt.type) -> !struct.type<@Cell> {
-      %self = struct.new : !struct.type<@Cell>
-      struct.writem %self[@value] = %initial : !struct.type<@Cell>, !felt.type
-      function.return %self : !struct.type<@Cell>
-    }
-
-    function.def @constrain(%self: !struct.type<@Cell>, %new: !felt.type) {
-      struct.writem %self[@value] = %new : !struct.type<@Cell>, !felt.type
-      function.return
-    }
+    struct.member @out : !felt.type {llzk.pub}
   }
 
-  struct.def @Caller {
-    struct.member @child : !struct.type<@Cell>
+  function.def @mutate(%self: !struct.type<@Cell>, %new: !felt.type)
+      attributes {function.allow_witness} {
+    struct.writem %self[@value] = %new : !struct.type<@Cell>, !felt.type
+    function.return
+  }
 
-    function.def @compute(%initial: !felt.type) -> !struct.type<@Caller> {
-      %self = struct.new : !struct.type<@Caller>
-      %child = function.call @Cell::@compute(%initial) :
-          (!felt.type) -> !struct.type<@Cell>
-      struct.writem %self[@child] = %child :
-          !struct.type<@Caller>, !struct.type<@Cell>
-      function.return %self : !struct.type<@Caller>
-    }
-
-    function.def @constrain(%self: !struct.type<@Caller>, %after: !felt.type) {
-      %child = struct.readm %self[@child] :
-          !struct.type<@Caller>, !struct.type<@Cell>
-      %before = struct.readm %child[@value] : !struct.type<@Cell>, !felt.type
-      function.call @Cell::@constrain(%child, %after) :
-          (!struct.type<@Cell>, !felt.type) -> ()
-      %observed = struct.readm %child[@value] : !struct.type<@Cell>, !felt.type
-      constrain.eq %observed, %after : !felt.type
-      function.return
-    }
+  function.def @caller(
+      %before: !felt.type, %after: !felt.type
+  ) -> !struct.type<@Cell> attributes {function.allow_witness} {
+    %self = struct.new : !struct.type<@Cell>
+    struct.writem %self[@value] = %before : !struct.type<@Cell>, !felt.type
+    function.call @mutate(%self, %after) : (!struct.type<@Cell>, !felt.type) -> ()
+    %observed = struct.readm %self[@value] : !struct.type<@Cell>, !felt.type
+    struct.writem %self[@out] = %observed : !struct.type<@Cell>, !felt.type
+    function.return %self : !struct.type<@Cell>
   }
 }
 
-// CHECK-LABEL: struct.def @Caller {
-// CHECK:       function.def @constrain(
-// CHECK:       function.call @Cell::@constrain
+// CHECK-LABEL: module attributes {llzk.lang} {
+// CHECK:       function.def @caller(
+// CHECK:       function.call @mutate
 // CHECK-NOT:   struct.readm %{{.*}}[@value]
-// CHECK:       constrain.eq %{{.*}}, %{{.*}} : !felt.type, !felt.type
+// CHECK:       struct.writem %{{.*}}[@out] = %{{.*}}
