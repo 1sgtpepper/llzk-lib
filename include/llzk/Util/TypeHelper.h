@@ -70,7 +70,6 @@ public:
   /// instantiation of a parameterized type, preserving the location of attributes that were not
   /// available in an earlier instantiation so they can be added by a later instantiation.
   static std::string from(const std::string &base, mlir::ArrayRef<mlir::Attribute> attrs);
-
 };
 
 // This function asserts that the given Attribute kind is legal within the LLZK types that can
