@@ -20,7 +20,9 @@ module attributes {llzk.lang} {
       function.return %self : !struct.type<@Caller>
     }
 
-    function.def @constrain(%self: !struct.type<@Caller>) {
+    function.def @constrain(
+        %self: !struct.type<@Caller>, %before: !felt.type, %after: !felt.type
+    ) {
       function.return
     }
   }
