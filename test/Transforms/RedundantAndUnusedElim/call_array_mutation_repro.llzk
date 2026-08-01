@@ -1,4 +1,4 @@
-// RUN: llzk-opt -llzk-duplicate-read-write-elim %s 2>&1 | FileCheck %s
+// RUN: llzk-opt -llzk-duplicate-read-write-elim %s 2>&1 | tee /dev/stderr | FileCheck %s
 
 // The free witness function mutates its array argument.  The call is an effect
 // barrier for global/RAM facts, but the current pass leaves the caller's array

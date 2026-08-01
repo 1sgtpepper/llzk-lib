@@ -1,4 +1,4 @@
-// RUN: llzk-opt --llzk-compute-constrain-to-product="root-struct=Main" %s | FileCheck %s
+// RUN: llzk-opt --llzk-compute-constrain-to-product="root-struct=Main" %s | tee /dev/stderr | FileCheck %s
 
 // These two child inputs are distinct felt constants.  The signal-equivalence
 // analysis compares only operation names and operands, so it treats felt.const

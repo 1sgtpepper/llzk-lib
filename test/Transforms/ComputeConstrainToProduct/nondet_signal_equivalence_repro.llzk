@@ -1,4 +1,4 @@
-// RUN: llzk-opt --llzk-compute-constrain-to-product="root-struct=Main" %s | FileCheck %s
+// RUN: llzk-opt --llzk-compute-constrain-to-product="root-struct=Main" %s | tee /dev/stderr | FileCheck %s
 
 // The two child calls receive independent nondeterministic inputs.  The
 // equivalence analysis compares only the operation name and operands, so it

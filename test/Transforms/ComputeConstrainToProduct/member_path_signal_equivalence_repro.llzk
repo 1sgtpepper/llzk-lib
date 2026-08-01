@@ -1,4 +1,4 @@
-// RUN: llzk-opt --llzk-compute-constrain-to-product="root-struct=Main" %s | FileCheck %s
+// RUN: llzk-opt --llzk-compute-constrain-to-product="root-struct=Main" %s | tee /dev/stderr | FileCheck %s
 
 // The compute-side read of @a carries %a, while the constraint-side child
 // input is the independent %b argument.  The current helper scans backwards

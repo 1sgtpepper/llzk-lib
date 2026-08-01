@@ -1,4 +1,4 @@
-// RUN: llzk-opt -llzk-duplicate-read-write-elim %s 2>&1 | FileCheck %s
+// RUN: llzk-opt -llzk-duplicate-read-write-elim %s 2>&1 | tee /dev/stderr | FileCheck %s
 
 // A loop executes its body more than once.  The array contains %first on the
 // first iteration, but the body writes %second before the next iteration.

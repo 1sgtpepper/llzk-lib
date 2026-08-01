@@ -1,4 +1,4 @@
-// RUN: llzk-opt -llzk-duplicate-read-write-elim %s 2>&1 | FileCheck %s
+// RUN: llzk-opt -llzk-duplicate-read-write-elim %s 2>&1 | tee /dev/stderr | FileCheck %s
 
 // The write in scf.if is conditional.  The pass propagates the branch's
 // struct-member tree after the region instead of intersecting it with the

@@ -1,4 +1,4 @@
-// RUN: llzk-opt -llzk-duplicate-read-write-elim %s 2>&1 | FileCheck %s
+// RUN: llzk-opt -llzk-duplicate-read-write-elim %s 2>&1 | tee /dev/stderr | FileCheck %s
 
 // A dynamic write may alias a later constant-index write.  With %idx == 0,
 // the read must observe %second, but the current pass retains the dynamic

@@ -1,4 +1,4 @@
-// RUN: llzk-opt --llzk-compute-constrain-to-product="root-struct=Main" %s | FileCheck %s
+// RUN: llzk-opt --llzk-compute-constrain-to-product="root-struct=Main" %s | tee /dev/stderr | FileCheck %s
 
 // The final child input differs (%compute_tag versus %constrain_tag), but
 // alignCalls compares only operands [0, numOperands - 2].  The generated
