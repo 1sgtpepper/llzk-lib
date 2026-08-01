@@ -4,31 +4,35 @@
 // effect barrier for global/RAM facts, but the current pass leaves the
 // caller's struct-member tree unchanged and reuses %before after the call.
 module attributes {llzk.lang} {
-  struct.def @Cell {
+  struct.def @Caller {
     struct.member @value : !felt.type {llzk.pub}
     struct.member @out : !felt.type {llzk.pub}
-  }
 
-  function.def @mutate(%self: !struct.type<@Cell>, %new: !felt.type)
-      attributes {function.allow_witness} {
-    struct.writem %self[@value] = %new : !struct.type<@Cell>, !felt.type
-    function.return
-  }
-
-  function.def @caller(
+    function.def @compute(
       %before: !felt.type, %after: !felt.type
-  ) -> !struct.type<@Cell> attributes {function.allow_witness} {
-    %self = struct.new : !struct.type<@Cell>
-    struct.writem %self[@value] = %before : !struct.type<@Cell>, !felt.type
-    function.call @mutate(%self, %after) : (!struct.type<@Cell>, !felt.type) -> ()
-    %observed = struct.readm %self[@value] : !struct.type<@Cell>, !felt.type
-    struct.writem %self[@out] = %observed : !struct.type<@Cell>, !felt.type
-    function.return %self : !struct.type<@Cell>
+    ) -> !struct.type<@Caller> {
+      %self = struct.new : !struct.type<@Caller>
+      struct.writem %self[@value] = %before : !struct.type<@Caller>, !felt.type
+      function.call @mutate(%self, %after) : (!struct.type<@Caller>, !felt.type) -> ()
+      %observed = struct.readm %self[@value] : !struct.type<@Caller>, !felt.type
+      struct.writem %self[@out] = %observed : !struct.type<@Caller>, !felt.type
+      function.return %self : !struct.type<@Caller>
+    }
+
+    function.def @constrain(%self: !struct.type<@Caller>) {
+      function.return
+    }
+  }
+
+  function.def @mutate(%self: !struct.type<@Caller>, %new: !felt.type)
+      attributes {function.allow_witness} {
+    struct.writem %self[@value] = %new : !struct.type<@Caller>, !felt.type
+    function.return
   }
 }
 
 // CHECK-LABEL: module attributes {llzk.lang} {
-// CHECK:       function.def @caller(
+// CHECK:       function.def @compute(
 // CHECK:       function.call @mutate
 // CHECK-NOT:   struct.readm %{{.*}}[@value]
 // CHECK:       struct.writem %{{.*}}[@out] = %{{.*}}

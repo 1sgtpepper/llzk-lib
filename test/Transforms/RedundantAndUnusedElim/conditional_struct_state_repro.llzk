@@ -9,9 +9,9 @@ module attributes {llzk.lang} {
     struct.member @value : !felt.type
     struct.member @out : !felt.type
 
-    function.def @branch(
+    function.def @compute(
         %cond: i1, %before: !felt.type, %after: !felt.type
-    ) -> !struct.type<@Cell> attributes {function.allow_witness} {
+    ) -> !struct.type<@Cell> {
       %self = struct.new : !struct.type<@Cell>
       struct.writem %self[@value] = %before : !struct.type<@Cell>, !felt.type
       scf.if %cond {
@@ -21,11 +21,17 @@ module attributes {llzk.lang} {
       struct.writem %self[@out] = %observed : !struct.type<@Cell>, !felt.type
       function.return %self : !struct.type<@Cell>
     }
+
+    function.def @constrain(
+        %self: !struct.type<@Cell>, %cond: i1, %before: !felt.type, %after: !felt.type
+    ) {
+      function.return
+    }
   }
 }
 
 // CHECK-LABEL: struct.def @Cell {
-// CHECK:       function.def @branch(
+// CHECK:       function.def @compute(
 // CHECK:       scf.if %{{.*}} {
 // CHECK:       struct.writem %{{.*}}[@value] = %[[AFTER:[0-9a-zA-Z_\.]+]]
 // CHECK-NOT:   struct.readm
