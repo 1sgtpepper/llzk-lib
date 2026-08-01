@@ -131,68 +131,41 @@ inline component::StructType getStructTypeWithParams(
                         : component::StructType::get(nameRef, mlir::ArrayAttr::get(ctx, params));
 }
 
+/// Transform-private metadata carrying a partial template's logical name pattern.
+///
+/// When present, the attribute has P+1 StringAttr chunks around the P current template
+/// parameters. The chunks are literal data; later transforms never recover semantic positions
+/// from the physical symbol name.
+inline constexpr llvm::StringLiteral TEMPLATE_NAME_PATTERN_ATTR = "poly.name_pattern";
+
 /// Groups the information needed after concrete parameters have been chosen to decide how to name
 /// a new instantiated template and how to rewrite the remaining argument list at the use site.
 struct InstantiationLayout {
   mlir::SmallVector<mlir::Attribute> remainingNames;
+  /// Ordered [parameter-name, concrete-value, ...] entries for exact partial-function reuse.
+  mlir::ArrayAttr concreteParamKey;
   std::string templateNameWithAttrs;
   mlir::ArrayAttr rewrittenCallParams;
+  /// The refined literal chunks; fully concrete generated templates clear this state.
+  mlir::ArrayAttr namePattern;
 };
 
-/// Identifies whether an instantiation name came from source IR or a prior partial instantiation.
-/// Only generated partial names may contain placeholders that later instantiations should replace.
-enum class InstantiationNameOrigin {
-  SourceTemplate,
-  GeneratedPartialTemplate,
-};
-
-/// Derive the instantiated template name and the remaining explicit parameters that should stay on
-/// the rewritten use site. Partially-instantiated names contain the `BuildShortTypeString`
-/// placeholder character at the position of each non-concrete parameter.
-inline InstantiationLayout buildInstantiationLayout(
+/// Derive the instantiated template name, remaining explicit parameters, and refined literal
+/// pattern. A malformed pattern is rejected even though TemplateOp verification normally runs
+/// before a transform; this keeps the owner boundary safe for programmatically built IR too.
+mlir::FailureOr<InstantiationLayout> buildInstantiationLayout(
     TemplateOp parentTemplate, mlir::ArrayAttr callParams,
-    const llvm::DenseMap<mlir::Attribute, mlir::Attribute> &paramNameToConcrete,
-    InstantiationNameOrigin nameOrigin
-) {
-  mlir::SmallVector<mlir::Attribute> remainingNames;
-  mlir::SmallVector<mlir::Attribute> attrsForInstantiatedNameSuffix;
-  for (mlir::Attribute paramName : parentTemplate.getConstNames<TemplateParamOp>()) {
-    auto it = paramNameToConcrete.find(paramName);
-    if (it != paramNameToConcrete.end()) {
-      attrsForInstantiatedNameSuffix.push_back(it->second);
-    } else {
-      attrsForInstantiatedNameSuffix.push_back(nullptr);
-      remainingNames.push_back(paramName);
-    }
-  }
+    const llvm::DenseMap<mlir::Attribute, mlir::Attribute> &paramNameToConcrete
+);
 
-  mlir::ArrayAttr rewrittenCallParams = nullptr;
-  if (!isNullOrEmpty(callParams) && !remainingNames.empty()) {
-    mlir::SmallVector<mlir::Attribute> remainingCallParams;
-    for (auto [paramOp, attr] :
-         llvm::zip_equal(parentTemplate.getConstOps<TemplateParamOp>(), callParams.getValue())) {
-      auto paramName = mlir::FlatSymbolRefAttr::get(paramOp.getSymNameAttr());
-      if (!paramNameToConcrete.contains(paramName)) {
-        remainingCallParams.push_back(attr);
-      }
-    }
-    rewrittenCallParams = mlir::ArrayAttr::get(parentTemplate.getContext(), remainingCallParams);
-  }
+/// Clear inherited pattern state from a fully concrete template, or attach refined chunks before a
+/// partial template is inserted into a symbol table.
+void setInstantiationNamePattern(TemplateOp templateOp, mlir::ArrayAttr namePattern);
 
-  std::string templateNameWithAttrs =
-      nameOrigin == InstantiationNameOrigin::GeneratedPartialTemplate
-          ? BuildShortTypeString::from(
-                parentTemplate.getSymName().str(), attrsForInstantiatedNameSuffix
-            )
-          : BuildShortTypeString::fromRawName(
-                parentTemplate.getSymName(), attrsForInstantiatedNameSuffix
-            );
-  return {
-      std::move(remainingNames),
-      std::move(templateNameWithAttrs),
-      rewrittenCallParams,
-  };
-}
+/// Append concrete attributes to an opaque physical base name without interpreting its bytes.
+std::string buildOpaqueInstantiationName(
+    llvm::StringRef baseName, llvm::ArrayRef<mlir::Attribute> concreteAttrs
+);
 
 class LegalityCheckCallback {
 public:

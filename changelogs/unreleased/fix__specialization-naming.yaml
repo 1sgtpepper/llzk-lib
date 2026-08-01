@@ -1,2 +1,2 @@
 fixed:
-  - Make specialization name encoding collision-safe for reserved bytes and felt constants
+  - Keep source-name bytes literal and preserve partial-template positions across specialization passes

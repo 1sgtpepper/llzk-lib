@@ -1,0 +1,53 @@
+// RUN: llzk-opt -split-input-file -verify-diagnostics %s
+
+module attributes {llzk.lang} {
+  // The verifier owns the outer representation contract.
+  // expected-error@+1 {{expected 'poly.name_pattern' to be an ArrayAttr}}
+  poly.template @T {
+    poly.param @N : index
+    function.def @compute() -> index {
+      %n = poly.read_const @N : index
+      function.return %n : index
+    }
+  } {poly.name_pattern = "T_"}
+}
+
+// -----
+
+module attributes {llzk.lang} {
+  // The verifier rejects non-literal chunks rather than assigning them slot meaning.
+  // expected-error@+1 {{expected 'poly.name_pattern' element 1 to be a StringAttr}}
+  poly.template @T {
+    poly.param @N : index
+    function.def @compute() -> index {
+      %n = poly.read_const @N : index
+      function.return %n : index
+    }
+  } {poly.name_pattern = ["T_", 42 : i64]}
+}
+
+// -----
+
+module attributes {llzk.lang} {
+  // expected-error@+1 {{expected 'poly.name_pattern' to contain 2 literal chunk(s), matching the template parameters, but found 1}}
+  poly.template @T {
+    poly.param @N : index
+    function.def @compute() -> index {
+      %n = poly.read_const @N : index
+      function.return %n : index
+    }
+  } {poly.name_pattern = ["T_"]}
+}
+
+// -----
+
+module attributes {llzk.lang} {
+  // expected-error@+1 {{expected 'poly.name_pattern' to contain 2 literal chunk(s), matching the template parameters, but found 3}}
+  poly.template @T {
+    poly.param @N : index
+    function.def @compute() -> index {
+      %n = poly.read_const @N : index
+      function.return %n : index
+    }
+  } {poly.name_pattern = ["T_", "", "extra"]}
+}

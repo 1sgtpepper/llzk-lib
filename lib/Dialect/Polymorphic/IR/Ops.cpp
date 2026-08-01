@@ -41,6 +41,38 @@ FailureOr<TemplateOp> verifyInTemplate(Operation *op) {
                            << "' ancestor";
 }
 
+/// Verify the optional transform-carried name pattern against current parameters.
+///
+/// The pattern is generic discardable metadata, so this owner boundary is the one place that
+/// prevents malformed cardinality or element types from reaching refinement passes.
+LogicalResult TemplateOp::verify() {
+  static constexpr llvm::StringLiteral namePatternAttr = "poly.name_pattern";
+  Attribute rawPattern = (*this)->getDiscardableAttr(namePatternAttr);
+  if (!rawPattern) {
+    return success();
+  }
+
+  auto pattern = llvm::dyn_cast<ArrayAttr>(rawPattern);
+  if (!pattern) {
+    return emitOpError() << "expected '" << namePatternAttr << "' to be an ArrayAttr";
+  }
+
+  size_t parameterCount = numConstOps<TemplateParamOp>();
+  size_t expectedChunkCount = parameterCount + 1;
+  if (pattern.size() != expectedChunkCount) {
+    return emitOpError() << "expected '" << namePatternAttr << "' to contain " << expectedChunkCount
+                         << " literal chunk(s), matching the template parameters, but found "
+                         << pattern.size();
+  }
+  for (size_t index = 0; index < pattern.size(); ++index) {
+    if (!llvm::isa<StringAttr>(pattern[index])) {
+      return emitOpError() << "expected '" << namePatternAttr << "' element " << index
+                           << " to be a StringAttr";
+    }
+  }
+  return success();
+}
+
 //===------------------------------------------------------------------===//
 // TemplateParamOp
 //===------------------------------------------------------------------===//
