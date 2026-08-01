@@ -6,27 +6,27 @@
 module attributes {llzk.lang} {
   struct.def @Cell {
     struct.member @value : !felt.type
+  }
 
-    function.def @mutate(
-        %target: !struct.type<@Cell>, %new: !felt.type
-    ) attributes {function.allow_witness} {
-      struct.writem %target[@value] = %new : !struct.type<@Cell>, !felt.type
-      function.return
-    }
+  function.def @mutate_struct(
+      %target: !struct.type<@Cell>, %new: !felt.type
+  ) attributes {function.allow_witness} {
+    struct.writem %target[@value] = %new : !struct.type<@Cell>, !felt.type
+    function.return
+  }
 
-    function.def @caller(
-        %target: !struct.type<@Cell>, %before: !felt.type, %after: !felt.type
-    ) -> !felt.type attributes {function.allow_witness} {
-      struct.writem %target[@value] = %before : !struct.type<@Cell>, !felt.type
-      function.call @Cell::@mutate(%target, %after) :
-          (!struct.type<@Cell>, !felt.type) -> ()
-      %observed = struct.readm %target[@value] : !struct.type<@Cell>, !felt.type
-      function.return %observed : !felt.type
-    }
+  function.def @caller(
+      %target: !struct.type<@Cell>, %before: !felt.type, %after: !felt.type
+  ) -> !felt.type attributes {function.allow_witness} {
+    struct.writem %target[@value] = %before : !struct.type<@Cell>, !felt.type
+    function.call @mutate_struct(%target, %after) :
+        (!struct.type<@Cell>, !felt.type) -> ()
+    %observed = struct.readm %target[@value] : !struct.type<@Cell>, !felt.type
+    function.return %observed : !felt.type
   }
 }
 
 // CHECK-LABEL: function.def @caller(
 // CHECK-SAME:  %{{.*}}: !struct.type<@Cell>, %[[BEFORE:[0-9a-zA-Z_\.]+]]: !felt.type,
-// CHECK:       function.call @Cell::@mutate
+// CHECK:       function.call @mutate_struct
 // CHECK:       function.return %[[BEFORE]] : !felt.type
