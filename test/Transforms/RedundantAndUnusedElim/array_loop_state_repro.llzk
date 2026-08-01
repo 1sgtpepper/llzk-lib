@@ -1,0 +1,39 @@
+// RUN: llzk-opt -llzk-duplicate-read-write-elim %s 2>&1 | FileCheck %s
+
+// A loop executes its body more than once.  The array contains %first on the
+// first iteration, but the body writes %second before the next iteration.
+// The pass carries the pre-loop array tree into the body and removes the read
+// as if the initial element were invariant across iterations.
+module attributes {llzk.lang} {
+  struct.def @LoopState {
+    struct.member @out : !felt.type
+
+    function.def @compute() -> !struct.type<@LoopState> {
+      %self = struct.new : !struct.type<@LoopState>
+      function.return %self : !struct.type<@LoopState>
+    }
+
+    function.def @constrain(%self: !struct.type<@LoopState>) {
+      %first = felt.const 1
+      %second = felt.const 2
+      %expected = felt.const 1
+      %arr = array.new %first, %first : !array.type<2 x !felt.type>
+      %zero = arith.constant 0 : index
+      %lb = arith.constant 0 : index
+      %ub = arith.constant 2 : index
+      %step = arith.constant 1 : index
+      scf.for %iv = %lb to %ub step %step {
+        %observed = array.read %arr[%zero] : !array.type<2 x !felt.type>, !felt.type
+        constrain.eq %observed, %expected : !felt.type
+        array.write %arr[%zero] = %second : !array.type<2 x !felt.type>, !felt.type
+      }
+      function.return
+    }
+  }
+}
+
+// CHECK-LABEL: function.def @constrain(
+// CHECK:       scf.for
+// CHECK-NOT:   array.read
+// CHECK:       constrain.eq %[[FIRST:[0-9a-zA-Z_\.]+]], %[[EXPECTED:[0-9a-zA-Z_\.]+]] : !felt.type
+// CHECK:       array.write %{{.*}}[%{{.*}}] = %{{.*}} : !array.type<2 x !felt.type>, !felt.type
