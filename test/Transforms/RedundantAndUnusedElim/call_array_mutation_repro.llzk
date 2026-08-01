@@ -1,20 +1,21 @@
 // RUN: llzk-opt -llzk-duplicate-read-write-elim %s 2>&1 | FileCheck %s
 
-// The free witness function mutates its struct argument.  The call is an
-// effect barrier for global/RAM facts, but the current pass leaves the
-// caller's struct-member tree unchanged and reuses %before after the call.
+// The free witness function mutates its array argument.  The call is an effect
+// barrier for global/RAM facts, but the current pass leaves the caller's array
+// value tree unchanged and reuses %before after the call.
 module attributes {llzk.lang} {
   struct.def @Caller {
-    struct.member @value : !felt.type {llzk.pub}
     struct.member @out : !felt.type {llzk.pub}
 
     function.def @compute(
-      %before: !felt.type, %after: !felt.type
+        %before: !felt.type, %after: !felt.type
     ) -> !struct.type<@Caller> {
       %self = struct.new : !struct.type<@Caller>
-      struct.writem %self[@value] = %before : !struct.type<@Caller>, !felt.type
-      function.call @mutate(%self, %after) : (!struct.type<@Caller>, !felt.type) -> ()
-      %observed = struct.readm %self[@value] : !struct.type<@Caller>, !felt.type
+      %c0 = arith.constant 0 : index
+      %array = array.new %before, %before : !array.type<2 x !felt.type>
+      function.call @mutate(%array, %after) :
+          (!array.type<2 x !felt.type>, !felt.type) -> ()
+      %observed = array.read %array[%c0] : <2 x !felt.type>, !felt.type
       struct.writem %self[@out] = %observed : !struct.type<@Caller>, !felt.type
       function.return %self : !struct.type<@Caller>
     }
@@ -24,9 +25,10 @@ module attributes {llzk.lang} {
     }
   }
 
-  function.def @mutate(%self: !struct.type<@Caller>, %new: !felt.type)
+  function.def @mutate(%array: !array.type<2 x !felt.type>, %new: !felt.type)
       attributes {function.allow_witness} {
-    struct.writem %self[@value] = %new : !struct.type<@Caller>, !felt.type
+    %c0 = arith.constant 0 : index
+    array.write %array[%c0] = %new : <2 x !felt.type>, !felt.type
     function.return
   }
 }
@@ -34,5 +36,5 @@ module attributes {llzk.lang} {
 // CHECK-LABEL: module attributes {llzk.lang} {
 // CHECK:       function.def @compute(
 // CHECK:       function.call @mutate
-// CHECK-NOT:   struct.readm %{{.*}}[@value]
+// CHECK-NOT:   array.read
 // CHECK:       struct.writem %{{.*}}[@out] = %{{.*}}
