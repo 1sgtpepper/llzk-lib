@@ -1,0 +1,29 @@
+// RUN: llzk-opt -llzk-duplicate-read-write-elim %s 2>&1 | FileCheck %s
+
+// The write in scf.if is conditional.  The pass propagates the branch's
+// struct-member tree after the region instead of intersecting it with the
+// pre-branch state, so the later read is replaced by %after even when the
+// condition is false.
+module attributes {llzk.lang} {
+  struct.def @Cell {
+    struct.member @value : !felt.type
+  }
+
+  function.def @conditional_struct_write(
+      %cond: i1, %before: !felt.type, %after: !felt.type
+  ) -> !felt.type attributes {function.allow_witness} {
+    %self = struct.new : !struct.type<@Cell>
+    struct.writem %self[@value] = %before : !struct.type<@Cell>, !felt.type
+    scf.if %cond {
+      struct.writem %self[@value] = %after : !struct.type<@Cell>, !felt.type
+    }
+    %observed = struct.readm %self[@value] : !struct.type<@Cell>, !felt.type
+    function.return %observed : !felt.type
+  }
+}
+
+// CHECK-LABEL: function.def @conditional_struct_write(
+// CHECK:       scf.if %{{.*}} {
+// CHECK:       struct.writem %{{.*}}[@value] = %[[AFTER:[0-9a-zA-Z_\.]+]]
+// CHECK-NOT:   struct.readm
+// CHECK:       function.return %[[AFTER]] : !felt.type
