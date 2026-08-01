@@ -1,0 +1,26 @@
+// RUN: not --crash llzk-opt -llzk-pod-to-scalar -llzk-poly-lowering-pass="max-degree=2" %s
+
+// Known current-main crash reported as project-llzk/llzk-lib#642: POD
+// scalarization creates an index-valued equality, but polynomial lowering's
+// degree analysis assumes every equality operand is Felt-shaped.
+#offset = affine_map<()[s0] -> (s0 - 1)>
+!OffsetElem = !pod.type<[@x: !felt.type, @y: !felt.type]>
+module attributes {llzk.lang} {
+  struct.def @OffsetColumnCarrier {
+    struct.member @m : !array.type<? x !OffsetElem> {column}
+
+    function.def @compute(%idx: index) -> !struct.type<@OffsetColumnCarrier> {
+      %self = struct.new : !struct.type<@OffsetColumnCarrier>
+      function.return %self : !struct.type<@OffsetColumnCarrier>
+    }
+
+    function.def @constrain(%self: !struct.type<@OffsetColumnCarrier>, %idx: index) {
+      %arr = struct.readm %self[@m] {()[%idx]} :
+          !struct.type<@OffsetColumnCarrier>, !array.type<? x !OffsetElem>
+          {tableOffset = #offset}
+      %len = array.len %arr, %idx : !array.type<? x !OffsetElem>
+      constrain.eq %len, %idx : index, index
+      function.return
+    }
+  }
+}
