@@ -1,9 +1,9 @@
 // RUN: llzk-opt -llzk-duplicate-read-write-elim %s 2>&1 | FileCheck %s
 
-// The write in scf.if is conditional.  The pass propagates the branch's
-// struct-member tree after the region instead of intersecting it with the
-// pre-branch state, so the later read is replaced by %after even when the
-// condition is false.
+// The write in scf.if is conditional.  For the concrete input cond=false,
+// before=1, after=2, the output must remain 1.  The pass propagates the
+// branch's struct-member tree after the region instead of intersecting it with
+// the pre-branch state, so the later read is replaced by %after on that path.
 module attributes {llzk.lang} {
   struct.def @Cell {
     struct.member @value : !felt.type
@@ -25,6 +25,8 @@ module attributes {llzk.lang} {
     function.def @constrain(
         %self: !struct.type<@Cell>, %cond: i1, %before: !felt.type, %after: !felt.type
     ) {
+      %out = struct.readm %self[@out] : !struct.type<@Cell>, !felt.type
+      constrain.eq %out, %before : !felt.type
       function.return
     }
   }
@@ -43,6 +45,8 @@ module attributes {llzk.lang} {
 // CHECK-NEXT:        function.return %[[VAL_3]] : !struct.type<@Cell>
 // CHECK-NEXT:      }
 // CHECK-NEXT:      function.def @constrain(%[[VAL_4:[0-9a-zA-Z_\.]+]]: !struct.type<@Cell>, %[[VAL_5:[0-9a-zA-Z_\.]+]]: i1, %[[VAL_6:[0-9a-zA-Z_\.]+]]: !felt.type, %[[VAL_7:[0-9a-zA-Z_\.]+]]: !felt.type) attributes {function.allow_constraint} {
+// CHECK-NEXT:        %[[VAL_8:[0-9a-zA-Z_\.]+]] = struct.readm %[[VAL_4]][@out] : <@Cell>, !felt.type
+// CHECK-NEXT:        constrain.eq %[[VAL_8]], %[[VAL_6]] : !felt.type, !felt.type
 // CHECK-NEXT:        function.return
 // CHECK-NEXT:      }
 // CHECK-NEXT:    }
