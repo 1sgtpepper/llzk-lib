@@ -1,0 +1,32 @@
+// RUN: llzk-opt -llzk-duplicate-read-write-elim %s 2>&1 | FileCheck %s
+
+// The callee writes through the caller's struct argument.  The call is an
+// effect barrier for global/RAM facts, but the current pass leaves the
+// caller's struct-member tree unchanged and reuses %before after the call.
+module attributes {llzk.lang} {
+  struct.def @Cell {
+    struct.member @value : !felt.type
+
+    function.def @mutate(
+        %target: !struct.type<@Cell>, %new: !felt.type
+    ) attributes {function.allow_witness} {
+      struct.writem %target[@value] = %new : !struct.type<@Cell>, !felt.type
+      function.return
+    }
+
+    function.def @caller(
+        %target: !struct.type<@Cell>, %before: !felt.type, %after: !felt.type
+    ) -> !felt.type attributes {function.allow_witness} {
+      struct.writem %target[@value] = %before : !struct.type<@Cell>, !felt.type
+      function.call @Cell::@mutate(%target, %after) :
+          (!struct.type<@Cell>, !felt.type) -> ()
+      %observed = struct.readm %target[@value] : !struct.type<@Cell>, !felt.type
+      function.return %observed : !felt.type
+    }
+  }
+}
+
+// CHECK-LABEL: function.def @caller(
+// CHECK-SAME:  %{{.*}}: !struct.type<@Cell>, %[[BEFORE:[0-9a-zA-Z_\.]+]]: !felt.type,
+// CHECK:       function.call @Cell::@mutate
+// CHECK:       function.return %[[BEFORE]] : !felt.type

@@ -1,0 +1,22 @@
+// RUN: llzk-opt -llzk-duplicate-read-write-elim %s 2>&1 | FileCheck %s
+
+// A dynamic write may alias a later constant-index write.  With %idx == 0,
+// the read must observe %second, but the current pass retains the dynamic
+// child after the constant write and returns the stale %first value.
+module attributes {llzk.lang} {
+  function.def @dynamic_then_constant_alias(
+      %idx: index, %first: !felt.type, %second: !felt.type
+  ) -> !felt.type {
+    %arr = array.new %first, %first : !array.type<2 x !felt.type>
+    array.write %arr[%idx] = %first : !array.type<2 x !felt.type>, !felt.type
+    %zero = arith.constant 0 : index
+    array.write %arr[%zero] = %second : !array.type<2 x !felt.type>, !felt.type
+    %observed = array.read %arr[%idx] : !array.type<2 x !felt.type>, !felt.type
+    function.return %observed : !felt.type
+  }
+}
+
+// CHECK-LABEL: function.def @dynamic_then_constant_alias(
+// CHECK:       array.write %{{.*}}[%[[IDX:[0-9a-zA-Z_\.]+]]] = %[[FIRST:[0-9a-zA-Z_\.]+]]
+// CHECK:       array.write %{{.*}}[%{{.*}}] = %[[SECOND:[0-9a-zA-Z_\.]+]]
+// CHECK:       function.return %[[FIRST]] : !felt.type
