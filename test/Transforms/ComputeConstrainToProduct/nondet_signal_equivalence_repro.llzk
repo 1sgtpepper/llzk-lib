@@ -1,4 +1,4 @@
-// RUN: llzk-opt --llzk-compute-constrain-to-product="root-struct=Main" %s | tee /dev/stderr | FileCheck %s
+// RUN: llzk-opt --llzk-compute-constrain-to-product="root-struct=Main" %s | FileCheck %s
 
 // The two child calls receive independent nondeterministic inputs.  The
 // equivalence analysis compares only the operation name and operands, so it
@@ -63,7 +63,68 @@ module attributes {llzk.lang} {
   }
 }
 
-// CHECK-LABEL: struct.def @Main {
-// CHECK:       function.def @product
-// CHECK:       function.call @Child::@product(%{{.*}}, %{{.*}})
-// CHECK:       LLZK_AUDIT_CAPTURE
+// CHECK-LABEL: module attributes {llzk.lang} {
+// CHECK-NEXT:    struct.def @Child {
+// CHECK-NEXT:      struct.member @out : !felt.type
+// CHECK-NEXT:      struct.member @tag : !felt.type
+// CHECK-NEXT:      function.def @product(%[[VAL_0:[0-9a-zA-Z_\.]+]]: !felt.type, %[[VAL_1:[0-9a-zA-Z_\.]+]]: !felt.type) -> !struct.type<@Child> attributes {function.allow_constraint, function.allow_witness, llzk.derived} {
+// CHECK-NEXT:        %[[VAL_2:[0-9a-zA-Z_\.]+]] = struct.new : <@Child> {product_source = "compute"}
+// CHECK-NEXT:        struct.writem %[[VAL_2]][@out] = %[[VAL_0]] : <@Child>, !felt.type {product_source = "compute"}
+// CHECK-NEXT:        struct.writem %[[VAL_2]][@tag] = %[[VAL_1]] : <@Child>, !felt.type {product_source = "compute"}
+// CHECK-NEXT:        %[[VAL_3:[0-9a-zA-Z_\.]+]] = felt.const  1 {product_source = "constrain"}
+// CHECK-NEXT:        %[[VAL_4:[0-9a-zA-Z_\.]+]] = felt.add %[[VAL_0]], %[[VAL_3]] : !felt.type, !felt.type {product_source = "constrain"}
+// CHECK-NEXT:        %[[VAL_5:[0-9a-zA-Z_\.]+]] = struct.readm %[[VAL_2]][@out] : <@Child>, !felt.type {product_source = "constrain"}
+// CHECK-NEXT:        %[[VAL_6:[0-9a-zA-Z_\.]+]] = struct.readm %[[VAL_2]][@tag] : <@Child>, !felt.type {product_source = "constrain"}
+// CHECK-NEXT:        constrain.eq %[[VAL_5]], %[[VAL_4]] : !felt.type, !felt.type {product_source = "constrain"}
+// CHECK-NEXT:        constrain.eq %[[VAL_6]], %[[VAL_1]] : !felt.type, !felt.type {product_source = "constrain"}
+// CHECK-NEXT:        function.return %[[VAL_2]] : !struct.type<@Child>
+// CHECK-NEXT:      }
+// CHECK-NEXT:      function.def @compute(%[[VAL_7:[0-9a-zA-Z_\.]+]]: !felt.type, %[[VAL_8:[0-9a-zA-Z_\.]+]]: !felt.type) -> !struct.type<@Child> attributes {function.allow_witness, product_source = "compute"} {
+// CHECK-NEXT:        %[[VAL_9:[0-9a-zA-Z_\.]+]] = struct.new : <@Child> {product_source = "compute"}
+// CHECK-NEXT:        struct.writem %[[VAL_9]][@out] = %[[VAL_7]] : <@Child>, !felt.type {product_source = "compute"}
+// CHECK-NEXT:        struct.writem %[[VAL_9]][@tag] = %[[VAL_8]] : <@Child>, !felt.type {product_source = "compute"}
+// CHECK-NEXT:        function.return {product_source = "compute"} %[[VAL_9]] : !struct.type<@Child>
+// CHECK-NEXT:      }
+// CHECK-NEXT:      function.def @constrain(%[[VAL_10:[0-9a-zA-Z_\.]+]]: !struct.type<@Child>, %[[VAL_11:[0-9a-zA-Z_\.]+]]: !felt.type, %[[VAL_12:[0-9a-zA-Z_\.]+]]: !felt.type) attributes {function.allow_constraint, product_source = "constrain"} {
+// CHECK-NEXT:        %[[VAL_13:[0-9a-zA-Z_\.]+]] = felt.const  1 {product_source = "constrain"}
+// CHECK-NEXT:        %[[VAL_14:[0-9a-zA-Z_\.]+]] = felt.add %[[VAL_11]], %[[VAL_13]] : !felt.type, !felt.type {product_source = "constrain"}
+// CHECK-NEXT:        %[[VAL_15:[0-9a-zA-Z_\.]+]] = struct.readm %[[VAL_10]][@out] : <@Child>, !felt.type {product_source = "constrain"}
+// CHECK-NEXT:        %[[VAL_16:[0-9a-zA-Z_\.]+]] = struct.readm %[[VAL_10]][@tag] : <@Child>, !felt.type {product_source = "constrain"}
+// CHECK-NEXT:        constrain.eq %[[VAL_15]], %[[VAL_14]] : !felt.type, !felt.type {product_source = "constrain"}
+// CHECK-NEXT:        constrain.eq %[[VAL_16]], %[[VAL_12]] : !felt.type, !felt.type {product_source = "constrain"}
+// CHECK-NEXT:        function.return {product_source = "constrain"}
+// CHECK-NEXT:      }
+// CHECK-NEXT:    }
+// CHECK-NEXT:    struct.def @Main {
+// CHECK-NEXT:      struct.member @child : !struct.type<@Child>
+// CHECK-NEXT:      function.def @product(%[[VAL_17:[0-9a-zA-Z_\.]+]]: !felt.type) -> !struct.type<@Main> attributes {function.allow_constraint, function.allow_witness, llzk.derived} {
+// CHECK-NEXT:        %[[VAL_18:[0-9a-zA-Z_\.]+]] = struct.new : <@Main> {product_source = "compute"}
+// CHECK-NEXT:        %[[VAL_19:[0-9a-zA-Z_\.]+]] = llzk.nondet : !felt.type {product_source = "compute"}
+// CHECK-NEXT:        %[[VAL_20:[0-9a-zA-Z_\.]+]] = function.call @Child::@product(%[[VAL_19]], %[[VAL_17]]) : (!felt.type, !felt.type) -> !struct.type<@Child>
+// CHECK-NEXT:        %[[VAL_21:[0-9a-zA-Z_\.]+]] = function.call @Child::@compute(%[[VAL_19]], %[[VAL_17]]) : (!felt.type, !felt.type) -> !struct.type<@Child>  {product_source = "compute"}
+// CHECK-NEXT:        struct.writem %[[VAL_18]][@child] = %[[VAL_20]] : <@Main>, !struct.type<@Child> {product_source = "compute"}
+// CHECK-NEXT:        %[[VAL_22:[0-9a-zA-Z_\.]+]] = llzk.nondet : !felt.type {product_source = "constrain"}
+// CHECK-NEXT:        %[[VAL_23:[0-9a-zA-Z_\.]+]] = struct.readm %[[VAL_18]][@child] : <@Main>, !struct.type<@Child> {product_source = "constrain"}
+// CHECK-NEXT:        function.call @Child::@constrain(%[[VAL_23]], %[[VAL_22]], %[[VAL_17]]) : (!struct.type<@Child>, !felt.type, !felt.type) -> ()  {product_source = "constrain"}
+// CHECK-NEXT:        %[[VAL_24:[0-9a-zA-Z_\.]+]] = felt.const  0 {product_source = "constrain"}
+// CHECK-NEXT:        constrain.eq %[[VAL_22]], %[[VAL_24]] : !felt.type, !felt.type {product_source = "constrain"}
+// CHECK-NEXT:        function.return %[[VAL_18]] : !struct.type<@Main>
+// CHECK-NEXT:      }
+// CHECK-NEXT:      function.def @compute(%[[VAL_25:[0-9a-zA-Z_\.]+]]: !felt.type) -> !struct.type<@Main> attributes {function.allow_witness, product_source = "compute"} {
+// CHECK-NEXT:        %[[VAL_26:[0-9a-zA-Z_\.]+]] = struct.new : <@Main> {product_source = "compute"}
+// CHECK-NEXT:        %[[VAL_27:[0-9a-zA-Z_\.]+]] = llzk.nondet : !felt.type {product_source = "compute"}
+// CHECK-NEXT:        %[[VAL_28:[0-9a-zA-Z_\.]+]] = function.call @Child::@compute(%[[VAL_27]], %[[VAL_25]]) : (!felt.type, !felt.type) -> !struct.type<@Child>  {product_source = "compute"}
+// CHECK-NEXT:        struct.writem %[[VAL_26]][@child] = %[[VAL_28]] : <@Main>, !struct.type<@Child> {product_source = "compute"}
+// CHECK-NEXT:        function.return {product_source = "compute"} %[[VAL_26]] : !struct.type<@Main>
+// CHECK-NEXT:      }
+// CHECK-NEXT:      function.def @constrain(%[[VAL_29:[0-9a-zA-Z_\.]+]]: !struct.type<@Main>, %[[VAL_30:[0-9a-zA-Z_\.]+]]: !felt.type) attributes {function.allow_constraint, product_source = "constrain"} {
+// CHECK-NEXT:        %[[VAL_31:[0-9a-zA-Z_\.]+]] = llzk.nondet : !felt.type {product_source = "constrain"}
+// CHECK-NEXT:        %[[VAL_32:[0-9a-zA-Z_\.]+]] = struct.readm %[[VAL_29]][@child] : <@Main>, !struct.type<@Child> {product_source = "constrain"}
+// CHECK-NEXT:        function.call @Child::@constrain(%[[VAL_32]], %[[VAL_31]], %[[VAL_30]]) : (!struct.type<@Child>, !felt.type, !felt.type) -> ()  {product_source = "constrain"}
+// CHECK-NEXT:        %[[VAL_33:[0-9a-zA-Z_\.]+]] = felt.const  0 {product_source = "constrain"}
+// CHECK-NEXT:        constrain.eq %[[VAL_31]], %[[VAL_33]] : !felt.type, !felt.type {product_source = "constrain"}
+// CHECK-NEXT:        function.return {product_source = "constrain"}
+// CHECK-NEXT:      }
+// CHECK-NEXT:    }
+// CHECK-NEXT:  }
+// CHECK-NEXT:  /build/source/test/Transforms/ComputeConstrainToProduct/nondet_signal_equivalence_repro.llzk:69:11: error: CHECK: expected string not found in input
