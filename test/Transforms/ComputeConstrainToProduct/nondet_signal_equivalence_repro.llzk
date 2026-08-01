@@ -1,0 +1,68 @@
+// RUN: llzk-opt --llzk-compute-constrain-to-product="root-struct=Main" %s | FileCheck %s
+
+// The two child calls receive independent nondeterministic inputs.  The
+// equivalence analysis compares only the operation name and operands, so it
+// aligns the calls and the generated product reuses the compute-side witness
+// in the constraint-side input.  The original program is satisfiable with
+// compute_input = 1 and constrain_input = 0; the fused product instead
+// requires compute_input = compute_input + 1.
+module attributes {llzk.lang} {
+  struct.def @Child {
+    struct.member @out : !felt.type
+    struct.member @tag : !felt.type
+
+    function.def @compute(
+        %input: !felt.type, %tag: !felt.type
+    ) -> !struct.type<@Child> {
+      %self = struct.new : !struct.type<@Child>
+      struct.writem %self[@out] = %input : !struct.type<@Child>, !felt.type
+      struct.writem %self[@tag] = %tag : !struct.type<@Child>, !felt.type
+      function.return %self : !struct.type<@Child>
+    }
+
+    function.def @constrain(
+        %self: !struct.type<@Child>, %input: !felt.type, %tag: !felt.type
+    ) {
+      %one = felt.const 1
+      %expected = felt.add %input, %one : !felt.type, !felt.type
+      %out = struct.readm %self[@out] : !struct.type<@Child>, !felt.type
+      %stored_tag = struct.readm %self[@tag] : !struct.type<@Child>, !felt.type
+      constrain.eq %out, %expected : !felt.type
+      constrain.eq %stored_tag, %tag : !felt.type
+      function.return
+    }
+  }
+
+  struct.def @Main {
+    struct.member @child : !struct.type<@Child>
+
+    function.def @compute(
+        %shared: !felt.type
+    ) -> !struct.type<@Main> {
+      %self = struct.new : !struct.type<@Main>
+      %compute_input = llzk.nondet : !felt.type
+      %child = function.call @Child::@compute(%compute_input, %shared) :
+          (!felt.type, !felt.type) -> !struct.type<@Child>
+      struct.writem %self[@child] = %child :
+          !struct.type<@Main>, !struct.type<@Child>
+      function.return %self : !struct.type<@Main>
+    }
+
+    function.def @constrain(
+        %self: !struct.type<@Main>, %shared: !felt.type
+    ) {
+      %constrain_input = llzk.nondet : !felt.type
+      %child = struct.readm %self[@child] :
+          !struct.type<@Main>, !struct.type<@Child>
+      function.call @Child::@constrain(%child, %constrain_input, %shared) :
+          (!struct.type<@Child>, !felt.type, !felt.type) -> ()
+      %zero = felt.const 0
+      constrain.eq %constrain_input, %zero : !felt.type
+      function.return
+    }
+  }
+}
+
+// CHECK-LABEL: struct.def @Main {
+// CHECK:       function.def @product
+// CHECK:       function.call @Child::@product(%{{.*}}, %{{.*}})
