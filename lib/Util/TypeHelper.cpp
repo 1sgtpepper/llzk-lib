@@ -236,10 +236,6 @@ std::string BuildShortTypeString::from(const std::string &base, ArrayRef<Attribu
   return bldr.ret;
 }
 
-std::string BuildShortTypeString::fromRawName(StringRef base, ArrayRef<Attribute> attrs) {
-  return from(escapeSpecialCharacters(base), attrs);
-}
-
 namespace {
 
 template <typename... Types> class TypeList {

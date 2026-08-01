@@ -71,10 +71,6 @@ public:
   /// available in an earlier instantiation so they can be added by a later instantiation.
   static std::string from(const std::string &base, mlir::ArrayRef<mlir::Attribute> attrs);
 
-  /// Format a source symbol name and its parameters. Unlike the overload above, the base cannot
-  /// contain pass-created placeholders, so reserved bytes are escaped before parameters are
-  /// appended.
-  static std::string fromRawName(mlir::StringRef base, mlir::ArrayRef<mlir::Attribute> attrs);
 };
 
 // This function asserts that the given Attribute kind is legal within the LLZK types that can

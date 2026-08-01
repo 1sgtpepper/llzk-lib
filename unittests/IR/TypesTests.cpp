@@ -242,17 +242,6 @@ TEST_F(TypeTests, testShortStringEscapesReservedFeltFieldNameBytes) {
   EXPECT_EQ("f<35:6:x%251A>", shortString(resemblingEscape));
 }
 
-TEST_F(TypeTests, testShortStringEscapesReservedRawNameBytes) {
-  constexpr char withPlaceholders[] = {'T', '\x1A', '\x1A'};
-  llvm::StringRef placeholderName(withPlaceholders, sizeof(withPlaceholders));
-  IntegerAttr value = IntegerAttr::get(IndexType::get(&ctx), 35);
-
-  EXPECT_EQ(
-      "T%1A%1A_35", BuildShortTypeString::fromRawName(placeholderName, ArrayRef<Attribute> {value})
-  );
-  EXPECT_EQ("T%251A_35", BuildShortTypeString::fromRawName("T%1A", ArrayRef<Attribute> {value}));
-}
-
 TEST_F(TypeTests, testShortStringEscapesReservedNestedSymbolBytes) {
   constexpr char withPlaceholder[] = {'S', '\x1A'};
   llvm::StringRef placeholderName(withPlaceholder, sizeof(withPlaceholder));
