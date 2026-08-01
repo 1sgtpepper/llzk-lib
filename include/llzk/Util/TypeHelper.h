@@ -32,9 +32,10 @@ namespace pod {
 class PodType;
 } // namespace pod
 
-/// The bytes reserved for partial-instantiation placeholders and escaping are escaped in symbol
-/// references. Other display delimiters are not, so these representations cannot be reversed into
-/// Types. They are intended only as compact, recognizable names for instantiated symbols.
+/// Note: If any symbol refs in an input Type/Attribute use any of the special characters that this
+/// class generates, they are not escaped. That means these string representations are not safe to
+/// reverse back into a Type. They are intended only to produce compact, recognizable names for
+/// instantiated symbols.
 class BuildShortTypeString {
   static constexpr char PLACEHOLDER = '\x1A';
 
@@ -46,7 +47,6 @@ class BuildShortTypeString {
   BuildShortTypeString &append(mlir::ArrayRef<mlir::Attribute>);
   BuildShortTypeString &append(mlir::Attribute);
 
-  static std::string escapeSpecialCharacters(mlir::StringRef);
   void appendSymRef(mlir::SymbolRefAttr);
   void appendSymName(mlir::StringRef);
 

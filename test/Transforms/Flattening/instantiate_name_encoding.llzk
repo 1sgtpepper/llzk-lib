@@ -150,13 +150,13 @@ module attributes {llzk.lang} {
 // CHECK-NEXT:        function.return
 // CHECK-NEXT:      }
 // CHECK-NEXT:    }
-// CHECK-NEXT:    poly.template @"T_!s<@S%1A>_\1A" {
+// CHECK-NEXT:    poly.template @"T_!s<@S\1A>_\1A" {
 // CHECK-NEXT:      poly.param @Remaining : !poly.tvar<@Remaining>
 // CHECK-NEXT:      function.def @compute() -> index {
 // CHECK-NEXT:        %[[VAL_2:[0-9a-zA-Z_\.]+]] = arith.constant 7 : index
 // CHECK-NEXT:        function.return %[[VAL_2]] : index
 // CHECK-NEXT:      }
-// CHECK-NEXT:    } {poly.name_pattern = ["T_!s<@S%1A>_", ""]}
+// CHECK-NEXT:    } {poly.name_pattern = ["T_!s<@S\1A>_", ""]}
 // CHECK-NEXT:    poly.template @T {
 // CHECK-NEXT:      poly.param @Concrete : !poly.tvar<@Concrete>
 // CHECK-NEXT:      poly.param @Remaining : !poly.tvar<@Remaining>
@@ -166,7 +166,7 @@ module attributes {llzk.lang} {
 // CHECK-NEXT:      }
 // CHECK-NEXT:    }
 // CHECK-NEXT:    function.def @main() -> index {
-// CHECK-NEXT:      %[[VAL_4:[0-9a-zA-Z_\.]+]] = function.call @"T_!s<@S%1A>_\1A"::@compute<[?]>() : () -> index
+// CHECK-NEXT:      %[[VAL_4:[0-9a-zA-Z_\.]+]] = function.call @"T_!s<@S\1A>_\1A"::@compute<[?]>() : () -> index
 // CHECK-NEXT:      function.return %[[VAL_4]] : index
 // CHECK-NEXT:    }
 // CHECK-NEXT:  }
@@ -197,11 +197,11 @@ module attributes {
 }
 
 // CHECK-LABEL: module attributes {llzk.fields = [#felt.field<"x\1A", 101>, #felt.field<"x%1A", 101>], llzk.lang} {
-// CHECK-NEXT:    function.def @"T_f<35:4:x%1A>_value"() -> index {
+// CHECK-NEXT:    function.def @"T_f<35:2:x\1A>_value"() -> index {
 // CHECK-NEXT:      %[[VAL_0:[0-9a-zA-Z_\.]+]] = arith.constant 7 : index
 // CHECK-NEXT:      function.return %[[VAL_0]] : index
 // CHECK-NEXT:    }
-// CHECK-NEXT:    function.def @"T_f<35:6:x%251A>_value"() -> index {
+// CHECK-NEXT:    function.def @"T_f<35:4:x%1A>_value"() -> index {
 // CHECK-NEXT:      %[[VAL_1:[0-9a-zA-Z_\.]+]] = arith.constant 7 : index
 // CHECK-NEXT:      function.return %[[VAL_1]] : index
 // CHECK-NEXT:    }
@@ -213,8 +213,8 @@ module attributes {
 // CHECK-NEXT:      }
 // CHECK-NEXT:    }
 // CHECK-NEXT:    function.def @main() -> index {
-// CHECK-NEXT:      %[[VAL_3:[0-9a-zA-Z_\.]+]] = function.call @"T_f<35:4:x%1A>_value"() : () -> index
-// CHECK-NEXT:      %[[VAL_4:[0-9a-zA-Z_\.]+]] = function.call @"T_f<35:6:x%251A>_value"() : () -> index
+// CHECK-NEXT:      %[[VAL_3:[0-9a-zA-Z_\.]+]] = function.call @"T_f<35:2:x\1A>_value"() : () -> index
+// CHECK-NEXT:      %[[VAL_4:[0-9a-zA-Z_\.]+]] = function.call @"T_f<35:4:x%1A>_value"() : () -> index
 // CHECK-NEXT:      function.return %[[VAL_4]] : index
 // CHECK-NEXT:    }
 // CHECK-NEXT:  }

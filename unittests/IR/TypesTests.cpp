@@ -169,7 +169,7 @@ TEST_F(TypeTests, testShortString) {
     );
   }
 
-  // Display delimiters other than the reserved escape and placeholder bytes remain readable.
+  // Display delimiters remain readable; this representation is intentionally not reversible.
   EXPECT_EQ(
       "!s<@S1_!a<>>",
       BuildShortTypeString::from(StructType::get(FlatSymbolRefAttr::get(&ctx, "S1_!a<>")))
@@ -223,7 +223,7 @@ TEST_F(TypeTests, testShortStringDistinguishesDelimitedFeltFieldNames) {
   EXPECT_NE(first, second);
 }
 
-TEST_F(TypeTests, testShortStringEscapesReservedFeltFieldNameBytes) {
+TEST_F(TypeTests, testShortStringLengthPrefixesFeltFieldNames) {
   static constexpr char withPlaceholder[] = {'x', '\x1A'};
   static constexpr llvm::StringLiteral resemblingEscape("x%1A");
   static constexpr llvm::StringLiteral prime("101");
@@ -238,11 +238,11 @@ TEST_F(TypeTests, testShortStringEscapesReservedFeltFieldNameBytes) {
     return BuildShortTypeString::from(FeltConstAttr::get(&ctx, llvm::APInt(7, 35), field));
   };
 
-  EXPECT_EQ("f<35:4:x%1A>", shortString(placeholderField));
-  EXPECT_EQ("f<35:6:x%251A>", shortString(resemblingEscape));
+  EXPECT_EQ("f<35:2:x\x1A>", shortString(placeholderField));
+  EXPECT_EQ("f<35:4:x%1A>", shortString(resemblingEscape));
 }
 
-TEST_F(TypeTests, testShortStringEscapesReservedNestedSymbolBytes) {
+TEST_F(TypeTests, testShortStringPreservesReservedNestedSymbolBytes) {
   constexpr char withPlaceholder[] = {'S', '\x1A'};
   llvm::StringRef placeholderName(withPlaceholder, sizeof(withPlaceholder));
 
@@ -252,8 +252,8 @@ TEST_F(TypeTests, testShortStringEscapesReservedNestedSymbolBytes) {
     );
   };
 
-  EXPECT_EQ("!s<@S%1A>", shortString(placeholderName));
-  EXPECT_EQ("!s<@S%251A>", shortString("S%1A"));
+  EXPECT_EQ("!s<@S\x1A>", shortString(placeholderName));
+  EXPECT_EQ("!s<@S%1A>", shortString("S%1A"));
 }
 
 TEST_F(TypeTests, testShortStringWithPartials) {
