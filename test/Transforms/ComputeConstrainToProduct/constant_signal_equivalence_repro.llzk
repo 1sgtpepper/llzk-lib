@@ -1,0 +1,64 @@
+// RUN: llzk-opt --llzk-compute-constrain-to-product="root-struct=Main" %s | FileCheck %s
+
+// These two child inputs are distinct felt constants.  The signal-equivalence
+// analysis compares only operation names and operands, so it treats felt.const
+// 0 and felt.const 1 as the same signal and aligns the calls.
+module attributes {llzk.lang} {
+  struct.def @Child {
+    struct.member @out : !felt.type
+    struct.member @tag : !felt.type
+
+    function.def @compute(
+        %input: !felt.type, %tag: !felt.type
+    ) -> !struct.type<@Child> {
+      %self = struct.new : !struct.type<@Child>
+      struct.writem %self[@out] = %input : !struct.type<@Child>, !felt.type
+      struct.writem %self[@tag] = %tag : !struct.type<@Child>, !felt.type
+      function.return %self : !struct.type<@Child>
+    }
+
+    function.def @constrain(
+        %self: !struct.type<@Child>, %input: !felt.type, %tag: !felt.type
+    ) {
+      %out = struct.readm %self[@out] : !struct.type<@Child>, !felt.type
+      %stored_tag = struct.readm %self[@tag] : !struct.type<@Child>, !felt.type
+      constrain.eq %out, %input : !felt.type
+      constrain.eq %stored_tag, %tag : !felt.type
+      function.return
+    }
+  }
+
+  struct.def @Main {
+    struct.member @child : !struct.type<@Child>
+
+    function.def @compute(
+        %unused0: !felt.type, %unused1: !felt.type
+    ) -> !struct.type<@Main> {
+      %self = struct.new : !struct.type<@Main>
+      %zero = felt.const 0
+      %tag = felt.const 7
+      %child = function.call @Child::@compute(%zero, %tag) :
+          (!felt.type, !felt.type) -> !struct.type<@Child>
+      struct.writem %self[@child] = %child :
+          !struct.type<@Main>, !struct.type<@Child>
+      function.return %self : !struct.type<@Main>
+    }
+
+    function.def @constrain(
+        %self: !struct.type<@Main>, %unused0: !felt.type, %unused1: !felt.type
+    ) {
+      %one = felt.const 1
+      %tag = felt.const 7
+      %child = struct.readm %self[@child] :
+          !struct.type<@Main>, !struct.type<@Child>
+      function.call @Child::@constrain(%child, %one, %tag) :
+          (!struct.type<@Child>, !felt.type, !felt.type) -> ()
+      function.return
+    }
+  }
+}
+
+// CHECK-LABEL: struct.def @Main {
+// CHECK:       function.def @product
+// CHECK:       %[[ZERO:[0-9a-zA-Z_\.]+]] = felt.const{{ *}}0
+// CHECK:       function.call @Child::@product(%[[ZERO]], %{{.*}})

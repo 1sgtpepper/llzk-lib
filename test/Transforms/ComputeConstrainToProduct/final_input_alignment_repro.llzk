@@ -1,0 +1,59 @@
+// RUN: llzk-opt --llzk-compute-constrain-to-product="root-struct=Main" %s | FileCheck %s
+
+// The final child input differs (%compute_tag versus %constrain_tag), but
+// alignCalls compares only operands [0, numOperands - 2].  The generated
+// product therefore feeds the compute-side tag into the constraint logic.
+module attributes {llzk.lang} {
+  struct.def @Child {
+    struct.member @out : !felt.type
+    struct.member @tag : !felt.type
+
+    function.def @compute(
+        %input: !felt.type, %tag: !felt.type
+    ) -> !struct.type<@Child> {
+      %self = struct.new : !struct.type<@Child>
+      struct.writem %self[@out] = %input : !struct.type<@Child>, !felt.type
+      struct.writem %self[@tag] = %tag : !struct.type<@Child>, !felt.type
+      function.return %self : !struct.type<@Child>
+    }
+
+    function.def @constrain(
+        %self: !struct.type<@Child>, %input: !felt.type, %tag: !felt.type
+    ) {
+      %out = struct.readm %self[@out] : !struct.type<@Child>, !felt.type
+      %stored_tag = struct.readm %self[@tag] : !struct.type<@Child>, !felt.type
+      constrain.eq %out, %input : !felt.type
+      constrain.eq %stored_tag, %tag : !felt.type
+      function.return
+    }
+  }
+
+  struct.def @Main {
+    struct.member @child : !struct.type<@Child>
+
+    function.def @compute(
+        %same: !felt.type, %compute_tag: !felt.type
+    ) -> !struct.type<@Main> {
+      %self = struct.new : !struct.type<@Main>
+      %child = function.call @Child::@compute(%same, %compute_tag) :
+          (!felt.type, !felt.type) -> !struct.type<@Child>
+      struct.writem %self[@child] = %child :
+          !struct.type<@Main>, !struct.type<@Child>
+      function.return %self : !struct.type<@Main>
+    }
+
+    function.def @constrain(
+        %self: !struct.type<@Main>, %same: !felt.type, %constrain_tag: !felt.type
+    ) {
+      %child = struct.readm %self[@child] :
+          !struct.type<@Main>, !struct.type<@Child>
+      function.call @Child::@constrain(%child, %same, %constrain_tag) :
+          (!struct.type<@Child>, !felt.type, !felt.type) -> ()
+      function.return
+    }
+  }
+}
+
+// CHECK-LABEL: struct.def @Main {
+// CHECK:       function.def @product(%[[SAME:[0-9a-zA-Z_\.]+]]: !felt.type, %[[COMPUTE_TAG:[0-9a-zA-Z_\.]+]]: !felt.type)
+// CHECK:       function.call @Child::@product(%[[SAME]], %[[COMPUTE_TAG]])

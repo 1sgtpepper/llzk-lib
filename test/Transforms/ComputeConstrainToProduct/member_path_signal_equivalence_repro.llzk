@@ -1,0 +1,65 @@
+// RUN: llzk-opt --llzk-compute-constrain-to-product="root-struct=Main" %s | FileCheck %s
+
+// The compute-side read of @a carries %a, while the constraint-side child
+// input is the independent %b argument.  The current helper scans backwards
+// for any MemberWriteOp and replaces the @a read with the later @b write.
+module attributes {llzk.lang} {
+  struct.def @Child {
+    struct.member @out : !felt.type
+    struct.member @tag : !felt.type
+
+    function.def @compute(
+        %input: !felt.type, %tag: !felt.type
+    ) -> !struct.type<@Child> {
+      %self = struct.new : !struct.type<@Child>
+      struct.writem %self[@out] = %input : !struct.type<@Child>, !felt.type
+      struct.writem %self[@tag] = %tag : !struct.type<@Child>, !felt.type
+      function.return %self : !struct.type<@Child>
+    }
+
+    function.def @constrain(
+        %self: !struct.type<@Child>, %input: !felt.type, %tag: !felt.type
+    ) {
+      %out = struct.readm %self[@out] : !struct.type<@Child>, !felt.type
+      %stored_tag = struct.readm %self[@tag] : !struct.type<@Child>, !felt.type
+      constrain.eq %out, %input : !felt.type
+      constrain.eq %stored_tag, %tag : !felt.type
+      function.return
+    }
+  }
+
+  struct.def @Main {
+    struct.member @a : !felt.type
+    struct.member @b : !felt.type
+    struct.member @child : !struct.type<@Child>
+
+    function.def @compute(
+        %a: !felt.type, %b: !felt.type
+    ) -> !struct.type<@Main> {
+      %self = struct.new : !struct.type<@Main>
+      struct.writem %self[@a] = %a : !struct.type<@Main>, !felt.type
+      struct.writem %self[@b] = %b : !struct.type<@Main>, !felt.type
+      %from_a = struct.readm %self[@a] : !struct.type<@Main>, !felt.type
+      %child = function.call @Child::@compute(%from_a, %a) :
+          (!felt.type, !felt.type) -> !struct.type<@Child>
+      struct.writem %self[@child] = %child :
+          !struct.type<@Main>, !struct.type<@Child>
+      function.return %self : !struct.type<@Main>
+    }
+
+    function.def @constrain(
+        %self: !struct.type<@Main>, %a: !felt.type, %b: !felt.type
+    ) {
+      %child = struct.readm %self[@child] :
+          !struct.type<@Main>, !struct.type<@Child>
+      function.call @Child::@constrain(%child, %b, %a) :
+          (!struct.type<@Child>, !felt.type, !felt.type) -> ()
+      function.return
+    }
+  }
+}
+
+// CHECK-LABEL: struct.def @Main {
+// CHECK:       function.def @product
+// CHECK:       %[[FROM_A:[0-9a-zA-Z_\.]+]] = struct.readm %{{.*}}[@a] : <@Main>, !felt.type
+// CHECK:       function.call @Child::@product(%[[FROM_A]], %{{.*}})
