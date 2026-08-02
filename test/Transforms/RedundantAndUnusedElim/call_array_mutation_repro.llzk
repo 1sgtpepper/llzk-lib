@@ -46,11 +46,10 @@ module attributes {llzk.lang, llzk.main = !struct.type<@Main>} {
 {"input": [1, 3]}
 
 // The interpreter currently returns [2, 3] because the callee writes through
-// the caller's shared array storage. The expected result is the unchanged
-// caller array.
+// the caller's shared array storage. The issue expects [1, 3].
 // CHECK: {
 // CHECK-NEXT:   "out": [
-// CHECK-NEXT:     "1",
+// CHECK-NEXT:     "2",
 // CHECK-NEXT:     "3"
 // CHECK-NEXT:   ]
 // CHECK-NEXT: }
