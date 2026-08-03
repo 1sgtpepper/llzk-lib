@@ -62,9 +62,8 @@ mlir::FailureOr<InstantiationLayout> buildInstantiationLayout(
     for (auto [index, chunk] : llvm::enumerate(pattern)) {
       auto stringChunk = llvm::dyn_cast<mlir::StringAttr>(chunk);
       if (!stringChunk) {
-        return parentTemplate.emitOpError()
-               << "expected '" << TEMPLATE_NAME_PATTERN_ATTR << "' element " << index
-               << " to be a StringAttr";
+        return parentTemplate.emitOpError() << "expected '" << TEMPLATE_NAME_PATTERN_ATTR
+                                            << "' element " << index << " to be a StringAttr";
       }
       sourceChunks.push_back(stringChunk);
     }
