@@ -32,6 +32,12 @@ jobs:
           git config --global 'url.https://ssh@github.com/'.insteadOf 'ssh://git@github.com/'
           git config --global 'url.https://git@github.com/'.insteadOf 'git@github.com:'
 
+      - name: Use project build cache
+        uses: cachix/cachix-action@v17
+        with:
+          name: veridise-public
+          skipPush: true
+
       - name: Build reviewed llzk-opt
         run: nix --print-build-logs build .#debugGCC
 
