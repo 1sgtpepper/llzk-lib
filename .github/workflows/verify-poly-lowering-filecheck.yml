@@ -12,12 +12,14 @@ permissions:
 jobs:
   verify:
     runs-on: ubuntu-24.04
+    env:
+      REVIEWED_SHA: cd901b91c655618dafddd8d3f5d4a9ee57e1ff33
 
     steps:
       - name: Checkout reviewed head
         uses: actions/checkout@v6
         with:
-          ref: ${{ github.sha }}
+          ref: ${{ env.REVIEWED_SHA }}
           persist-credentials: false
 
       - name: Install Nix
