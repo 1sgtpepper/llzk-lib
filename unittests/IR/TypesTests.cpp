@@ -225,12 +225,12 @@ TEST_F(TypeTests, testShortStringDistinguishesDelimitedFeltFieldNames) {
 
 TEST_F(TypeTests, testShortStringLengthPrefixesFeltFieldNames) {
   static constexpr char withPlaceholder[] = {'x', '\x1A'};
-  static constexpr llvm::StringLiteral resemblingEscape("x%1A");
+  static constexpr llvm::StringLiteral textualPlaceholder("x%1A");
   static constexpr llvm::StringLiteral prime("101");
   static const llvm::StringRef placeholderField(withPlaceholder, sizeof(withPlaceholder));
   [[maybe_unused]] static const bool fieldsRegistered = [] {
     Field::addField(placeholderField, prime, nullptr);
-    Field::addField(resemblingEscape, prime, nullptr);
+    Field::addField(textualPlaceholder, prime, nullptr);
     return true;
   }();
 
@@ -238,8 +238,9 @@ TEST_F(TypeTests, testShortStringLengthPrefixesFeltFieldNames) {
     return BuildShortTypeString::from(FeltConstAttr::get(&ctx, llvm::APInt(7, 35), field));
   };
 
+  // Preserve raw field bytes while keeping a textual `%1A` field distinct from a marker byte.
   EXPECT_EQ("f<35:2:x\x1A>", shortString(placeholderField));
-  EXPECT_EQ("f<35:4:x%1A>", shortString(resemblingEscape));
+  EXPECT_EQ("f<35:4:x%1A>", shortString(textualPlaceholder));
 }
 
 TEST_F(TypeTests, testShortStringPreservesReservedNestedSymbolBytes) {

@@ -160,7 +160,9 @@ BuildShortTypeString &BuildShortTypeString::append(Attribute a) {
     ss << "f<";
     fa.getValue().print(ss, false);
     if (StringAttr fieldName = fa.getFieldName()) {
-      // The encoded byte length prevents field delimiters from colliding with adjacent parameters.
+      // The byte length prevents field delimiters from colliding with adjacent parameters. For
+      // example, `a>_f<36:b` followed by 37 and `a` followed by `b>_f<37` would otherwise render
+      // the same concatenated short string.
       ss << ':' << fieldName.getValue().size() << ':' << fieldName.getValue();
     }
     ss << '>';

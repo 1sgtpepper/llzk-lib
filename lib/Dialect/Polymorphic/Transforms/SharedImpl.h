@@ -131,13 +131,6 @@ inline component::StructType getStructTypeWithParams(
                         : component::StructType::get(nameRef, mlir::ArrayAttr::get(ctx, params));
 }
 
-/// Transform-private metadata carrying a partial template's logical name pattern.
-///
-/// When present, the attribute has P+1 StringAttr chunks around the P current template
-/// parameters. The chunks are literal data; later transforms never recover semantic positions
-/// from the physical symbol name.
-inline constexpr llvm::StringLiteral TEMPLATE_NAME_PATTERN_ATTR = "poly.name_pattern";
-
 /// Groups the information needed after concrete parameters have been chosen to decide how to name
 /// a new instantiated template and how to rewrite the remaining argument list at the use site.
 struct InstantiationLayout {

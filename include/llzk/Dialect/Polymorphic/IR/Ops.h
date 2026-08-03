@@ -17,10 +17,19 @@
 #include <mlir/Interfaces/ControlFlowInterfaces.h>
 #include <mlir/Interfaces/InferTypeOpInterface.h>
 
+#include <llvm/ADT/StringRef.h>
+
 // Include TableGen'd declarations
 #include "llzk/Dialect/Polymorphic/IR/OpInterfaces.h.inc"
 
 namespace llzk::polymorphic {
+
+/// Transform-carried metadata preserving the literal chunks of a partial template's logical name.
+///
+/// When present, the attribute has P+1 StringAttr chunks around the P current template
+/// parameters. The gap between chunks i and i+1 represents current parameter i. The chunks are
+/// literal data; later transforms never recover semantic positions from the physical symbol name.
+inline constexpr llvm::StringLiteral TEMPLATE_NAME_PATTERN_ATTR = "poly.name_pattern";
 
 template <typename OpT>
 concept TemplateSymbolBindingOp =

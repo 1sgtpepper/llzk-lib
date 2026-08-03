@@ -37,6 +37,7 @@ class PodType;
 /// reverse back into a Type. They are intended only to produce compact, recognizable names for
 /// instantiated symbols.
 class BuildShortTypeString {
+  /// Marker used by the partial-name overload to preserve unresolved parameter positions.
   static constexpr char PLACEHOLDER = '\x1A';
 
   std::string ret;
@@ -54,6 +55,11 @@ public:
   /// Return a brief string representation of the given LLZK type.
   static inline std::string from(mlir::Type type) {
     return BuildShortTypeString().append(type).ret;
+  }
+
+  /// Return a brief string representation of one LLZK type parameter attribute.
+  static inline std::string from(mlir::Attribute attr) {
+    return BuildShortTypeString().append(attr).ret;
   }
 
   /// Return a brief string representation of the attribute list from a parameterized type.

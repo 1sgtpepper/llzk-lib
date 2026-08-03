@@ -50,23 +50,21 @@ mlir::FailureOr<InstantiationLayout> buildInstantiationLayout(
   if (mlir::Attribute rawPattern = parentTemplate->getDiscardableAttr(TEMPLATE_NAME_PATTERN_ATTR)) {
     auto pattern = llvm::dyn_cast<mlir::ArrayAttr>(rawPattern);
     if (!pattern) {
-      parentTemplate.emitOpError()
-          << "expected '" << TEMPLATE_NAME_PATTERN_ATTR << "' to be an ArrayAttr";
-      return mlir::failure();
+      return parentTemplate.emitOpError()
+             << "expected '" << TEMPLATE_NAME_PATTERN_ATTR << "' to be an ArrayAttr";
     }
     if (pattern.size() != paramNames.size() + 1) {
-      parentTemplate.emitOpError()
-          << "expected '" << TEMPLATE_NAME_PATTERN_ATTR << "' to contain " << paramNames.size() + 1
-          << " literal chunk(s), matching the template parameters, but "
-          << "found " << pattern.size();
-      return mlir::failure();
+      return parentTemplate.emitOpError()
+             << "expected '" << TEMPLATE_NAME_PATTERN_ATTR << "' to contain "
+             << paramNames.size() + 1 << " literal chunk(s) for " << paramNames.size()
+             << " template parameter(s), but found " << pattern.size();
     }
     for (auto [index, chunk] : llvm::enumerate(pattern)) {
       auto stringChunk = llvm::dyn_cast<mlir::StringAttr>(chunk);
       if (!stringChunk) {
-        parentTemplate.emitOpError() << "expected '" << TEMPLATE_NAME_PATTERN_ATTR << "' element "
-                                     << index << " to be a StringAttr";
-        return mlir::failure();
+        return parentTemplate.emitOpError()
+               << "expected '" << TEMPLATE_NAME_PATTERN_ATTR << "' element " << index
+               << " to be a StringAttr";
       }
       sourceChunks.push_back(stringChunk);
     }
@@ -118,8 +116,7 @@ mlir::FailureOr<InstantiationLayout> buildInstantiationLayout(
     auto concreteIt = paramNameToConcrete.find(paramNames[i]);
     if (concreteIt != paramNameToConcrete.end() && concreteIt->second) {
       mlir::Attribute binding = concreteIt->second;
-      mlir::SmallVector<mlir::Attribute, 1> oneBinding {binding};
-      refinedChunkValues.back() += BuildShortTypeString::from(oneBinding);
+      refinedChunkValues.back() += BuildShortTypeString::from(binding);
       refinedChunkValues.back() += sourceChunks[i + 1].getValue().str();
     } else {
       refinedChunkValues.push_back(sourceChunks[i + 1].getValue().str());

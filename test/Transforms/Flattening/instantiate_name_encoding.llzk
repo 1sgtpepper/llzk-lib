@@ -79,7 +79,8 @@ module attributes {llzk.lang} {
 // -----
 
 module attributes {llzk.lang} {
-  // A previously partial template is refined from literal chunks, not from its physical name.
+  // A previously partial template is refined from `poly.name_pattern` chunks, not from its
+  // physical name.
   poly.template @"T_89_\1A" {
     poly.param @B : index
     function.def @compute() -> index {
