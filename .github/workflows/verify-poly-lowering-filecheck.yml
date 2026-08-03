@@ -1,0 +1,65 @@
+name: Verify poly lowering FileCheck
+
+on:
+  push:
+    branches:
+      - ci/verify-poly-lowering-checks
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout reviewed head
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Install Nix
+        uses: cachix/install-nix-action@d1ca217b388ee87b2507a9a93bf01368bde7cec2
+        with:
+          install_url: https://releases.nixos.org/nix/nix-2.23.3/install
+          github_access_token: "${{ secrets.GITHUB_TOKEN }}"
+
+      - name: Set Git credentials
+        run: |
+          git config --global 'url.https://api@github.com/'.insteadOf 'https://github.com/'
+          git config --global 'url.https://ssh@github.com/'.insteadOf 'ssh://git@github.com/'
+          git config --global 'url.https://git@github.com/'.insteadOf 'git@github.com:'
+
+      - name: Build reviewed llzk-opt
+        run: nix --print-build-logs build .#debugGCC
+
+      - name: Generate fresh FileCheck evidence
+        run: |
+          set -euo pipefail
+          test_file=test/Transforms/PolyLowering/poly_lowering_non_felt_equality.llzk
+          mkdir -p artifacts
+
+          cp "$(readlink -f result/bin/llzk-opt)" artifacts/llzk-opt
+          result/bin/llzk-opt --version > artifacts/llzk-opt.version
+          git rev-parse HEAD > artifacts/reviewed-head.txt
+          cp "$test_file" artifacts/committed-test.llzk
+
+          result/bin/llzk-opt \
+            -split-input-file \
+            -llzk-poly-lowering-pass="max-degree=2" \
+            --verify-each \
+            "$test_file" > artifacts/producer-output.llzk
+
+          python3 scripts/generate-test-checks.py \
+            < artifacts/producer-output.llzk \
+            > artifacts/generated-checks.txt
+
+      - name: Upload exact-head FileCheck evidence
+        uses: actions/upload-artifact@v7
+        with:
+          name: poly-lowering-filecheck-evidence-${{ github.sha }}
+          path: artifacts
+          retention-days: 7
+          compression-level: 0
