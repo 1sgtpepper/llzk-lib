@@ -4,10 +4,10 @@
 // SCRIPT: // CHECK:
 // SCRIPT-SAME: ATTR_0:
 // SCRIPT: // CHECK-LABEL: module attributes {llzk.named =
-// SCRIPT-SAME: ATTR_0]], llzk.fields = [#felt.field<"x", 101>], llzk.main = !struct.type<@Main<[#felt<const 7 : !felt.type<"x">>]>], llzk.lang} {
+// SCRIPT-SAME: ATTR_0]], llzk.fields = [#felt{{\.}}field<"x", 101>], llzk.main = !struct.type<@Main<[#felt<const 7 : !felt.type<"x">>]>], llzk.marker = #foo{{\.}}marker, llzk.lang} {
 // SCRIPT-NEXT: // CHECK-NEXT:  }
 
 //--- inline-attributes.llzk
 #named = affine_map<(d0) -> (d0)>
-module attributes {llzk.named = #named, llzk.fields = [#felt.field<"x", 101>], llzk.main = !struct.type<@Main<[#felt<const 7 : !felt.type<"x">>]>], llzk.lang} {
+module attributes {llzk.named = #named, llzk.fields = [#felt.field<"x", 101>], llzk.main = !struct.type<@Main<[#felt<const 7 : !felt.type<"x">>]>], llzk.marker = #foo.marker, llzk.lang} {
 }
