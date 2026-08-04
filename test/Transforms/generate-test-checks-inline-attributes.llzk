@@ -8,6 +8,6 @@
 // SCRIPT-NEXT: // CHECK-NEXT:  }
 
 //--- inline-attributes.llzk
-#named = affine_map<(d0) -> (d0)>
-module attributes {llzk.named = #named, llzk.fields = [#felt.field<"x", 101>], llzk.main = !struct.type<@Main<[#felt<const 7 : !felt.type<"x">>]>], llzk.marker = #foo.marker, llzk.lang} {
+#felt = affine_map<(d0) -> (d0)>
+module attributes {llzk.named = #felt, llzk.fields = [#felt.field<"x", 101>], llzk.main = !struct.type<@Main<[#felt<const 7 : !felt.type<"x">>]>], llzk.marker = #foo.marker, llzk.lang} {
 }
