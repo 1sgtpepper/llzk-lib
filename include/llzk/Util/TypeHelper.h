@@ -37,7 +37,7 @@ class PodType;
 /// reverse back into a Type. They are intended only to produce compact, recognizable names for
 /// instantiated symbols.
 class BuildShortTypeString {
-  /// Marker used by the partial-name overload to preserve unresolved parameter positions.
+  /// Marker used when formatting an unresolved attribute in an attribute-list string.
   static constexpr char PLACEHOLDER = '\x1A';
 
   std::string ret;
@@ -67,15 +67,6 @@ public:
   static inline std::string from(mlir::ArrayRef<mlir::Attribute> attrs) {
     return BuildShortTypeString().append(attrs).ret;
   }
-
-  /// Take an existing name prefix/base that contains N>=0 `PLACEHOLDER` character(s) and the
-  /// Attribute list (size>=N) from a parameterized type. The first N elements in the list are
-  /// formatted and used to replace the `PLACEHOLDER` character(s) in the base string. The remaining
-  /// Attribute elements, if any, are formatted and appended to the end. Occurrences of `nullptr` in
-  /// the Attribute list are formatted as the `PLACEHOLDER` character itself to allow for partial
-  /// instantiation of a parameterized type, preserving the location of attributes that were not
-  /// available in an earlier instantiation so they can be added by a later instantiation.
-  static std::string from(const std::string &base, mlir::ArrayRef<mlir::Attribute> attrs);
 };
 
 // This function asserts that the given Attribute kind is legal within the LLZK types that can

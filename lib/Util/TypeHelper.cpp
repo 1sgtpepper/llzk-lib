@@ -191,36 +191,6 @@ BuildShortTypeString &BuildShortTypeString::append(ArrayRef<Attribute> attrs) {
   return *this;
 }
 
-std::string BuildShortTypeString::from(const std::string &base, ArrayRef<Attribute> attrs) {
-  BuildShortTypeString bldr;
-
-  bldr.ret.reserve(base.size() + attrs.size()); // reserve minimum space required
-
-  // First handle replacements of PLACEHOLDER
-  const auto *END = attrs.end();
-  const auto *IT = attrs.begin();
-  {
-    size_t start = 0;
-    for (size_t pos; (pos = base.find(PLACEHOLDER, start)) != std::string::npos; start = pos + 1) {
-      // Append original up to the PLACEHOLDER
-      bldr.ret.append(base, start, pos - start);
-      // Append the formatted Attribute
-      assert(IT != END && "must have an Attribute for every 'PLACEHOLDER' char");
-      bldr.append(*IT++);
-    }
-    // Append remaining suffix of the original
-    bldr.ret.append(base, start, base.size() - start);
-  }
-
-  // Append any remaining Attributes
-  if (IT != END) {
-    bldr.ss << '_';
-    bldr.append(ArrayRef(IT, END));
-  }
-
-  return bldr.ret;
-}
-
 namespace {
 
 template <typename... Types> class TypeList {
