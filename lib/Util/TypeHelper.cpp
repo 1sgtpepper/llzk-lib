@@ -145,11 +145,7 @@ BuildShortTypeString &BuildShortTypeString::append(Type type) {
 }
 
 BuildShortTypeString &BuildShortTypeString::append(Attribute a) {
-  // Special case for inserting the `PLACEHOLDER`
-  if (a == nullptr) {
-    ss << PLACEHOLDER;
-    return *this;
-  }
+  assert(a && "BuildShortTypeString requires non-null attributes");
 
   // Adapted from AsmPrinter::Impl::printAttributeImpl()
   if (auto ia = llvm::dyn_cast<IntegerAttr>(a)) {

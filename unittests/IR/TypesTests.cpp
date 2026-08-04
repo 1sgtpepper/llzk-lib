@@ -224,8 +224,8 @@ TEST_F(TypeTests, testShortStringDistinguishesDelimitedFeltFieldNames) {
 }
 
 TEST_F(TypeTests, testShortStringPreservesReservedNestedSymbolBytes) {
-  constexpr char withPlaceholder[] = {'S', '\x1A'};
-  llvm::StringRef placeholderName(withPlaceholder, sizeof(withPlaceholder));
+  constexpr char withReservedByte[] = {'S', '\x1A'};
+  llvm::StringRef reservedByteName(withReservedByte, sizeof(withReservedByte));
 
   auto shortString = [&](llvm::StringRef symbol) {
     return BuildShortTypeString::from(
@@ -233,6 +233,6 @@ TEST_F(TypeTests, testShortStringPreservesReservedNestedSymbolBytes) {
     );
   };
 
-  EXPECT_EQ("!s<@S\x1A>", shortString(placeholderName));
+  EXPECT_EQ("!s<@S\x1A>", shortString(reservedByteName));
   EXPECT_EQ("!s<@S%1A>", shortString("S%1A"));
 }

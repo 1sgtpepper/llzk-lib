@@ -37,9 +37,6 @@ class PodType;
 /// reverse back into a Type. They are intended only to produce compact, recognizable names for
 /// instantiated symbols.
 class BuildShortTypeString {
-  /// Marker used when formatting an unresolved attribute in an attribute-list string.
-  static constexpr char PLACEHOLDER = '\x1A';
-
   std::string ret;
   llvm::raw_string_ostream ss;
 
@@ -63,7 +60,7 @@ public:
   }
 
   /// Return a brief string representation of the attribute list from a parameterized type.
-  /// Occurrences of `nullptr` are represented with a `PLACEHOLDER` character.
+  /// All attributes must be non-null.
   static inline std::string from(mlir::ArrayRef<mlir::Attribute> attrs) {
     return BuildShortTypeString().append(attrs).ret;
   }
