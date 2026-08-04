@@ -24,11 +24,13 @@
 
 namespace llzk::polymorphic {
 
-/// Metadata carried across transformation passes preserving the literal chunks of a partially-instantiated template's logical name.
+/// Metadata carried across transformation passes preserving the literal chunks of a
+/// partially-instantiated template's logical name.
 ///
 /// When present, the attribute has P+1 StringAttr chunks around the P current template
-/// parameters. The gap between chunks `i` and `i+1` represents current parameter `i`. The chunks are
-/// literal data; later transforms never recover semantic positions from the physical symbol name.
+/// parameters. The gap between chunks `i` and `i+1` represents current parameter `i`. The chunks
+/// are literal data; later transforms never recover semantic positions from the physical symbol
+/// name.
 inline constexpr llvm::StringLiteral TEMPLATE_NAME_PATTERN_ATTR = "poly.name_pattern";
 
 template <typename OpT>
