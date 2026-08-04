@@ -24,7 +24,7 @@
 
 namespace llzk::polymorphic {
 
-/// Transform-carried metadata preserving the literal chunks of a partial template's logical name.
+/// Metadata carried across transformation passes preserving the literal chunks of a partially-instantiated template's logical name.
 ///
 /// When present, the attribute has P+1 StringAttr chunks around the P current template
 /// parameters. The gap between chunks i and i+1 represents current parameter i. The chunks are
