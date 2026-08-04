@@ -431,6 +431,11 @@ class PassImpl : public llzk::impl::PolyLoweringPassBase<PassImpl> {
     bool failedCheck = false;
 
     constrainFunc.walk([&](EmitEqualityOp eqOp) {
+      if (!llvm::isa<FeltType>(eqOp.getLhs().getType()) ||
+          !llvm::isa<FeltType>(eqOp.getRhs().getType())) {
+        return;
+      }
+
       DenseMap<Value, unsigned> checkMemo;
       unsigned lhsDegree = getDegree(eqOp.getLhs(), checkMemo);
       unsigned rhsDegree = getDegree(eqOp.getRhs(), checkMemo);
@@ -669,7 +674,7 @@ class PassImpl : public llzk::impl::PolyLoweringPassBase<PassImpl> {
         }
         assert(allIndices->size() == elementOperands.size() && "array.new verifier mismatch");
 
-        auto indexIt = allIndices->begin();
+        auto *indexIt = allIndices->begin();
         for (OpOperand &elementOperand : elementOperands) {
           ArrayAttr index = *indexIt++;
           if (indexStartsWith(index, viewPrefix)) {
@@ -962,6 +967,11 @@ class PassImpl : public llzk::impl::PolyLoweringPassBase<PassImpl> {
 
       // Lower equality constraints
       constrainFunc.walk([&](EmitEqualityOp constraintOp) {
+        if (!llvm::isa<FeltType>(constraintOp.getLhs().getType()) ||
+            !llvm::isa<FeltType>(constraintOp.getRhs().getType())) {
+          return;
+        }
+
         auto &lhsOperand = constraintOp.getLhsMutable();
         auto &rhsOperand = constraintOp.getRhsMutable();
         unsigned degreeLhs = getDegree(lhsOperand.get(), degreeMemo);

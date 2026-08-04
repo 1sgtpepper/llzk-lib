@@ -172,6 +172,22 @@ size_t SourceRefIndex::Hash::operator()(const SourceRefIndex &c) const {
   }
 }
 
+bool SourceRefIndex::overlaps(const SourceRefIndex &rhs) const {
+  if (isIndex() && rhs.isIndexRange()) {
+    auto [low, high] = rhs.getIndexRange();
+    return low <= getIndex() && getIndex() < high;
+  }
+  if (isIndexRange() && rhs.isIndex()) {
+    return rhs.overlaps(*this);
+  }
+  if (isIndexRange() && rhs.isIndexRange()) {
+    auto [lhsLow, lhsHigh] = getIndexRange();
+    auto [rhsLow, rhsHigh] = rhs.getIndexRange();
+    return lhsLow < rhsHigh && rhsLow < lhsHigh;
+  }
+  return *this == rhs;
+}
+
 /* SourceRef */
 
 SourceRef::SortCategory SourceRef::getSortCategory() const {
@@ -345,15 +361,7 @@ Type SourceRef::getType() const {
 
     auto arrTy = dyn_cast<ArrayType>(currTy);
     ensure(static_cast<bool>(arrTy), "SourceRef array index requires an array-typed base");
-    ensure(
-        !arrTy.getDimensionSizes().empty(),
-        "SourceRef indexes more array dimensions than exist in the base type"
-    );
-    if (arrTy.getDimensionSizes().size() == 1) {
-      currTy = arrTy.getElementType();
-    } else {
-      currTy = ArrayType::get(arrTy.getElementType(), arrTy.getDimensionSizes().drop_front());
-    }
+    currTy = arrTy.getSelectionType(1);
   }
   return currTy;
 }
@@ -374,6 +382,59 @@ bool SourceRef::isValidPrefix(const SourceRef &prefix) const {
     }
   }
   return true;
+}
+
+bool SourceRef::overlaps(const SourceRef &rhs) const {
+  auto getSelfStruct = [](const SourceRef &ref) -> StructDefOp {
+    if (auto createOp = dyn_cast_if_present<CreateStructOp>(ref.value.getDefiningOp())) {
+      auto func = createOp->getParentOfType<FuncDefOp>();
+      if (!func || !func.isStructCompute() || func.getSelfValueFromCompute() != ref.value) {
+        return nullptr;
+      }
+      return func->getParentOfType<StructDefOp>();
+    }
+    auto blockArg = ref.getBlockArgument();
+    if (failed(blockArg)) {
+      return nullptr;
+    }
+    auto func = dyn_cast_if_present<FuncDefOp>(blockArg->getOwner()->getParentOp());
+    return func && func.isStructConstrain() && func.getSelfValueFromConstrain() == *blockArg
+               ? func->getParentOfType<StructDefOp>()
+               : nullptr;
+  };
+  bool sameRoot = value == rhs.value;
+  if (!sameRoot) {
+    StructDefOp lhsStruct = getSelfStruct(*this);
+    StructDefOp rhsStruct = getSelfStruct(rhs);
+    sameRoot = lhsStruct && lhsStruct == rhsStruct;
+  }
+  if (isConstant() || rhs.isConstant() || !sameRoot || path.size() != rhs.path.size()) {
+    return false;
+  }
+  return llvm::all_of(llvm::zip(path, rhs.path), [](const auto &indices) {
+    return std::get<0>(indices).overlaps(std::get<1>(indices));
+  });
+}
+
+SourceRef SourceRef::narrowRanges(const SourceRef &rhs) const {
+  llvm::SmallVector<SourceRefIndex> selections;
+  llvm::copy_if(rhs.getPath(), std::back_inserter(selections), [](const SourceRefIndex &index) {
+    return index.isIndex() || index.isIndexRange();
+  });
+
+  SourceRef result = *this;
+  size_t dimension = 0;
+  for (SourceRefIndex &index : result.getPathMut()) {
+    if (!index.isIndex() && !index.isIndexRange()) {
+      continue;
+    }
+    if (dimension < selections.size() && index.isIndexRange() && selections[dimension].isIndex() &&
+        index.overlaps(selections[dimension])) {
+      index = selections[dimension];
+    }
+    ++dimension;
+  }
+  return result;
 }
 
 FailureOr<SourceRef::Path> SourceRef::getSuffix(const SourceRef &prefix) const {
@@ -547,11 +608,20 @@ void SourceRef::print(raw_ostream &os) const {
     } else if (isBlockArgument()) {
       auto blockArg = *getBlockArgument();
       auto funcOp = llvm::dyn_cast<FuncDefOp>(blockArg.getOwner()->getParentOp());
-      auto argName = funcOp ? funcOp.getArgNameAttr(blockArg.getArgNumber()) : nullptr;
-      if (argName) {
-        os << argName->getValue();
+      // The entry self argument of a struct constrain function matches the struct value
+      // returned by the corresponding compute function.
+      if (funcOp && funcOp.isStructConstrain() && funcOp.getSelfValueFromConstrain() == blockArg) {
+        os << "%self";
       } else {
-        os << "%arg" << *getInputNum();
+        std::optional<StringAttr> argName;
+        if (funcOp) {
+          argName = funcOp.getArgNameAttr(blockArg.getArgNumber());
+        }
+        if (argName) {
+          os << argName->getValue();
+        } else {
+          os << "%arg" << *getInputNum();
+        }
       }
     } else if (isNonDetOp()) {
       os << '<' << *getNonDetOp() << '>';
@@ -560,8 +630,8 @@ void SourceRef::print(raw_ostream &os) const {
       auto callResult = llvm::cast<OpResult>(value);
       auto callee = resolveCallable<FuncDefOp>(callOp);
       if (succeeded(callee)) {
-        auto calleeFunc = llvm::dyn_cast_if_present<FuncDefOp>((*callee).get());
-        if (shouldPrintNamedCallResult(callOp, callResult, calleeFunc)) {
+        FuncDefOp calleeFunc = (*callee).get();
+        if (calleeFunc && shouldPrintNamedCallResult(callOp, callResult, calleeFunc)) {
           auto resName = *calleeFunc.getResNameAttr(callResult.getResultNumber());
           os << resName.getValue();
         } else {
