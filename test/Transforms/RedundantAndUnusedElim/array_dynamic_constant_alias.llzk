@@ -1,0 +1,77 @@
+// RUN: llzk-opt -llzk-duplicate-read-write-elim %s 2>&1 | FileCheck %s
+
+module attributes {llzk.lang} {
+  // A dynamic write may alias a later constant-index write.
+  function.def @dynamic_then_constant_alias(%idx: index) -> !felt.type {
+    %first = felt.const 1
+    %second = felt.const 2
+    %arr = array.new %first, %first : !array.type<2 x !felt.type>
+    array.write %arr[%idx] = %first : !array.type<2 x !felt.type>, !felt.type
+    %zero = arith.constant 0 : index
+    array.write %arr[%zero] = %second : !array.type<2 x !felt.type>, !felt.type
+    %observed = array.read %arr[%idx] : !array.type<2 x !felt.type>, !felt.type
+    function.return %observed : !felt.type
+  }
+
+  // A dynamic write must still invalidate an earlier constant-index fact.
+  function.def @constant_then_dynamic_alias(%idx: index) -> !felt.type {
+    %first = felt.const 1
+    %second = felt.const 2
+    %third = felt.const 3
+    %arr = array.new %first, %first : !array.type<2 x !felt.type>
+    %zero = arith.constant 0 : index
+    array.write %arr[%zero] = %second : !array.type<2 x !felt.type>, !felt.type
+    array.write %arr[%idx] = %third : !array.type<2 x !felt.type>, !felt.type
+    %observed = array.read %arr[%zero] : !array.type<2 x !felt.type>, !felt.type
+    function.return %observed : !felt.type
+  }
+
+  // A constant-index write must not discard unrelated constant-index facts.
+  function.def @constant_index_reuse() -> !felt.type {
+    %first = felt.const 1
+    %second = felt.const 2
+    %third = felt.const 3
+    %arr = array.new %first, %first : !array.type<2 x !felt.type>
+    %zero = arith.constant 0 : index
+    %one = arith.constant 1 : index
+    array.write %arr[%zero] = %second : !array.type<2 x !felt.type>, !felt.type
+    array.write %arr[%one] = %third : !array.type<2 x !felt.type>, !felt.type
+    %observed = array.read %arr[%zero] : !array.type<2 x !felt.type>, !felt.type
+    function.return %observed : !felt.type
+  }
+}
+
+// CHECK-LABEL: module attributes {llzk.lang} {
+// CHECK-NEXT:    function.def @dynamic_then_constant_alias(%[[D_IDX:[0-9a-zA-Z_\.]+]]: index) -> !felt.type {
+// CHECK-NEXT:      %[[D_FIRST:[0-9a-zA-Z_\.]+]] = felt.const  1
+// CHECK-NEXT:      %[[D_SECOND:[0-9a-zA-Z_\.]+]] = felt.const  2
+// CHECK-NEXT:      %[[D_ARR:[0-9a-zA-Z_\.]+]] = array.new %[[D_FIRST]], %[[D_FIRST]] : <2 x !felt.type>
+// CHECK-NEXT:      array.write %[[D_ARR]]{{\[}}%[[D_IDX]]] = %[[D_FIRST]] : <2 x !felt.type>, !felt.type
+// CHECK-NEXT:      %[[D_ZERO:[0-9a-zA-Z_\.]+]] = arith.constant 0 : index
+// CHECK-NEXT:      array.write %[[D_ARR]]{{\[}}%[[D_ZERO]]] = %[[D_SECOND]] : <2 x !felt.type>, !felt.type
+// CHECK-NEXT:      %[[D_OBSERVED:[0-9a-zA-Z_\.]+]] = array.read %[[D_ARR]]{{\[}}%[[D_IDX]]] : <2 x !felt.type>, !felt.type
+// CHECK-NEXT:      function.return %[[D_OBSERVED]] : !felt.type
+// CHECK-NEXT:    }
+// CHECK-NEXT:    function.def @constant_then_dynamic_alias(%[[C_IDX:[0-9a-zA-Z_\.]+]]: index) -> !felt.type {
+// CHECK-NEXT:      %[[C_FIRST:[0-9a-zA-Z_\.]+]] = felt.const  1
+// CHECK-NEXT:      %[[C_SECOND:[0-9a-zA-Z_\.]+]] = felt.const  2
+// CHECK-NEXT:      %[[C_THIRD:[0-9a-zA-Z_\.]+]] = felt.const  3
+// CHECK-NEXT:      %[[C_ARR:[0-9a-zA-Z_\.]+]] = array.new %[[C_FIRST]], %[[C_FIRST]] : <2 x !felt.type>
+// CHECK-NEXT:      %[[C_ZERO:[0-9a-zA-Z_\.]+]] = arith.constant 0 : index
+// CHECK-NEXT:      array.write %[[C_ARR]]{{\[}}%[[C_ZERO]]] = %[[C_SECOND]] : <2 x !felt.type>, !felt.type
+// CHECK-NEXT:      array.write %[[C_ARR]]{{\[}}%[[C_IDX]]] = %[[C_THIRD]] : <2 x !felt.type>, !felt.type
+// CHECK-NEXT:      %[[C_OBSERVED:[0-9a-zA-Z_\.]+]] = array.read %[[C_ARR]]{{\[}}%[[C_ZERO]]] : <2 x !felt.type>, !felt.type
+// CHECK-NEXT:      function.return %[[C_OBSERVED]] : !felt.type
+// CHECK-NEXT:    }
+// CHECK-NEXT:    function.def @constant_index_reuse() -> !felt.type {
+// CHECK-NEXT:      %[[R_FIRST:[0-9a-zA-Z_\.]+]] = felt.const  1
+// CHECK-NEXT:      %[[R_SECOND:[0-9a-zA-Z_\.]+]] = felt.const  2
+// CHECK-NEXT:      %[[R_THIRD:[0-9a-zA-Z_\.]+]] = felt.const  3
+// CHECK-NEXT:      %[[R_ARR:[0-9a-zA-Z_\.]+]] = array.new %[[R_FIRST]], %[[R_FIRST]] : <2 x !felt.type>
+// CHECK-NEXT:      %[[R_ZERO:[0-9a-zA-Z_\.]+]] = arith.constant 0 : index
+// CHECK-NEXT:      %[[R_ONE:[0-9a-zA-Z_\.]+]] = arith.constant 1 : index
+// CHECK-NEXT:      array.write %[[R_ARR]]{{\[}}%[[R_ZERO]]] = %[[R_SECOND]] : <2 x !felt.type>, !felt.type
+// CHECK-NEXT:      array.write %[[R_ARR]]{{\[}}%[[R_ONE]]] = %[[R_THIRD]] : <2 x !felt.type>, !felt.type
+// CHECK-NEXT:      function.return %[[R_SECOND]] : !felt.type
+// CHECK-NEXT:    }
+// CHECK-NEXT:  }

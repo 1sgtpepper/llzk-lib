@@ -238,6 +238,19 @@ public:
 
   void invalidateChildren() { children.clear(); }
 
+  /// @brief Invalidate dynamic-index children while preserving constant-index children.
+  void invalidateDynamicChildren() {
+    SmallVector<ReferenceID> invalidChildren;
+    for (const auto &[id, _] : children) {
+      if (id.isValue()) {
+        invalidChildren.push_back(id);
+      }
+    }
+    for (const ReferenceID &id : invalidChildren) {
+      children.erase(id);
+    }
+  }
+
   bool invalidateNonIntegerOffsetChildren() {
     SmallVector<ReferenceID> invalidChildren;
     for (const auto &[id, _] : children) {
@@ -733,9 +746,11 @@ class PassImpl : public llzk::impl::RedundantReadAndWriteEliminationPassBase<Pas
 
       for (Value origIdx : writearr.getIndices()) {
         Value idxVal = translate(origIdx);
-        // This write will invalidate all children, since it may reference
-        // any number of them.
-        if (ReferenceID(idxVal).isValue()) {
+        // A dynamic index may alias any sibling. A constant index only aliases
+        // a dynamic sibling, so preserve unrelated constant-index facts.
+        if (ReferenceID(idxVal).isConst()) {
+          currValTree->invalidateDynamicChildren();
+        } else {
           LLVM_DEBUG(llvm::dbgs() << writearr.getOperationName() << ": invalidate alias\n");
           currValTree->invalidateChildren();
         }

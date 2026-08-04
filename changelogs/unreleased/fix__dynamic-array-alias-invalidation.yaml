@@ -1,0 +1,2 @@
+fixed:
+  - Preserve array reads when a dynamic-index write may alias a later constant-index write.
