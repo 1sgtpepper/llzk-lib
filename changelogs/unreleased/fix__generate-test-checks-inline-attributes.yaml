@@ -1,0 +1,2 @@
+fixed:
+  - Preserve inline dialect attributes in generated FileCheck patterns.
