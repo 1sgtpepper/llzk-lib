@@ -158,13 +158,10 @@ namespace {
 /// elimination until they become known and can be eliminated when redundant operations
 /// are performed.
 ///
-/// A node may have "constant identifiers" as children (member refs, constant indices)
-/// or a single non-constant child index (just an mlir::Value), as the dynamic
-/// index may or may not alias any constant identifiers. If a dynamic index is
-/// added, the user should clear the prior known children to prevent accidental aliasing.
-///
-/// Does not allow mixing of constant and non-constant child indices, as we
-/// do not know if they alias.
+/// Children may represent constant access components (member refs, constant indices)
+/// or dynamic SSA values. Dynamic children may alias constant siblings, so array
+/// writes clear all children for a dynamic index and only dynamic siblings for a
+/// constant index.
 class ReferenceNode {
 public:
   template <typename IdType> static std::shared_ptr<ReferenceNode> create(IdType id, Value v) {
