@@ -1,0 +1,73 @@
+name: LLZK generator replay
+
+on:
+  push:
+    branches:
+      - ci/verify-generator-replays-20260805-array-insert
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    env:
+      OUTPUT_PATH: /tmp/llzk-generator-output
+
+    steps:
+      - name: Check out validation workflow
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Install Nix
+        uses: cachix/install-nix-action@d1ca217b388ee87b2507a9a93bf01368bde7cec2
+        with:
+          install_url: https://releases.nixos.org/nix/nix-2.23.3/install
+          github_access_token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set Git credentials
+        run: |
+          git config --global 'url.https://api@github.com/'.insteadOf 'https://github.com/'
+          git config --global 'url.https://ssh@github.com/'.insteadOf 'ssh://git@github.com/'
+          git config --global 'url.https://git@github.com/'.insteadOf 'git@github.com:'
+
+      - uses: cachix/cachix-action@v17
+        with:
+          name: veridise-public
+          skipPush: true
+
+      - name: Generate exact-head checks
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf "$OUTPUT_PATH"
+          mkdir -p "$OUTPUT_PATH"
+          nix --print-build-logs build '.#debugGCC'
+          llzk_opt="$GITHUB_WORKSPACE/result/bin/llzk-opt"
+          filecheck="$(find /nix/store -type f -path '*/bin/FileCheck' -executable -print -quit)"
+          "$llzk_opt" -llzk-duplicate-read-write-elim \
+            test/Transforms/RedundantAndUnusedElim/array_dynamic_constant_alias.llzk \
+            > "$OUTPUT_PATH/producer-output.llzk" 2>&1
+          python3 scripts/generate-test-checks.py \
+            < "$OUTPUT_PATH/producer-output.llzk" \
+            > "$OUTPUT_PATH/generated-checks.txt"
+          "$filecheck" "$OUTPUT_PATH/generated-checks.txt" \
+            < "$OUTPUT_PATH/producer-output.llzk"
+          {
+            echo "head=$(git rev-parse HEAD)"
+            echo "test=test/Transforms/RedundantAndUnusedElim/array_dynamic_constant_alias.llzk"
+            echo "producer_command=result/bin/llzk-opt -llzk-duplicate-read-write-elim test/Transforms/RedundantAndUnusedElim/array_dynamic_constant_alias.llzk"
+            echo "fresh_generated_checks_against_exact_head_output=PASS"
+            echo "fresh_generated_check_lines=$(grep -Ec '^// CHECK(:|-LABEL:|-NEXT:)' "$OUTPUT_PATH/generated-checks.txt")"
+          } > "$OUTPUT_PATH/comparison.txt"
+
+      - name: Upload exact-head generator evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: generator-replay-evidence-${{ github.sha }}
+          path: /tmp/llzk-generator-output
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
