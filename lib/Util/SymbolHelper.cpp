@@ -240,12 +240,14 @@ LogicalResult verifyStructTemplateParams(
     SymbolTableCollection &tables, StructType ty, StructDefOp defForType, Operation *origin
 ) {
   ArrayAttr tyParams = ty.getParams();
-  if (!tyParams) {
+  if (!tyParams || tyParams.empty()) {
     return success();
   }
 
   TemplateOp parent = defForType->getParentOfType<TemplateOp>();
-  assert(parent && "parameterized struct definition must be nested in a template");
+  if (!parent) {
+    return success();
+  }
   LogicalResult result = success();
   for (auto [paramOp, value] :
        llvm::zip_equal(parent.getConstOps<TemplateParamOp>(), tyParams.getValue())) {

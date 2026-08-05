@@ -18,7 +18,7 @@ module attributes {llzk.lang} {
   poly.template @Caller {
     poly.param @G : !felt.type<"goldilocks">
     struct.def @UsesLocal {
-      // expected-error@+1 {{.*}}
+      // expected-error@+1 {{ref "@G" in type '!struct.type<@Target::@S<[@G]>>' refers to a 'poly.param' with type '!felt.type<"goldilocks">' but expected '!felt.type<"bn128">'}}
       struct.member @value : !struct.type<@Target::@S<[@G]>>
       function.def @compute() -> !struct.type<@Caller::@UsesLocal<[@G]>> {
         %self = struct.new : <@Caller::@UsesLocal<[@G]>>
@@ -51,7 +51,7 @@ module attributes {llzk.lang} {
   }
 
   struct.def @UsesGlobal {
-    // expected-error@+1 {{.*}}
+    // expected-error@+1 {{ref "@globals::@G" in type '!struct.type<@Target::@S<[@globals::@G]>>' refers to a global with type '!felt.type<"goldilocks">' but expected '!felt.type<"bn128">'}}
     struct.member @value : !struct.type<@Target::@S<[@globals::@G]>>
     function.def @compute() -> !struct.type<@UsesGlobal> {
       %self = struct.new : <@UsesGlobal>
