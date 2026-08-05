@@ -233,6 +233,9 @@ LogicalResult verifyTemplateSymbolType(
   return success();
 }
 
+/// Verify struct arguments against the resolved definition's per-position restrictions. Keep this
+/// after lookup because intermediate transformation lookups can precede reconstruction of a
+/// partially specialized template's symbol scope.
 LogicalResult verifyStructTemplateParams(
     SymbolTableCollection &tables, StructType ty, StructDefOp defForType, Operation *origin
 ) {
