@@ -50,8 +50,8 @@ SSA_RE = re.compile(SSA_RE_STR)
 SSA_RESULTS_STR = r'\s*(%' + SSA_RE_STR + r')(:[0-9]+)*(\s*,\s*(%' + SSA_RE_STR + r'))*\s*='
 SSA_RESULTS_RE = re.compile(SSA_RESULTS_STR)
 
-# Regex matching attribute-like tokens without consuming inline attribute bodies.
-# Only references registered by an attribute definition are substituted.
+# Regex matching complete attribute-like tokens without consuming inline bodies.
+# Only exact tokens registered by an attribute definition are substituted.
 ATTR_RE_STR = (
     r'(#[a-zA-Z._-][a-zA-Z0-9._-]*)'
     r'(?![a-zA-Z0-9._$-]|<)'
@@ -225,6 +225,7 @@ def process_attribute_references(line, attribute_namer):
     for component in components:
         m = ATTR_RE.match(component)
         if m:
+            # Preserve inline and unknown tokens; substitute only registered aliases.
             attribute_name = attribute_namer.get_name(m.group(1))
             if attribute_name is None:
                 output_line += m.group(1)

@@ -1,2 +1,2 @@
 fixed:
-  - Preserve inline dialect attributes in generated FileCheck patterns.
+  - Keep inline and bodyless dialect attributes literal in generated FileCheck patterns instead of emitting invalid variables.
