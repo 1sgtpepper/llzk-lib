@@ -1,8 +1,9 @@
 // RUN: split-file %s %t
 // RUN: python3 %S/../../scripts/generate-test-checks.py %t/inline-attributes.llzk | FileCheck %s --check-prefix=SCRIPT
 
-// The registered #felt alias is replaced only as an exact token. Longer
-// dialect attributes and unregistered bodyless attributes remain literal.
+// The registered #felt alias is replaced only when the complete token is #felt.
+// Tokens continuing with '.', '$', or an inline body, plus unregistered
+// bodyless attributes, remain literal.
 // SCRIPT: // CHECK:
 // SCRIPT-SAME: ATTR_0:
 // SCRIPT: // CHECK-LABEL: module attributes {llzk.named =
