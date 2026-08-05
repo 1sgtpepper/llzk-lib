@@ -223,7 +223,7 @@ LogicalResult verifyTemplateSymbolType(
           "' that must have type ", *requiredParamType
       );
     }
-    if (*actualType != *requiredParamType) {
+    if (!typesUnify(*actualType, *requiredParamType)) {
       return origin->emitError().append(
           "ref \"", param, "\" in type ", parameterizedType, " refers to a '", binding->getName(),
           "' with type ", *actualType, " but expected ", *requiredParamType
