@@ -891,10 +891,9 @@ class StructCloner {
     // Evaluate any poly.expr symbols whose param dependencies are now concrete; add them to the
     // map so ClonedBodyConstReadOpPattern can replace uses of those symbols too.
     SmallVector<Diagnostic> deferredExprDiagnostics;
-    FailureOr<SmallVector<TemplateExprOp>> exprEvaluation =
-        evaluateTemplateExprs(
-            parentTemplate, origStruct.getOperation(), paramNameToConcrete, deferredExprDiagnostics
-        );
+    FailureOr<SmallVector<TemplateExprOp>> exprEvaluation = evaluateTemplateExprs(
+        parentTemplate, origStruct.getOperation(), paramNameToConcrete, deferredExprDiagnostics
+    );
     if (failed(exprEvaluation)) {
       return failure();
     }
@@ -1537,10 +1536,9 @@ public:
     }
 
     SmallVector<Diagnostic> deferredExprDiagnostics;
-    FailureOr<SmallVector<TemplateExprOp>> exprEvaluation =
-        evaluateTemplateExprs(
-            parentTemplate, callTgt.getOperation(), paramNameToConcrete, deferredExprDiagnostics
-        );
+    FailureOr<SmallVector<TemplateExprOp>> exprEvaluation = evaluateTemplateExprs(
+        parentTemplate, callTgt.getOperation(), paramNameToConcrete, deferredExprDiagnostics
+    );
     if (failed(exprEvaluation)) {
       return failure();
     }
