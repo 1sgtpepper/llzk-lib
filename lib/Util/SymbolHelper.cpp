@@ -421,10 +421,9 @@ LogicalResult verifyParamOfType(
                                << "' which is not allowed";
   }
   if (requiredParamType && !typesUnify(global.getType(), *requiredParamType)) {
-    return origin->emitError()
-        << "ref \"" << param << "\" in type " << parameterizedType
-        << " refers to a global with type " << global.getType() << " but expected type "
-        << *requiredParamType;
+    return origin->emitError() << "ref \"" << param << "\" in type " << parameterizedType
+                               << " refers to a global with type " << global.getType()
+                               << " but expected type " << *requiredParamType;
   }
   return success();
 }
