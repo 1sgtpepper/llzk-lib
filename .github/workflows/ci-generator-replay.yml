@@ -96,7 +96,6 @@ jobs:
             local input="$TESTED_PATH/$test_file"
             local output_path="$OUTPUT_PATH/$name"
             local producer_output="$output_path/producer-output.llzk"
-            local generated_checks="$output_path/fresh-generated-checks.txt"
             mkdir -p "$output_path"
 
             local -a command=("$LLZK_OPT")
@@ -114,21 +113,62 @@ jobs:
               "${command[@]}" > "$producer_output"
             fi
 
-            python3 "$TESTED_PATH/scripts/generate-test-checks.py" \
-              < "$producer_output" \
-              > "$generated_checks"
-
             local -a check_args=()
             if [[ "$check_scope" == scoped ]]; then
               check_args+=(--enable-var-scope)
             fi
             "${FILECHECK}" "${check_args[@]}" "$input" < "$producer_output"
-            "${FILECHECK}" "${check_args[@]}" "$generated_checks" < "$producer_output"
 
             local committed_count
             local generated_count
             committed_count="$(count_checks "$input")"
-            generated_count="$(count_checks "$generated_checks")"
+            generated_count=0
+            local output_chunk_count=1
+            if grep -q '^// -----$' "$producer_output"; then
+              local chunks_path="$output_path/producer-chunks"
+              local checks_path="$output_path/fresh-generated-checks"
+              mkdir -p "$chunks_path" "$checks_path"
+              awk -v dir="$chunks_path" '
+                BEGIN {
+                  chunk = 0
+                  file = sprintf("%s/chunk-%03d.llzk", dir, chunk)
+                }
+                /^\/\/ -----$/ {
+                  close(file)
+                  chunk++
+                  file = sprintf("%s/chunk-%03d.llzk", dir, chunk)
+                  next
+                }
+                { print > file }
+                END { close(file) }
+              ' "$producer_output"
+
+              output_chunk_count="$(find "$chunks_path" -maxdepth 1 -type f -name '*.llzk' | wc -l)"
+              local source_delimiter_count
+              local source_chunk_count
+              source_delimiter_count="$(grep -Ec '^// -----$' "$input" || true)"
+              source_chunk_count=$((source_delimiter_count + 1))
+              test "$output_chunk_count" -eq "$source_chunk_count"
+
+              local chunk
+              for chunk in "$chunks_path"/*.llzk; do
+                local chunk_name="${chunk##*/}"
+                chunk_name="${chunk_name%.llzk}"
+                local fresh_checks="$checks_path/$chunk_name.txt"
+                python3 "$TESTED_PATH/scripts/generate-test-checks.py" \
+                  < "$chunk" \
+                  > "$fresh_checks"
+                "${FILECHECK}" "${check_args[@]}" "$fresh_checks" < "$chunk"
+                generated_count=$((generated_count + $(count_checks "$fresh_checks")))
+              done
+            else
+              local generated_checks="$output_path/fresh-generated-checks.txt"
+              python3 "$TESTED_PATH/scripts/generate-test-checks.py" \
+                < "$producer_output" \
+                > "$generated_checks"
+              "${FILECHECK}" "${check_args[@]}" "$generated_checks" < "$producer_output"
+              generated_count="$(count_checks "$generated_checks")"
+            fi
             test "$committed_count" -eq "$generated_count"
 
             {
@@ -139,6 +179,7 @@ jobs:
               printf '\n'
               echo "committed_check_lines=$committed_count"
               echo "fresh_generated_check_lines=$generated_count"
+              echo "output_chunks=$output_chunk_count"
               echo "committed_checks_against_exact_head_output=PASS"
               echo "fresh_generated_checks_against_exact_head_output=PASS"
               echo "complete_check_line_count=PASS"
