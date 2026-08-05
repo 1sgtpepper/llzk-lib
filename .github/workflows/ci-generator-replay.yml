@@ -84,11 +84,13 @@ jobs:
           LLZK_OPT="$TESTED_PATH/result/bin/llzk-opt"
           LLZK_WITGEN="$TESTED_PATH/result/bin/llzk-witgen"
           GENERATOR_SCRIPT="$TESTED_PATH/scripts/generate-test-checks.py"
+          GENERATOR_SOURCE_HEAD="$TESTED_HEAD"
           if [[ "$TEST_KIND" == felt ]]; then
             GENERATOR_SCRIPT="$OUTPUT_PATH/generate-test-checks.py"
+            GENERATOR_SOURCE_HEAD="$GENERATOR_HEAD"
             git show "$GENERATOR_HEAD:scripts/generate-test-checks.py" > "$GENERATOR_SCRIPT"
-            echo "$GENERATOR_HEAD" > "$OUTPUT_PATH/generator-source-head.txt"
           fi
+          echo "$GENERATOR_SOURCE_HEAD" > "$OUTPUT_PATH/generator-source-head.txt"
 
           count_checks() {
             grep -Ec '^// CHECK' "$1" || true
@@ -212,7 +214,7 @@ jobs:
               echo "committed_check_lines=$committed_count"
               echo "fresh_generated_check_lines=$generated_count"
               echo "output_chunks=$output_chunk_count"
-              echo "fresh_generator_head=$GENERATOR_HEAD"
+              echo "fresh_generator_head=$GENERATOR_SOURCE_HEAD"
               echo "fresh_generator_input_normalization=quoted-percent-literals"
               echo "committed_checks_against_exact_head_output=PASS"
               echo "fresh_generated_checks_against_exact_head_output=PASS"
