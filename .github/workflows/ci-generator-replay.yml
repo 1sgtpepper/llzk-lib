@@ -25,7 +25,7 @@ jobs:
     env:
       TESTED_HEAD: ${{ matrix.head }}
       TEST_KIND: ${{ matrix.kind }}
-      GENERATOR_HEAD: 5dbe4965a6bcfc5e7dee0921961a114bbfe629aa
+      GENERATOR_HEAD: 08ce3267d55ba2d1574915152a42400109289614
       TESTED_PATH: /tmp/llzk-pr-${{ matrix.pr }}
       OUTPUT_PATH: /tmp/llzk-generator-output/pr-${{ matrix.pr }}
 
@@ -86,6 +86,34 @@ jobs:
 
           count_checks() {
             grep -Ec '^// CHECK' "$1" || true
+          }
+
+          generate_fresh_checks() {
+            local input_path="$1"
+            local output_path="$2"
+            python3 - "$GENERATOR_SCRIPT" "$input_path" "$output_path" <<'PY'
+          import re
+          import subprocess
+          import sys
+          from pathlib import Path
+
+          generator_path, input_path, output_path = sys.argv[1:]
+          sentinel = "__LLZK_QUOTED_PERCENT_LITERAL__"
+          source = Path(input_path).read_text()
+          source = re.sub(
+              r'"(?:\\.|[^"\\])*"',
+              lambda match: match.group(0).replace("%", sentinel),
+              source,
+          )
+          result = subprocess.run(
+              [sys.executable, generator_path],
+              input=source,
+              text=True,
+              capture_output=True,
+              check=True,
+          )
+          Path(output_path).write_text(result.stdout.replace(sentinel, "%"))
+          PY
           }
 
           record_transform_case() {
@@ -157,17 +185,13 @@ jobs:
                 local chunk_name="${chunk##*/}"
                 chunk_name="${chunk_name%.llzk}"
                 local fresh_checks="$checks_path/$chunk_name.txt"
-                python3 "$GENERATOR_SCRIPT" \
-                  < "$chunk" \
-                  > "$fresh_checks"
+                generate_fresh_checks "$chunk" "$fresh_checks"
                 "${FILECHECK}" "${check_args[@]}" "$fresh_checks" < "$chunk"
                 generated_count=$((generated_count + $(count_checks "$fresh_checks")))
               done
             else
               local generated_checks="$output_path/fresh-generated-checks.txt"
-              python3 "$GENERATOR_SCRIPT" \
-                < "$producer_output" \
-                > "$generated_checks"
+              generate_fresh_checks "$producer_output" "$generated_checks"
               "${FILECHECK}" "${check_args[@]}" "$generated_checks" < "$producer_output"
               generated_count="$(count_checks "$generated_checks")"
             fi
@@ -182,6 +206,8 @@ jobs:
               echo "committed_check_lines=$committed_count"
               echo "fresh_generated_check_lines=$generated_count"
               echo "output_chunks=$output_chunk_count"
+              echo "fresh_generator_head=$GENERATOR_HEAD"
+              echo "fresh_generator_input_normalization=quoted-percent-literals"
               echo "committed_checks_against_exact_head_output=PASS"
               echo "fresh_generated_checks_against_exact_head_output=PASS"
               echo "complete_check_line_count=PASS"
