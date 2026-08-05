@@ -509,7 +509,7 @@ verifyStructTypeResolution(SymbolTableCollection &tables, StructType ty, Operati
         .attachNote(defForType.getLoc())
         .append("type parameters must unify with parameters defined here");
   }
-  // If there are any SymbolRefAttr parameters on the StructType, ensure those refs are valid.
+  // Validate parameter references and nested types using the target parameter at each position.
   if (failed(verifyStructTemplateParams(tables, ty, defForType, origin))) {
     return failure();
   }
