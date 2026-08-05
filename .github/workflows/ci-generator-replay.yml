@@ -246,7 +246,7 @@ jobs:
 
           record_witgen_case() {
             local name="$1"
-            local backend="$2"
+            local backend="${2:-}"
             local output_path="$OUTPUT_PATH/$name"
             local test_file=test/Witgen/felt_template_parameter_pipeline.llzk
             local check_file="$TESTED_PATH/$test_file"
