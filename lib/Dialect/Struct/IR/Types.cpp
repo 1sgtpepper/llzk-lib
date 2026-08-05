@@ -12,6 +12,7 @@
 #include "llzk/Dialect/Felt/IR/Attrs.h"
 #include "llzk/Dialect/Polymorphic/IR/Ops.h"
 #include "llzk/Dialect/Struct/IR/Ops.h"
+#include "llzk/Util/SymbolHelper.h"
 
 using namespace mlir;
 using namespace llzk::polymorphic;
@@ -55,9 +56,18 @@ FailureOr<SymbolLookupResult<StructDefOp>> StructType::getDefinition(
     if (parent) {
       for (auto [paramOp, value] :
            llvm::zip_equal(parent.getConstOps<TemplateParamOp>(), typeParams.getValue())) {
-        auto feltValue = llvm::dyn_cast<llzk::felt::FeltConstAttr>(value);
         std::optional<Type> restriction = paramOp.getTypeOpt();
-        if (!feltValue || !restriction) {
+        if (!restriction) {
+          continue;
+        }
+        if (auto symbolValue = llvm::dyn_cast<SymbolRefAttr>(value)) {
+          if (failed(verifyParamOfType(symbolTable, symbolValue, *this, op, restriction))) {
+            return failure();
+          }
+          continue;
+        }
+        auto feltValue = llvm::dyn_cast<llzk::felt::FeltConstAttr>(value);
+        if (!feltValue) {
           continue;
         }
         auto feltType = llvm::dyn_cast<llzk::felt::FeltType>(*restriction);

@@ -1,0 +1,62 @@
+// RUN: llzk-opt -split-input-file -verify-diagnostics %s
+
+// A local template binding is checked against the target parameter restriction.
+module attributes {llzk.lang} {
+  poly.template @Target {
+    poly.param @F : !felt.type<"bn128">
+    struct.def @S {
+      function.def @compute() -> !struct.type<@Target::@S<[@F]>> {
+        %self = struct.new : <@Target::@S<[@F]>>
+        function.return %self : !struct.type<@Target::@S<[@F]>>
+      }
+      function.def @constrain(%self: !struct.type<@Target::@S<[@F]>>) {
+        function.return
+      }
+    }
+  }
+
+  poly.template @Caller {
+    poly.param @G : !felt.type<"bn128">
+    struct.def @UsesLocal {
+      struct.member @value : !struct.type<@Target::@S<[@G]>>
+      function.def @compute() -> !struct.type<@Caller::@UsesLocal<[@G]>> {
+        %self = struct.new : <@Caller::@UsesLocal<[@G]>>
+        function.return %self : !struct.type<@Caller::@UsesLocal<[@G]>>
+      }
+      function.def @constrain(%self: !struct.type<@Caller::@UsesLocal<[@G]>>) {
+        function.return
+      }
+    }
+  }
+}
+
+// A qualified global binding is checked against the same target restriction.
+module attributes {llzk.lang} {
+  poly.template @Target {
+    poly.param @F : !felt.type<"bn128">
+    struct.def @S {
+      function.def @compute() -> !struct.type<@Target::@S<[@F]>> {
+        %self = struct.new : <@Target::@S<[@F]>>
+        function.return %self : !struct.type<@Target::@S<[@F]>>
+      }
+      function.def @constrain(%self: !struct.type<@Target::@S<[@F]>>) {
+        function.return
+      }
+    }
+  }
+
+  module @globals {
+    global.def const @G : !felt.type<"bn128"> = 35
+  }
+
+  struct.def @UsesGlobal {
+    struct.member @value : !struct.type<@Target::@S<[@globals::@G]>>
+    function.def @compute() -> !struct.type<@UsesGlobal> {
+      %self = struct.new : <@UsesGlobal>
+      function.return %self : !struct.type<@UsesGlobal>
+    }
+    function.def @constrain(%self: !struct.type<@UsesGlobal>) {
+      function.return
+    }
+  }
+}

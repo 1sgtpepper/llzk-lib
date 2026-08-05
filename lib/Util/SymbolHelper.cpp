@@ -21,6 +21,7 @@
 #include "llzk/Dialect/Verif/IR/Ops.h"
 #include "llzk/Util/SymbolLookup.h"
 #include "llzk/Util/SymbolTableLLZK.h"
+#include "llzk/Util/TypeHelper.h"
 
 #include <mlir/IR/BuiltinOps.h>
 #include <mlir/IR/BuiltinTypes.h>
@@ -413,10 +414,17 @@ LogicalResult verifyParamOfType(
     return failure(); // lookupTopLevelSymbol() already emits a sufficient error message
   }
   Operation *foundOp = lookupRes->get();
-  if (!llvm::isa<GlobalDefOp>(foundOp)) {
+  auto global = llvm::dyn_cast<GlobalDefOp>(foundOp);
+  if (!global) {
     return origin->emitError() << "ref \"" << param << "\" in type " << parameterizedType
                                << " refers to a '" << foundOp->getName()
                                << "' which is not allowed";
+  }
+  if (requiredParamType && !typesUnify(global.getType(), *requiredParamType)) {
+    return origin->emitError()
+        << "ref \"" << param << "\" in type " << parameterizedType
+        << " refers to a global with type " << global.getType() << " but expected type "
+        << *requiredParamType;
   }
   return success();
 }

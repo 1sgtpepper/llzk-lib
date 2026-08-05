@@ -1,0 +1,64 @@
+// RUN: llzk-opt -split-input-file -verify-diagnostics %s
+
+// A local symbolic binding cannot supply a field from a different field.
+module attributes {llzk.lang} {
+  poly.template @Target {
+    poly.param @F : !felt.type<"bn128">
+    struct.def @S {
+      function.def @compute() -> !struct.type<@Target::@S<[@F]>> {
+        %self = struct.new : <@Target::@S<[@F]>>
+        function.return %self : !struct.type<@Target::@S<[@F]>>
+      }
+      function.def @constrain(%self: !struct.type<@Target::@S<[@F]>>) {
+        function.return
+      }
+    }
+  }
+
+  poly.template @Caller {
+    poly.param @G : !felt.type<"goldilocks">
+    struct.def @UsesLocal {
+      // expected-error@+1 {{.*}}
+      struct.member @value : !struct.type<@Target::@S<[@G]>>
+      function.def @compute() -> !struct.type<@Caller::@UsesLocal<[@G]>> {
+        %self = struct.new : <@Caller::@UsesLocal<[@G]>>
+        function.return %self : !struct.type<@Caller::@UsesLocal<[@G]>>
+      }
+      function.def @constrain(%self: !struct.type<@Caller::@UsesLocal<[@G]>>) {
+        function.return
+      }
+    }
+  }
+}
+
+// A qualified global binding must obey the target parameter restriction too.
+module attributes {llzk.lang} {
+  poly.template @Target {
+    poly.param @F : !felt.type<"bn128">
+    struct.def @S {
+      function.def @compute() -> !struct.type<@Target::@S<[@F]>> {
+        %self = struct.new : <@Target::@S<[@F]>>
+        function.return %self : !struct.type<@Target::@S<[@F]>>
+      }
+      function.def @constrain(%self: !struct.type<@Target::@S<[@F]>>) {
+        function.return
+      }
+    }
+  }
+
+  module @globals {
+    global.def const @G : !felt.type<"goldilocks"> = 35
+  }
+
+  struct.def @UsesGlobal {
+    // expected-error@+1 {{.*}}
+    struct.member @value : !struct.type<@Target::@S<[@globals::@G]>>
+    function.def @compute() -> !struct.type<@UsesGlobal> {
+      %self = struct.new : <@UsesGlobal>
+      function.return %self : !struct.type<@UsesGlobal>
+    }
+    function.def @constrain(%self: !struct.type<@UsesGlobal>) {
+      function.return
+    }
+  }
+}

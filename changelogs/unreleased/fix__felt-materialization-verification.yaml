@@ -1,2 +1,3 @@
 fixed:
   - Allow field-aware verification and materialization of felt template arguments while rejecting explicit field mismatches
+  - Apply felt restrictions consistently to symbolic struct arguments and qualified globals
