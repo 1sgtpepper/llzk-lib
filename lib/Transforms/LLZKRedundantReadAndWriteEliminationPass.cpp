@@ -235,7 +235,10 @@ public:
 
   void invalidateChildren() { children.clear(); }
 
-  /// @brief Invalidate dynamic-index children while preserving constant-index children.
+  /// @brief Remove dynamic-index children before descending through a constant index.
+  ///
+  /// A constant-index write can alias an existing dynamic-index child, but not a
+  /// different constant-index child.
   void invalidateDynamicChildren() {
     SmallVector<ReferenceID> invalidChildren;
     for (const auto &[id, _] : children) {
@@ -729,10 +732,8 @@ class PassImpl : public llzk::impl::RedundantReadAndWriteEliminationPassBase<Pas
     };
 
     // Write a scalar value (for writearr) or a subarray value (for insertarr)
-    // to an array. The unique part of this operation relative to others is that
-    // we may receive a variable index (i.e., not a constant). In this case, we
-    // invalidate adjacent subtree state because the variable index may alias
-    // another element.
+    // to an array. Dynamic indices may alias any sibling; constant indices only
+    // invalidate dynamic-index siblings.
     auto doArrayWriteLike = [&]<HasInterface<ArrayAccessOpInterface> OpClass>(OpClass writearr) {
       std::shared_ptr<ReferenceNode> currValTree = tryGetValTree(translate(writearr.getArrRef()));
       if (currValTree == nullptr) {

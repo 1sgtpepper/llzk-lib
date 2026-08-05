@@ -1,7 +1,8 @@
 // RUN: llzk-opt -llzk-duplicate-read-write-elim %s 2>&1 | FileCheck %s
 
 module attributes {llzk.lang} {
-  // A dynamic write may alias a later constant-index write.
+  // The later constant-index write may overwrite the element selected by %idx,
+  // so the final dynamic read must remain.
   function.def @dynamic_then_constant_alias(%idx: index) -> !felt.type {
     %first = felt.const 1
     %second = felt.const 2
@@ -13,7 +14,8 @@ module attributes {llzk.lang} {
     function.return %observed : !felt.type
   }
 
-  // A dynamic write must still invalidate an earlier constant-index fact.
+  // The dynamic write may overwrite the earlier constant-index element, so the
+  // final constant read must remain.
   function.def @constant_then_dynamic_alias(%idx: index) -> !felt.type {
     %first = felt.const 1
     %second = felt.const 2
@@ -26,7 +28,8 @@ module attributes {llzk.lang} {
     function.return %observed : !felt.type
   }
 
-  // A constant-index write must not discard unrelated constant-index facts.
+  // Distinct known constant indices keep the first fact valid, so the final
+  // read can be removed.
   function.def @constant_index_reuse() -> !felt.type {
     %first = felt.const 1
     %second = felt.const 2
@@ -38,6 +41,24 @@ module attributes {llzk.lang} {
     array.write %arr[%one] = %third : !array.type<2 x !felt.type>, !felt.type
     %observed = array.read %arr[%zero] : !array.type<2 x !felt.type>, !felt.type
     function.return %observed : !felt.type
+  }
+
+  // The same alias rule applies to subarray writes and every supplied index.
+  // The final extract must remain because %idx may select the later constant
+  // path.
+  function.def @dynamic_then_constant_insert_alias(%idx: index) -> !array.type<2 x !felt.type> {
+    %one = felt.const 1
+    %two = felt.const 2
+    %first_row = array.new %one, %one : !array.type<2 x !felt.type>
+    %second_row = array.new %two, %two : !array.type<2 x !felt.type>
+    %matrix = array.new : !array.type<2,2,2 x !felt.type>
+    %zero = arith.constant 0 : index
+    array.insert %matrix[%idx, %zero] = %first_row :
+        !array.type<2,2,2 x !felt.type>, !array.type<2 x !felt.type>
+    array.insert %matrix[%zero, %zero] = %second_row :
+        !array.type<2,2,2 x !felt.type>, !array.type<2 x !felt.type>
+    %observed = array.extract %matrix[%idx, %zero] : !array.type<2,2,2 x !felt.type>
+    function.return %observed : !array.type<2 x !felt.type>
   }
 }
 
