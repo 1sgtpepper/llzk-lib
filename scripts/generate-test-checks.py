@@ -50,11 +50,11 @@ SSA_RE = re.compile(SSA_RE_STR)
 SSA_RESULTS_STR = r'\s*(%' + SSA_RE_STR + r')(:[0-9]+)*(\s*,\s*(%' + SSA_RE_STR + r'))*\s*='
 SSA_RESULTS_RE = re.compile(SSA_RESULTS_STR)
 
-# Regex matching attribute-like references, excluding inline dialect attributes.
+# Regex matching attribute-like tokens without consuming inline attribute bodies.
 # Only references registered by an attribute definition are substituted.
 ATTR_RE_STR = (
     r'(#[a-zA-Z._-][a-zA-Z0-9._-]*)'
-    r'(?![a-zA-Z0-9._-]|<)'
+    r'(?![a-zA-Z0-9._$-]|<)'
 )
 ATTR_RE = re.compile(ATTR_RE_STR)
 
