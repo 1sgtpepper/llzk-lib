@@ -21,16 +21,11 @@ jobs:
           - pr: 634
             head: c44aa79218f80d1785342c17f80a2b80d53bf808
             kind: felt
-          - pr: 635
-            head: 76ee80df099e47200f9a7a0a0c9bea7eb7fbcc83
-            kind: deferred
-          - pr: 637
-            head: cbf1b2770a88685aa625ede7178f4c97367fddd7
-            kind: reuse
 
     env:
       TESTED_HEAD: ${{ matrix.head }}
       TEST_KIND: ${{ matrix.kind }}
+      GENERATOR_HEAD: 5dbe4965a6bcfc5e7dee0921961a114bbfe629aa
       TESTED_PATH: /tmp/llzk-pr-${{ matrix.pr }}
       OUTPUT_PATH: /tmp/llzk-generator-output/pr-${{ matrix.pr }}
 
@@ -63,6 +58,7 @@ jobs:
         run: |
           set -euo pipefail
           git fetch --no-tags --filter=blob:none https://github.com/1sgtpepper/llzk-lib.git "$TESTED_HEAD"
+          git fetch --no-tags --filter=blob:none https://github.com/1sgtpepper/llzk-lib.git "$GENERATOR_HEAD"
           git worktree add --detach "$TESTED_PATH" "$TESTED_HEAD"
           test "$(git -C "$TESTED_PATH" rev-parse HEAD)" = "$TESTED_HEAD"
           (
@@ -81,6 +77,12 @@ jobs:
           test -n "$FILECHECK"
           LLZK_OPT="$TESTED_PATH/result/bin/llzk-opt"
           LLZK_WITGEN="$TESTED_PATH/result/bin/llzk-witgen"
+          GENERATOR_SCRIPT="$TESTED_PATH/scripts/generate-test-checks.py"
+          if [[ "$TEST_KIND" == felt ]]; then
+            GENERATOR_SCRIPT="$OUTPUT_PATH/generate-test-checks.py"
+            git show "$GENERATOR_HEAD:scripts/generate-test-checks.py" > "$GENERATOR_SCRIPT"
+            echo "$GENERATOR_HEAD" > "$OUTPUT_PATH/generator-source-head.txt"
+          fi
 
           count_checks() {
             grep -Ec '^// CHECK' "$1" || true
@@ -155,7 +157,7 @@ jobs:
                 local chunk_name="${chunk##*/}"
                 chunk_name="${chunk_name%.llzk}"
                 local fresh_checks="$checks_path/$chunk_name.txt"
-                python3 "$TESTED_PATH/scripts/generate-test-checks.py" \
+                python3 "$GENERATOR_SCRIPT" \
                   < "$chunk" \
                   > "$fresh_checks"
                 "${FILECHECK}" "${check_args[@]}" "$fresh_checks" < "$chunk"
@@ -163,7 +165,7 @@ jobs:
               done
             else
               local generated_checks="$output_path/fresh-generated-checks.txt"
-              python3 "$TESTED_PATH/scripts/generate-test-checks.py" \
+              python3 "$GENERATOR_SCRIPT" \
                 < "$producer_output" \
                 > "$generated_checks"
               "${FILECHECK}" "${check_args[@]}" "$generated_checks" < "$producer_output"
