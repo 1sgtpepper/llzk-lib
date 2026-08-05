@@ -159,7 +159,7 @@ jobs:
             test/Transforms/RedundantAndUnusedElim/recursive_purposeless_constrain_repro.llzk
           replay_transform \
             pr671 \
-            d9a6a3bc49453f0a6d6996f115818a9ed2a6a35b \
+            e13acd8cd5fa0aae8e7ae8b383a337316d68f9a6 \
             -llzk-duplicate-read-write-elim \
             test/Transforms/RedundantAndUnusedElim/array_dynamic_constant_alias.llzk
           replay_script \
