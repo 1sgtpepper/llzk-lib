@@ -1991,17 +1991,19 @@ private:
   /// The unifier records a direct RHS entry when a target type variable is matched by a concrete
   /// type. If both sides are type variables, it may instead record the caller-side variable as a
   /// LHS entry whose value is the target parameter. That still represents a forwarded template
-  /// argument and must be propagated before the target parameter is erased.
+  /// argument and must be propagated before the target parameter is erased. An identity entry is
+  /// only an equality witness, not an inferred argument.
   SmallVector<Attribute>
   getInferredOmittedTemplateArgs(const UnificationMap &unifyResult, StringAttr targetParamName) {
     SmallVector<Attribute> inferredAttrs;
     auto targetRef = FlatSymbolRefAttr::get(targetParamName);
     auto inferredIt = unifyResult.find({targetRef, Side::RHS});
-    if (inferredIt != unifyResult.end()) {
+    if (inferredIt != unifyResult.end() && inferredIt->second != targetRef) {
       inferredAttrs.push_back(inferredIt->second);
     }
     for (const auto &entry : unifyResult) {
-      if (entry.first.second == Side::LHS && entry.second == targetRef) {
+      if (entry.first.second == Side::LHS && entry.first.first != targetRef &&
+          entry.second == targetRef) {
         inferredAttrs.push_back(entry.first.first);
       }
     }

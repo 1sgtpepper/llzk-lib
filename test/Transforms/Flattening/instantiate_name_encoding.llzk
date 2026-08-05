@@ -183,7 +183,7 @@ module attributes {
   llzk.lang
 } {
   poly.template @T {
-    poly.param @N : !felt.type
+    poly.param @N
 
     function.def @value() -> index {
       %value = arith.constant 7 : index
@@ -208,7 +208,7 @@ module attributes {
 // CHECK-NEXT:      function.return %[[VAL_1]] : index
 // CHECK-NEXT:    }
 // CHECK-NEXT:    poly.template @T {
-// CHECK-NEXT:      poly.param @N : !felt.type
+// CHECK-NEXT:      poly.param @N
 // CHECK-NEXT:      function.def @value() -> index {
 // CHECK-NEXT:        %[[VAL_2:[0-9a-zA-Z_\.]+]] = arith.constant 7 : index
 // CHECK-NEXT:        function.return %[[VAL_2]] : index
