@@ -3,7 +3,7 @@ name: LLZK generator replay
 on:
   push:
     branches:
-      - ci/verify-generator-replays-20260805-final-heads
+      - ci/verify-generator-replays-20260806-final-heads
   workflow_dispatch:
 
 permissions:
@@ -154,12 +154,12 @@ jobs:
 
           replay_transform \
             pr670 \
-            42ee9ba1f97bf26ce51182c2e54cff72c3686755 \
+            d90f737497d8814f057454b98d137ecbc0c050af \
             -llzk-duplicate-op-elim \
             test/Transforms/RedundantAndUnusedElim/recursive_purposeless_constrain_repro.llzk
           replay_transform \
             pr671 \
-            e13acd8cd5fa0aae8e7ae8b383a337316d68f9a6 \
+            0a36b3c35ed7de50f5d1d9f3ae77a28e9f442c7f \
             -llzk-duplicate-read-write-elim \
             test/Transforms/RedundantAndUnusedElim/array_dynamic_constant_alias.llzk
           replay_script \
