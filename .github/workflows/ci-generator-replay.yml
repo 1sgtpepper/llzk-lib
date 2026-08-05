@@ -11,9 +11,27 @@ permissions:
 
 jobs:
   verify:
+    name: Verify PR ${{ matrix.pr }}
     runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      max-parallel: 3
+      matrix:
+        include:
+          - pr: 634
+            head: c44aa79218f80d1785342c17f80a2b80d53bf808
+            kind: felt
+          - pr: 635
+            head: 76ee80df099e47200f9a7a0a0c9bea7eb7fbcc83
+            kind: deferred
+          - pr: 637
+            head: cbf1b2770a88685aa625ede7178f4c97367fddd7
+            kind: reuse
+
     env:
-      OUTPUT_PATH: /tmp/llzk-generator-output
+      TESTED_HEAD: ${{ matrix.head }}
+      TESTED_PATH: ${{ runner.temp }}/llzk-pr-${{ matrix.pr }}
+      OUTPUT_PATH: /tmp/llzk-generator-output/pr-${{ matrix.pr }}
 
     steps:
       - name: Check out validation workflow
@@ -39,138 +57,222 @@ jobs:
           name: veridise-public
           skipPush: true
 
-      - name: Replay exact-head generator evidence
+      - name: Build exact reviewed head
         shell: bash
         run: |
           set -euo pipefail
-          rm -rf "$OUTPUT_PATH"
-          mkdir -p "$OUTPUT_PATH"
+          git fetch --no-tags --filter=blob:none https://github.com/1sgtpepper/llzk-lib.git "$TESTED_HEAD"
+          git worktree add --detach "$TESTED_PATH" "$TESTED_HEAD"
+          test "$(git -C "$TESTED_PATH" rev-parse HEAD)" = "$TESTED_HEAD"
+          (
+            cd "$TESTED_PATH"
+            nix --print-build-logs build '.#debugGCC'
+          )
+          test -x "$TESTED_PATH/result/bin/llzk-opt"
+          test -x "$TESTED_PATH/result/bin/llzk-witgen"
 
-          find_filecheck() {
-            find /nix/store -type f -path '*/bin/FileCheck' -executable -print -quit
+      - name: Replay exact-head FileCheck pipelines
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$OUTPUT_PATH"
+          FILECHECK="$(find /nix/store -type f -path '*/bin/FileCheck' -executable -print -quit)"
+          test -n "$FILECHECK"
+          LLZK_OPT="$TESTED_PATH/result/bin/llzk-opt"
+          LLZK_WITGEN="$TESTED_PATH/result/bin/llzk-witgen"
+
+          count_checks() {
+            grep -Ec '^// CHECK' "$1" || true
           }
 
-          replay_transform() {
+          record_transform_case() {
             local name="$1"
-            local head="$2"
-            local pass_name="$3"
-            local test_file="$4"
-            local tested_path="$RUNNER_TEMP/llzk-$name"
+            local test_file="$2"
+            local stream="$3"
+            local check_scope="$4"
+            shift 4
+
+            local input="$TESTED_PATH/$test_file"
             local output_path="$OUTPUT_PATH/$name"
-
-            git fetch --no-tags --filter=blob:none https://github.com/1sgtpepper/llzk-lib.git "$head"
-            git worktree add --detach "$tested_path" "$head"
-            test "$(git -C "$tested_path" rev-parse HEAD)" = "$head"
-
-            (
-              cd "$tested_path"
-              nix --print-build-logs build '.#debugGCC'
-            )
-
+            local producer_output="$output_path/producer-output.llzk"
+            local generated_checks="$output_path/fresh-generated-checks.txt"
             mkdir -p "$output_path"
-            local llzk_opt="$tested_path/result/bin/llzk-opt"
-            local filecheck
-            filecheck="$(find_filecheck)"
-            test -x "$llzk_opt"
-            test -n "$filecheck"
 
-            cp "$(readlink -f "$llzk_opt")" "$output_path/llzk-opt"
-            "$llzk_opt" --version > "$output_path/llzk-opt.version"
-            cp "$tested_path/$test_file" "$output_path/committed-test.llzk"
-            "$llzk_opt" "$pass_name" "$tested_path/$test_file" \
-              > "$output_path/producer-output.llzk" 2>&1
-            python3 "$tested_path/scripts/generate-test-checks.py" \
-              < "$output_path/producer-output.llzk" \
-              > "$output_path/generated-checks.txt"
+            local -a command=("$LLZK_OPT")
+            for argument in "$@"; do
+              if [[ "$argument" == __TEST__ ]]; then
+                command+=("$input")
+              else
+                command+=("$argument")
+              fi
+            done
 
-            "$filecheck" "$tested_path/$test_file" \
-              < "$output_path/producer-output.llzk"
-            "$filecheck" "$output_path/generated-checks.txt" \
-              < "$output_path/producer-output.llzk"
+            if [[ "$stream" == combined ]]; then
+              "${command[@]}" > "$producer_output" 2>&1
+            else
+              "${command[@]}" > "$producer_output"
+            fi
 
-            local committed_checks
-            local generated_checks
-            committed_checks=$(grep -Ec '^// CHECK(:|-LABEL:|-NEXT:)' "$tested_path/$test_file")
-            generated_checks=$(grep -Ec '^// CHECK(:|-LABEL:|-NEXT:)' "$output_path/generated-checks.txt")
-            test "$committed_checks" -eq "$generated_checks"
+            python3 "$TESTED_PATH/scripts/generate-test-checks.py" \
+              < "$producer_output" \
+              > "$generated_checks"
+
+            local -a check_args=()
+            if [[ "$check_scope" == scoped ]]; then
+              check_args+=(--enable-var-scope)
+            fi
+            "${FILECHECK}" "${check_args[@]}" "$input" < "$producer_output"
+            "${FILECHECK}" "${check_args[@]}" "$generated_checks" < "$producer_output"
+
+            local committed_count
+            local generated_count
+            committed_count="$(count_checks "$input")"
+            generated_count="$(count_checks "$generated_checks")"
+            test "$committed_count" -eq "$generated_count"
 
             {
-              echo "head=$head"
+              echo "head=$TESTED_HEAD"
               echo "test=$test_file"
-              echo "producer_command=result/bin/llzk-opt $pass_name $test_file"
-              echo "committed_check_lines=$committed_checks"
-              echo "fresh_generated_check_lines=$generated_checks"
+              printf 'producer_command='
+              printf '%q ' "${command[@]}"
+              printf '\n'
+              echo "committed_check_lines=$committed_count"
+              echo "fresh_generated_check_lines=$generated_count"
               echo "committed_checks_against_exact_head_output=PASS"
               echo "fresh_generated_checks_against_exact_head_output=PASS"
               echo "complete_check_line_count=PASS"
             } > "$output_path/comparison.txt"
           }
 
-          replay_script() {
-            local head="$1"
+          record_diagnostic_case() {
+            local name="$1"
             local test_file="$2"
-            local tested_path="$RUNNER_TEMP/llzk-pr672"
-            local output_path="$OUTPUT_PATH/pr672"
-
-            git fetch --no-tags --filter=blob:none https://github.com/1sgtpepper/llzk-lib.git "$head"
-            git worktree add --detach "$tested_path" "$head"
-            test "$(git -C "$tested_path" rev-parse HEAD)" = "$head"
-
-            (
-              cd "$tested_path"
-              nix --print-build-logs build '.#debugGCC'
-            )
-
+            shift 2
+            local input="$TESTED_PATH/$test_file"
+            local output_path="$OUTPUT_PATH/$name"
+            local producer_output="$output_path/producer-output.txt"
             mkdir -p "$output_path"
-            local llzk_opt="$tested_path/result/bin/llzk-opt"
-            local filecheck
-            filecheck="$(find_filecheck)"
-            test -x "$llzk_opt"
-            test -n "$filecheck"
 
-            cp "$(readlink -f "$llzk_opt")" "$output_path/llzk-opt"
-            "$llzk_opt" --version > "$output_path/llzk-opt.version"
-            cp "$tested_path/$test_file" "$output_path/committed-test.llzk"
-            awk '
-              /^\/\/--- inline-attributes\.llzk$/ { in_chunk = 1; next }
-              in_chunk { print }
-            ' "$tested_path/$test_file" > "$output_path/inline-attributes.llzk"
-            python3 "$tested_path/scripts/generate-test-checks.py" \
-              "$output_path/inline-attributes.llzk" \
-              > "$output_path/generated-checks.txt"
-            python3 "$tested_path/scripts/generate-test-checks.py" \
-              "$output_path/inline-attributes.llzk" \
-              | "$filecheck" "$tested_path/$test_file" --check-prefix=SCRIPT
+            local -a command=("$LLZK_OPT")
+            for argument in "$@"; do
+              if [[ "$argument" == __TEST__ ]]; then
+                command+=("$input")
+              else
+                command+=("$argument")
+              fi
+            done
+            "${command[@]}" > "$producer_output" 2>&1
+            "$FILECHECK" --enable-var-scope "$input" < "$producer_output"
 
             {
-              echo "head=$head"
+              echo "head=$TESTED_HEAD"
               echo "test=$test_file"
-              echo "generator_command=python3 scripts/generate-test-checks.py < actual split chunk"
-              echo "fresh_generator_stdout=PASS"
-              echo "focused_script_contract=PASS"
+              printf 'producer_command='
+              printf '%q ' "${command[@]}"
+              printf '\n'
+              echo "diagnostic_and_command_output_contract=PASS"
             } > "$output_path/comparison.txt"
           }
 
-          replay_transform \
-            pr670 \
-            38daec50499c5403b02f42ad3ee91e0fbea284da \
-            -llzk-duplicate-op-elim \
-            test/Transforms/RedundantAndUnusedElim/recursive_purposeless_constrain_repro.llzk
-          replay_transform \
-            pr671 \
-            b04cb16c77e05dd2c99c8fcb59508eb61edb31f7 \
-            -llzk-duplicate-read-write-elim \
-            test/Transforms/RedundantAndUnusedElim/array_dynamic_constant_alias.llzk
-          replay_script \
-            5dbe4965a6bcfc5e7dee0921961a114bbfe629aa \
-            test/Transforms/generate-test-checks-inline-attributes.llzk
+          record_witgen_case() {
+            local name="$1"
+            local backend="$2"
+            local output_path="$OUTPUT_PATH/$name"
+            local test_file=test/Witgen/felt_template_parameter_pipeline.llzk
+            local check_file="$TESTED_PATH/$test_file"
+            local output="$output_path/witgen-output.txt"
+            mkdir -p "$output_path"
 
-      - name: Upload exact-head generator evidence
+            local -a backend_args=()
+            if [[ -n "$backend" ]]; then
+              backend_args+=("$backend")
+            fi
+
+            (
+              cd "$TESTED_PATH/test/Witgen"
+              "$LLZK_WITGEN" \
+                ../FrontendLang/Circom/large_const_main.llzk \
+                --inputs Inputs/felt_template_parameter_input.json \
+                "${backend_args[@]}" \
+                --check-output Inputs/felt_template_parameter_output.json
+            ) > "$output"
+            "$FILECHECK" "$check_file" < "$output"
+
+            {
+              echo "head=$TESTED_HEAD"
+              echo "test=$test_file"
+              echo "backend=${backend#--backend=}"
+              echo "external_witness_output_contract=PASS"
+            } > "$output_path/comparison.txt"
+          }
+
+          case "$TEST_KIND" in
+            felt)
+              record_transform_case \
+                call-pass \
+                test/Dialect/Function/call_with_template_params_pass.llzk \
+                combined scoped \
+                -split-input-file __TEST__
+              record_transform_case \
+                struct-pass \
+                test/Dialect/Struct/struct_params_pass.llzk \
+                combined scoped \
+                -split-input-file __TEST__
+              record_transform_case \
+                contracts-pass \
+                test/Dialect/Verif/contracts_pass.llzk \
+                combined scoped \
+                -split-input-file __TEST__
+              record_transform_case \
+                felt-materialization \
+                test/Transforms/Flattening/instantiate_felt_materialization.llzk \
+                stdout plain \
+                -split-input-file __TEST__ -llzk-flatten
+              record_transform_case \
+                name-encoding \
+                test/Transforms/Flattening/instantiate_name_encoding.llzk \
+                stdout scoped \
+                -split-input-file -llzk-flatten=cleanup=disabled __TEST__
+              record_witgen_case interpreter
+              record_witgen_case execution-engine --backend=execution-engine
+              ;;
+            deferred)
+              record_diagnostic_case \
+                expr-fail \
+                test/Transforms/Flattening/instantiate_expr_fail.llzk \
+                -split-input-file -llzk-flatten -verify-diagnostics __TEST__
+              record_transform_case \
+                expr-partial \
+                test/Transforms/Flattening/instantiate_expr_partial.llzk \
+                stdout plain \
+                -split-input-file -llzk-flatten __TEST__
+              record_transform_case \
+                expr-target-local \
+                test/Transforms/Flattening/instantiate_expr_target_local.llzk \
+                stdout plain \
+                -split-input-file \
+                '--pass-pipeline=builtin.module(llzk-flatten{cleanup=disabled})' \
+                __TEST__
+              ;;
+            reuse)
+              record_transform_case \
+                function-reuse \
+                test/Transforms/Flattening/instantiate_function_reuse.llzk \
+                stdout plain \
+                -split-input-file -llzk-flatten=cleanup=disabled __TEST__
+              ;;
+            *)
+              echo "unknown validation kind: $TEST_KIND" >&2
+              exit 1
+              ;;
+          esac
+
+      - name: Upload exact-head FileCheck evidence
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: generator-replay-evidence-${{ github.sha }}
-          path: /tmp/llzk-generator-output
+          name: generator-replay-evidence-pr-${{ matrix.pr }}-${{ github.sha }}
+          path: /tmp/llzk-generator-output/pr-${{ matrix.pr }}
           if-no-files-found: error
           retention-days: 7
           compression-level: 0
