@@ -119,21 +119,21 @@ module attributes {llzk.lang} {
 // CHECK-NEXT:        %[[VAL_1:[0-9a-zA-Z_\.]+]] = arith.constant 7 : index
 // CHECK-NEXT:        function.return %[[VAL_1]] : index
 // CHECK-NEXT:      }
-// CHECK-NEXT:    }
+// CHECK-NEXT:    } {poly.name_pattern = ["T_35_", ""]}
 // CHECK-NEXT:    poly.template @"T_36_\1A" {
 // CHECK-NEXT:      poly.param @Ty : !poly.tvar<@Ty>
 // CHECK-NEXT:      function.def @compute() -> index {
 // CHECK-NEXT:        %[[VAL_2:[0-9a-zA-Z_\.]+]] = arith.constant 7 : index
 // CHECK-NEXT:        function.return %[[VAL_2]] : index
 // CHECK-NEXT:      }
-// CHECK-NEXT:    }
+// CHECK-NEXT:    } {poly.name_pattern = ["T_36_", ""]}
 // CHECK-NEXT:    poly.template @"T_35_\1A_1" {
 // CHECK-NEXT:      poly.param @Ty : !poly.tvar<@Ty>
 // CHECK-NEXT:      function.def @other() -> index {
 // CHECK-NEXT:        %[[VAL_3:[0-9a-zA-Z_\.]+]] = arith.constant 8 : index
 // CHECK-NEXT:        function.return %[[VAL_3]] : index
 // CHECK-NEXT:      }
-// CHECK-NEXT:    }
+// CHECK-NEXT:    } {poly.name_pattern = ["T_35_", ""]}
 // CHECK-NEXT:    poly.template @T {
 // CHECK-NEXT:      poly.param @N : index
 // CHECK-NEXT:      poly.param @Ty : !poly.tvar<@Ty>
