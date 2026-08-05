@@ -233,6 +233,33 @@ LogicalResult verifyTemplateSymbolType(
   return success();
 }
 
+LogicalResult verifyStructTemplateParams(
+    SymbolTableCollection &tables, StructType ty, StructDefOp defForType, Operation *origin
+) {
+  ArrayAttr tyParams = ty.getParams();
+  if (!tyParams) {
+    return success();
+  }
+
+  TemplateOp parent = defForType->getParentOfType<TemplateOp>();
+  assert(parent && "parameterized struct definition must be nested in a template");
+  LogicalResult result = success();
+  for (auto [paramOp, value] :
+       llvm::zip_equal(parent.getConstOps<TemplateParamOp>(), tyParams.getValue())) {
+    assertValidAttrForParamOfType(value);
+    if (SymbolRefAttr symbolValue = llvm::dyn_cast<SymbolRefAttr>(value)) {
+      if (failed(verifyParamOfType(tables, symbolValue, ty, origin, paramOp.getTypeOpt()))) {
+        result = failure();
+      }
+    } else if (TypeAttr typeParam = llvm::dyn_cast<TypeAttr>(value)) {
+      if (failed(verifyTypeResolution(tables, origin, typeParam.getValue()))) {
+        result = failure();
+      }
+    }
+  }
+  return result;
+}
+
 } // namespace
 
 llvm::SmallVector<StringRef> getNames(SymbolRefAttr ref) {
@@ -480,10 +507,8 @@ verifyStructTypeResolution(SymbolTableCollection &tables, StructType ty, Operati
         .append("type parameters must unify with parameters defined here");
   }
   // If there are any SymbolRefAttr parameters on the StructType, ensure those refs are valid.
-  if (ArrayAttr tyParams = ty.getParams()) {
-    if (failed(verifyParamsOfType(tables, tyParams.getValue(), ty, origin))) {
-      return failure(); // verifyParamsOfType() already emits a sufficient error message
-    }
+  if (failed(verifyStructTemplateParams(tables, ty, defForType, origin))) {
+    return failure();
   }
   return defForType;
 }
