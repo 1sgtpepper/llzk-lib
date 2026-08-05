@@ -133,6 +133,7 @@ jobs:
             cp "$tested_path/$test_file" "$output_path/committed-test.llzk"
             awk '
               /^\/\/--- inline-attributes\.llzk$/ { in_chunk = 1; next }
+              /^\/\/--- / && in_chunk { exit }
               in_chunk { print }
             ' "$tested_path/$test_file" > "$output_path/inline-attributes.llzk"
             python3 "$tested_path/scripts/generate-test-checks.py" \
@@ -153,16 +154,16 @@ jobs:
 
           replay_transform \
             pr670 \
-            38c87fd0054cb01ee16a754bcfc6d1653924969d \
+            42ee9ba1f97bf26ce51182c2e54cff72c3686755 \
             -llzk-duplicate-op-elim \
             test/Transforms/RedundantAndUnusedElim/recursive_purposeless_constrain_repro.llzk
           replay_transform \
             pr671 \
-            f0727939bcbf451df0a9a97227bba8c57aa7072d \
+            d9a6a3bc49453f0a6d6996f115818a9ed2a6a35b \
             -llzk-duplicate-read-write-elim \
             test/Transforms/RedundantAndUnusedElim/array_dynamic_constant_alias.llzk
           replay_script \
-            08ce3267d55ba2d1574915152a42400109289614 \
+            efb42f37f1ea04315815d07315e07aa597625816 \
             test/Transforms/generate-test-checks-inline-attributes.llzk
 
       - name: Upload exact-head generator evidence
