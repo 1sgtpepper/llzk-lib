@@ -2,8 +2,6 @@
 // RUN: llzk-witgen %t/multiplier.llzk --inputs %t/multiplier-input.json --check-output %t/multiplier-output.json | FileCheck %s
 // RUN: llzk-witgen %t/multiplier.llzk --inputs %t/multiplier-input.json --backend=execution-engine --check-output %t/multiplier-output.json | FileCheck %s
 
-// CHECK: output matched expected JSON
-
 //--- multiplier.llzk
 
 // template Multiplier2() {
@@ -45,3 +43,5 @@ module attributes {llzk.lang, llzk.main = !struct.type<@Multiplier2::@Multiplier
 
 //--- multiplier-output.json
 {"out": "33"}
+
+// CHECK: output matched expected JSON
