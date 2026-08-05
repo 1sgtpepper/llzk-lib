@@ -153,16 +153,16 @@ jobs:
 
           replay_transform \
             pr670 \
-            0cdd24647eb04e6860519240fb36aaf45f766973 \
+            38c87fd0054cb01ee16a754bcfc6d1653924969d \
             -llzk-duplicate-op-elim \
             test/Transforms/RedundantAndUnusedElim/recursive_purposeless_constrain_repro.llzk
           replay_transform \
             pr671 \
-            a50b5261e3adf4e954ba11dbd1671a72c10eca1f \
+            f0727939bcbf451df0a9a97227bba8c57aa7072d \
             -llzk-duplicate-read-write-elim \
             test/Transforms/RedundantAndUnusedElim/array_dynamic_constant_alias.llzk
           replay_script \
-            edb4f4735a0ef8f7092204a19337e88d9e7b8611 \
+            08ce3267d55ba2d1574915152a42400109289614 \
             test/Transforms/generate-test-checks-inline-attributes.llzk
 
       - name: Upload exact-head generator evidence
