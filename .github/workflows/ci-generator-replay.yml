@@ -30,6 +30,7 @@ jobs:
 
     env:
       TESTED_HEAD: ${{ matrix.head }}
+      TEST_KIND: ${{ matrix.kind }}
       TESTED_PATH: /tmp/llzk-pr-${{ matrix.pr }}
       OUTPUT_PATH: /tmp/llzk-generator-output/pr-${{ matrix.pr }}
 
