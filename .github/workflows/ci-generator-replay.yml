@@ -21,6 +21,12 @@ jobs:
           - pr: 634
             head: c44aa79218f80d1785342c17f80a2b80d53bf808
             kind: felt
+          - pr: 635
+            head: 76ee80df099e47200f9a7a0a0c9bea7eb7fbcc83
+            kind: deferred
+          - pr: 637
+            head: cbf1b2770a88685aa625ede7178f4c97367fddd7
+            kind: reuse
 
     env:
       TESTED_HEAD: ${{ matrix.head }}
