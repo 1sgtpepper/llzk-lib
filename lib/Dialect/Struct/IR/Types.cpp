@@ -57,7 +57,7 @@ FailureOr<SymbolLookupResult<StructDefOp>> StructType::getDefinition(
            llvm::zip_equal(parent.getConstOps<TemplateParamOp>(), typeParams.getValue())) {
         auto feltValue = llvm::dyn_cast<llzk::felt::FeltConstAttr>(value);
         std::optional<Type> restriction = paramOp.getTypeOpt();
-        if (!feltValue) {
+        if (!feltValue || !restriction) {
           continue;
         }
         auto feltType = llvm::dyn_cast<llzk::felt::FeltType>(*restriction);
