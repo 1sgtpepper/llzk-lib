@@ -9,10 +9,10 @@ module attributes {llzk.lang = "llzk"} {
 
       %computed = scf.if %condition -> !felt.type {
         %zero = felt.const 0
-        scf.yield {llzk.fusion_marker = "compute"} %zero : !felt.type
+        scf.yield {llzk.fusion_marker = "matching"} %zero : !felt.type
       } else {
         %one = felt.const 1
-        scf.yield {llzk.fusion_marker = "compute"} %one : !felt.type
+        scf.yield {llzk.fusion_marker = "compute-else"} %one : !felt.type
       } {llzk.fusion_marker = "if", product_source = "compute"}
 
       struct.writem %self[@foo] = %computed : <@A>, !felt.type
@@ -20,11 +20,11 @@ module attributes {llzk.lang = "llzk"} {
       scf.if %condition {
         %expected = felt.const 0
         constrain.eq %computed, %expected : !felt.type
-        scf.yield {llzk.fusion_marker = "constrain"}
+        scf.yield {llzk.fusion_marker = "matching"}
       } else {
         %expected = felt.const 1
         constrain.eq %computed, %expected : !felt.type
-        scf.yield {llzk.fusion_marker = "constrain"}
+        scf.yield {llzk.fusion_marker = "constrain-else"}
       } {llzk.fusion_marker = "if", product_source = "constrain"}
 
       function.return %self : !struct.type<@A>
@@ -39,10 +39,10 @@ module attributes {llzk.lang = "llzk"} {
 // CHECK-NEXT:        %[[VAL_1:[0-9a-zA-Z_\.]+]] = struct.new : <@A>
 // CHECK-NEXT:        %[[VAL_2:[0-9a-zA-Z_\.]+]] = scf.if %[[VAL_0]] -> (!felt.type) {
 // CHECK-NEXT:          %[[VAL_3:[0-9a-zA-Z_\.]+]] = felt.const  0
-// CHECK-NEXT:          scf.yield {llzk.fusion_marker = "compute"} %[[VAL_3]] : !felt.type
+// CHECK-NEXT:          scf.yield {llzk.fusion_marker = "matching"} %[[VAL_3]] : !felt.type
 // CHECK-NEXT:        } else {
 // CHECK-NEXT:          %[[VAL_4:[0-9a-zA-Z_\.]+]] = felt.const  1
-// CHECK-NEXT:          scf.yield {llzk.fusion_marker = "compute"} %[[VAL_4]] : !felt.type
+// CHECK-NEXT:          scf.yield {llzk.fusion_marker = "compute-else"} %[[VAL_4]] : !felt.type
 // CHECK-NEXT:        } {llzk.fusion_marker = "if", product_source = "compute"}
 // CHECK-NEXT:        struct.writem %[[VAL_1]][@foo] = %[[VAL_2]] : <@A>, !felt.type
 // CHECK-NEXT:        scf.if %[[VAL_0]] {
