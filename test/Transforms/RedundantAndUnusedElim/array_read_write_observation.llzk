@@ -155,24 +155,23 @@ module attributes {llzk.lang} {
       function.return %self : !struct.type<@Element>
     }
     function.def @constrain(%self: !struct.type<@Element>) { function.return }
-  }
-
-  // array.read can return an aggregate, so the selected member subtree is live.
-  function.def @live_dynamic_struct_read_preserves_member_write(
-      %idx: index
-  ) -> !felt.type {
-    %one = felt.const 1
-    %two = felt.const 2
-    %first = struct.new : !struct.type<@Element>
-    %second = struct.new : !struct.type<@Element>
-    struct.writem %first[@value] = %one : !struct.type<@Element>, !felt.type
-    %arr = array.new %first, %second : !array.type<2 x !struct.type<@Element>>
-    %selected = array.read %arr[%idx] :
-        !array.type<2 x !struct.type<@Element>>, !struct.type<@Element>
-    %observed = struct.readm %selected[@value] :
-        !struct.type<@Element>, !felt.type
-    struct.writem %first[@value] = %two : !struct.type<@Element>, !felt.type
-    function.return %observed : !felt.type
+    // array.read can return an aggregate, so the selected member subtree is live.
+    function.def @live_dynamic_struct_read_preserves_member_write(
+        %idx: index
+    ) -> !felt.type {
+      %one = felt.const 1
+      %two = felt.const 2
+      %first = struct.new : !struct.type<@Element>
+      %second = struct.new : !struct.type<@Element>
+      struct.writem %first[@value] = %one : !struct.type<@Element>, !felt.type
+      %arr = array.new %first, %second : !array.type<2 x !struct.type<@Element>>
+      %selected = array.read %arr[%idx] :
+          !array.type<2 x !struct.type<@Element>>, !struct.type<@Element>
+      %observed = struct.readm %selected[@value] :
+          !struct.type<@Element>, !felt.type
+      struct.writem %first[@value] = %two : !struct.type<@Element>, !felt.type
+      function.return %observed : !felt.type
+    }
   }
 }
 // CHECK-LABEL: function.def @live_dynamic_struct_read_preserves_member_write
@@ -231,34 +230,33 @@ module attributes {llzk.lang} {
       function.return %self : !struct.type<@BranchElement>
     }
     function.def @constrain(%self: !struct.type<@BranchElement>) { function.return }
-  }
-
-  // Member-write candidates are block-local too: a write in one branch cannot
-  // delete a pre-branch member write observed through the opposite branch.
-  function.def @opposite_branch_struct_read_preserves_member_write(
-      %idx: index, %cond: i1
-  ) -> !felt.type {
-    %one = felt.const 1
-    %two = felt.const 2
-    %first = struct.new : !struct.type<@BranchElement>
-    %second = struct.new : !struct.type<@BranchElement>
-    struct.writem %first[@value] = %one :
-        !struct.type<@BranchElement>, !felt.type
-    %arr = array.new %first, %second :
-        !array.type<2 x !struct.type<@BranchElement>>
-    %observed = scf.if %cond -> !felt.type {
-      struct.writem %first[@value] = %two :
+    // Member-write candidates are block-local too: a write in one branch cannot
+    // delete a pre-branch member write observed through the opposite branch.
+    function.def @opposite_branch_struct_read_preserves_member_write(
+        %idx: index, %cond: i1
+    ) -> !felt.type {
+      %one = felt.const 1
+      %two = felt.const 2
+      %first = struct.new : !struct.type<@BranchElement>
+      %second = struct.new : !struct.type<@BranchElement>
+      struct.writem %first[@value] = %one :
           !struct.type<@BranchElement>, !felt.type
-      scf.yield %two : !felt.type
-    } else {
-      %selected = array.read %arr[%idx] :
-          !array.type<2 x !struct.type<@BranchElement>>,
-          !struct.type<@BranchElement>
-      %branch_observed = struct.readm %selected[@value] :
-          !struct.type<@BranchElement>, !felt.type
-      scf.yield %branch_observed : !felt.type
+      %arr = array.new %first, %second :
+          !array.type<2 x !struct.type<@BranchElement>>
+      %observed = scf.if %cond -> !felt.type {
+        struct.writem %first[@value] = %two :
+            !struct.type<@BranchElement>, !felt.type
+        scf.yield %two : !felt.type
+      } else {
+        %selected = array.read %arr[%idx] :
+            !array.type<2 x !struct.type<@BranchElement>>,
+            !struct.type<@BranchElement>
+        %branch_observed = struct.readm %selected[@value] :
+            !struct.type<@BranchElement>, !felt.type
+        scf.yield %branch_observed : !felt.type
+      }
+      function.return %observed : !felt.type
     }
-    function.return %observed : !felt.type
   }
 }
 // CHECK-LABEL: function.def @opposite_branch_struct_read_preserves_member_write
