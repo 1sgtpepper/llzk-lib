@@ -19,6 +19,8 @@ jobs:
       - name: Check out validation branch
         uses: actions/checkout@v6
         with:
+          repository: 1sgtpepper/llzk-lib
+          ref: fix/dynamic-array-read-write-observation
           persist-credentials: false
 
       - name: Install Nix
