@@ -27,34 +27,31 @@ module attributes {llzk.lang} {
     }
   }
 
-  module @globals {
-    global.def const @G : !felt.type = 35
-    global.def const @H : !felt.type<"goldilocks"> = 35
+  poly.template @FieldlessCaller {
+    poly.param @G : !felt.type
+    function.def @caller(%value: !struct.type<@BoxTemplate::@Box<[@G]>>) {
+      function.return
+    }
+    verif.contract @Wrapper for @FieldlessCaller::@caller (
+        %value: !struct.type<@BoxTemplate::@Box<[@G]>>
+    ) {
+      // expected-error@+1 {{'verif.include' op instantiation value '@G' is not compatible with parameter "@F" type restriction '!felt.type<"bn128">'}}
+      verif.include @Target::@Base<[@G]>(%value) :
+          (!struct.type<@BoxTemplate::@Box<[@G]>>) -> ()
+    }
   }
 
-  function.def @fieldlessGlobal(
-      %value: !struct.type<@BoxTemplate::@Box<[@globals::@G]>>
-  ) {
-    function.return
-  }
-  verif.contract @FieldlessGlobal for @fieldlessGlobal (
-      %value: !struct.type<@BoxTemplate::@Box<[@globals::@G]>>
-  ) {
-    // expected-error@+1 {{'verif.include' op instantiation value '@globals::@G' is not compatible with parameter "@F" type restriction '!felt.type<"bn128">'}}
-    verif.include @Target::@Base<[@globals::@G]>(%value) :
-        (!struct.type<@BoxTemplate::@Box<[@globals::@G]>>) -> ()
-  }
-
-  function.def @mismatchedGlobal(
-      %value: !struct.type<@BoxTemplate::@Box<[@globals::@H]>>
-  ) {
-    function.return
-  }
-  verif.contract @MismatchedGlobal for @mismatchedGlobal (
-      %value: !struct.type<@BoxTemplate::@Box<[@globals::@H]>>
-  ) {
-    // expected-error@+1 {{'verif.include' op instantiation value '@globals::@H' is not compatible with parameter "@F" type restriction '!felt.type<"bn128">'}}
-    verif.include @Target::@Base<[@globals::@H]>(%value) :
-        (!struct.type<@BoxTemplate::@Box<[@globals::@H]>>) -> ()
+  poly.template @MismatchedCaller {
+    poly.param @G : !felt.type<"goldilocks">
+    function.def @caller(%value: !struct.type<@BoxTemplate::@Box<[@G]>>) {
+      function.return
+    }
+    verif.contract @Wrapper for @MismatchedCaller::@caller (
+        %value: !struct.type<@BoxTemplate::@Box<[@G]>>
+    ) {
+      // expected-error@+1 {{'verif.include' op instantiation value '@G' is not compatible with parameter "@F" type restriction '!felt.type<"bn128">'}}
+      verif.include @Target::@Base<[@G]>(%value) :
+          (!struct.type<@BoxTemplate::@Box<[@G]>>) -> ()
+    }
   }
 }

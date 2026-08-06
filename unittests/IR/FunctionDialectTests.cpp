@@ -268,8 +268,6 @@ module attributes {llzk.lang} {
   poly.template @FieldlessCaller {
     poly.param @G : !felt.type
     function.def @caller(%value: !struct.type<@BoxTemplate::@Box<[@G]>>) {
-      function.call @Target::@accept<[@G]>(%value) :
-          (!struct.type<@BoxTemplate::@Box<[@G]>>) -> ()
       function.return
     }
   }
@@ -277,8 +275,6 @@ module attributes {llzk.lang} {
   poly.template @MismatchedCaller {
     poly.param @G : !felt.type<"goldilocks">
     function.def @caller(%value: !struct.type<@BoxTemplate::@Box<[@G]>>) {
-      function.call @Target::@accept<[@G]>(%value) :
-          (!struct.type<@BoxTemplate::@Box<[@G]>>) -> ()
       function.return
     }
   }
@@ -287,11 +283,26 @@ module attributes {llzk.lang} {
 
   auto parsed = parseSourceString<ModuleOp>(source, ParserConfig(&ctx));
   ASSERT_TRUE(parsed);
+  ASSERT_TRUE(succeeded(mlir::verify(parsed.get())));
+
+  auto callee = SymbolRefAttr::get(
+      &ctx, "Target", ArrayRef<FlatSymbolRefAttr> {FlatSymbolRefAttr::get(&ctx, "accept")}
+  );
+  auto param = FlatSymbolRefAttr::get(&ctx, "G");
   SmallVector<CallOp> calls;
-  parsed->walk([&calls](CallOp op) { calls.push_back(op); });
+  parsed->walk([&](FuncDefOp func) {
+    if (func.getSymName() != "caller") {
+      return;
+    }
+    Block &body = func.getBody().front();
+    OpBuilder builder(&body);
+    builder.setInsertionPoint(body.getTerminator());
+    calls.push_back(builder.create<CallOp>(
+        loc, TypeRange {}, callee, ValueRange {body.getArgument(0)}, ArrayRef<Attribute> {param}
+    ));
+  });
 
   ASSERT_EQ(calls.size(), 2u);
-  ASSERT_TRUE(succeeded(mlir::verify(parsed.get())));
   EXPECT_FALSE(verify(calls[0], true));
   EXPECT_FALSE(verify(calls[1], true));
 }
