@@ -186,8 +186,7 @@ module attributes {llzk.lang} {
           }
       %observed = array.read %read_row[%i0] :
           !array.type<2 x !felt.type>, !felt.type
-      array.write %aliases[%insert_idx, %i0] = %two :
-          !array.type<2,2 x !felt.type>, !felt.type
+      array.write %offset[%i0] = %two : !array.type<2 x !felt.type>, !felt.type
       struct.writem %self[@seen] = %observed :
           !struct.type<@AggregateTableOffsetAlias>, !felt.type
       function.return %self : !struct.type<@AggregateTableOffsetAlias>
@@ -217,7 +216,7 @@ module attributes {llzk.lang} {
 // CHECK-NEXT:        struct.writem %[[VAL_3]][@cell] = %[[VAL_6]] : <@AggregateTableOffsetAlias>, !array.type<2 x !felt.type>
 // CHECK-NEXT:        %[[VAL_10:[0-9a-zA-Z_\.]+]] = struct.readm %[[VAL_3]][@cell] {(){{\[}}%[[VAL_2]]]} : <@AggregateTableOffsetAlias>, !array.type<2 x !felt.type> {tableOffset = #[[$ATTR_0]]}
 // CHECK-NEXT:        %[[VAL_11:[0-9a-zA-Z_\.]+]] = array.read %[[VAL_10]]{{\[}}%[[VAL_8]]] : <2 x !felt.type>, !felt.type
-// CHECK-NEXT:        array.write %[[VAL_7]]{{\[}}%[[VAL_1]], %[[VAL_8]]] = %[[VAL_5]] : <2,2 x !felt.type>, !felt.type
+// CHECK-NEXT:        array.write %[[VAL_9]]{{\[}}%[[VAL_8]]] = %[[VAL_5]] : <2 x !felt.type>, !felt.type
 // CHECK-NEXT:        struct.writem %[[VAL_3]][@seen] = %[[VAL_11]] : <@AggregateTableOffsetAlias>, !felt.type
 // CHECK-NEXT:        function.return %[[VAL_3]] : !struct.type<@AggregateTableOffsetAlias>
 // CHECK-NEXT:      }
