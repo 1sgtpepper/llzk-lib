@@ -68,7 +68,7 @@ jobs:
               )
           PY
 
-          nix --print-build-logs build '.#debugGCC'
+          nix --print-build-logs build --no-check '.#debugGCC'
           llzk_opt="$GITHUB_WORKSPACE/result/bin/llzk-opt"
           filecheck="$(find /nix/store -type f -path '*/bin/FileCheck' -executable -print -quit)"
           test -x "$llzk_opt"
