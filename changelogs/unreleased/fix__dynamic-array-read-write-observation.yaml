@@ -1,0 +1,2 @@
+fixed:
+  - Preserve writes that may be observed by live array reads or extracts.

@@ -25,6 +25,7 @@
 #include <mlir/Dialect/SCF/IR/SCF.h>
 #include <mlir/IR/BuiltinOps.h>
 
+#include <llvm/ADT/ArrayRef.h>
 #include <llvm/ADT/DenseMap.h>
 #include <llvm/ADT/DenseMapInfo.h>
 #include <llvm/ADT/SmallVector.h>
@@ -170,11 +171,9 @@ public:
     return std::make_shared<ReferenceNode>(std::move(n));
   }
 
-  /// @brief Clone the current node, creating a new shared_ptr from it, optionally
-  /// recursively cloning the children (default is true).
+  /// @brief Clone semantic value state, excluding block-local write candidates.
   std::shared_ptr<ReferenceNode> clone(bool withChildren = true) const {
     ReferenceNode copy(identifier, storedValue);
-    copy.updateLastWrite(lastWrite);
     if (withChildren) {
       copy.dynamicChildCount = dynamicChildCount;
       for (const auto &[id, child] : children) {
@@ -227,6 +226,44 @@ public:
   }
 
   void clearLastWrite() { lastWrite = nullptr; }
+
+  /// @brief Clear pending writes that may be observed by a live array read or extract.
+  ///
+  /// Constant indices visit the exact constant child and every dynamic child;
+  /// dynamic indices visit every non-attribute child. Once all indices are
+  /// consumed, the selected value may expose aggregate descendants.
+  void clearLastWritesObservedBy(llvm::ArrayRef<ReferenceID> indices) {
+    clearLastWrite();
+    if (indices.empty()) {
+      for (const auto &[_, child] : children) {
+        child->clearLastWritesObservedBy(indices);
+      }
+      return;
+    }
+
+    const ReferenceID &index = indices.front();
+    llvm::ArrayRef<ReferenceID> remaining = indices.drop_front();
+    if (!index.isConst()) {
+      for (const auto &[id, child] : children) {
+        if (!id.isAttribute()) {
+          child->clearLastWritesObservedBy(remaining);
+        }
+      }
+      return;
+    }
+
+    if (auto it = children.find(index); it != children.end()) {
+      it->second->clearLastWritesObservedBy(remaining);
+    }
+    if (dynamicChildCount == 0) {
+      return;
+    }
+    for (const auto &[id, child] : children) {
+      if (id.isValue()) {
+        child->clearLastWritesObservedBy(remaining);
+      }
+    }
+  }
 
   void setCurrentValue(Value v, const std::shared_ptr<ReferenceNode> &valTree = nullptr) {
     storedValue = v;
@@ -312,8 +349,7 @@ public:
   /// @brief Returns true if the nodes are equal, excluding their children.
   friend bool
   topLevelEq(const std::shared_ptr<ReferenceNode> &lhs, const std::shared_ptr<ReferenceNode> &rhs) {
-    return lhs->identifier == rhs->identifier && lhs->storedValue == rhs->storedValue &&
-           lhs->lastWrite == rhs->lastWrite;
+    return lhs->identifier == rhs->identifier && lhs->storedValue == rhs->storedValue;
   }
 
   friend std::shared_ptr<ReferenceNode> greatestCommonSubtree(
@@ -370,8 +406,13 @@ struct KnownState {
 struct BlockWriteCandidates {
   DenseMap<SymbolRefAttr, Operation *> globals;
   DenseMap<Value, Operation *> ram;
+  SmallVector<std::shared_ptr<ReferenceNode>> referenceNodes;
 
   void clear() {
+    for (const auto &node : referenceNodes) {
+      node->clearLastWrite();
+    }
+    referenceNodes.clear();
     globals.clear();
     ram.clear();
   }
@@ -718,19 +759,23 @@ class PassImpl : public llzk::impl::RedundantReadAndWriteEliminationPassBase<Pas
       return access;
     };
 
-    // Read a value from an array. This works on both readarr operations (which
-    // return a scalar value) and extractarr operations (which return a subarray).
+    // Read an element or subarray from an array. A surviving result may
+    // expose aggregate descendants, so it observes the selected subtree.
     auto doArrayReadLike = [&]<HasInterface<ArrayAccessOpInterface> OpClass>(OpClass readarr) {
       Value resVal = readarr.getResult();
-      std::shared_ptr<ReferenceNode> currValTree = tryGetValTree(translate(readarr.getArrRef()));
+      std::shared_ptr<ReferenceNode> rootValTree =
+          tryGetValTree(translate(readarr.getArrRef()));
+      std::shared_ptr<ReferenceNode> currValTree = rootValTree;
       if (currValTree == nullptr) {
         state.values[resVal] = ReferenceNode::create(resVal, resVal);
         readVals.push_back(resVal);
         return;
       }
 
+      SmallVector<ReferenceID> indices;
       for (Value origIdx : readarr.getIndices()) {
         Value idxVal = translate(origIdx);
+        indices.emplace_back(idxVal);
         currValTree = currValTree->getOrCreateChild(idxVal);
       }
 
@@ -745,6 +790,7 @@ class PassImpl : public llzk::impl::RedundantReadAndWriteEliminationPassBase<Pas
         );
         replacementMap[resVal] = currValTree->getStoredValue();
       } else {
+        rootValTree->clearLastWritesObservedBy(indices);
         state.values[resVal] = currValTree;
         LLVM_DEBUG(
             llvm::dbgs() << readarr.getOperationName() << ": " << resVal << " => " << *currValTree
@@ -786,7 +832,9 @@ class PassImpl : public llzk::impl::RedundantReadAndWriteEliminationPassBase<Pas
         );
         redundantWrites.push_back(writearr);
       } else {
-        if (Operation *lastWrite = currValTree->updateLastWrite(writearr)) {
+        Operation *lastWrite = currValTree->updateLastWrite(writearr);
+        writeCandidates.referenceNodes.push_back(currValTree);
+        if (lastWrite != nullptr) {
           LLVM_DEBUG(
               llvm::dbgs() << writearr.getOperationName() << "writearr: replacing " << lastWrite
                            << " with prior write " << *lastWrite << '\n'
@@ -898,7 +946,9 @@ class PassImpl : public llzk::impl::RedundantReadAndWriteEliminationPassBase<Pas
         );
         redundantWrites.push_back(writem);
       } else {
-        if (auto *lastWrite = access->updateLastWrite(writem)) {
+        Operation *lastWrite = access->updateLastWrite(writem);
+        writeCandidates.referenceNodes.push_back(access);
+        if (lastWrite != nullptr) {
           LLVM_DEBUG(
               llvm::dbgs() << writem.getOperationName() << ": recording overwritten write "
                            << *lastWrite << '\n'
