@@ -1,0 +1,28 @@
+// RUN: llzk-opt -llzk-duplicate-read-write-elim %s 2>&1 | FileCheck %s
+
+// A dynamic read between two constant writes may observe the first write when
+// its index equals the constant index. The first write must remain live.
+module attributes {llzk.lang} {
+  function.def @repro(%idx: index) -> !felt.type {
+    %zero = felt.const 0
+    %one = felt.const 1
+    %two = felt.const 2
+    %arr = array.new %zero, %zero : !array.type<2 x !felt.type>
+    %i0 = arith.constant 0 : index
+    array.write %arr[%i0] = %one : !array.type<2 x !felt.type>, !felt.type
+    %observed = array.read %arr[%idx] : !array.type<2 x !felt.type>, !felt.type
+    array.write %arr[%i0] = %two : !array.type<2 x !felt.type>, !felt.type
+    function.return %observed : !felt.type
+  }
+}
+
+// CHECK-LABEL: function.def @repro(%[[IDX:[0-9a-zA-Z_\.]+]]: index) -> !felt.type {
+// CHECK: %[[ZERO:[0-9a-zA-Z_\.]+]] = felt.const  0
+// CHECK: %[[ONE:[0-9a-zA-Z_\.]+]] = felt.const  1
+// CHECK: %[[TWO:[0-9a-zA-Z_\.]+]] = felt.const  2
+// CHECK: %[[ARR:[0-9a-zA-Z_\.]+]] = array.new %[[ZERO]], %[[ZERO]] : <2 x !felt.type>
+// CHECK: %[[I0:[0-9a-zA-Z_\.]+]] = arith.constant 0 : index
+// CHECK: array.write %[[ARR]]{{\[}}%[[I0]]{{\]}} = %[[ONE]] : <2 x !felt.type>, !felt.type
+// CHECK: %[[OBSERVED:[0-9a-zA-Z_\.]+]] = array.read %[[ARR]]{{\[}}%[[IDX]]{{\]}} : <2 x !felt.type>, !felt.type
+// CHECK: array.write %[[ARR]]{{\[}}%[[I0]]{{\]}} = %[[TWO]] : <2 x !felt.type>, !felt.type
+// CHECK: function.return %[[OBSERVED]] : !felt.type
