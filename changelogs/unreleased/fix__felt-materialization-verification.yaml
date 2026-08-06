@@ -1,2 +1,2 @@
 fixed:
-  - Reject felt template arguments whose explicit field differs from the parameter restriction
+  - Validate felt field restrictions consistently for constant and symbolic template arguments
