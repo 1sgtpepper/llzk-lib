@@ -484,6 +484,17 @@ verifyStructTypeResolution(SymbolTableCollection &tables, StructType ty, Operati
     if (failed(verifyParamsOfType(tables, tyParams.getValue(), ty, origin))) {
       return failure(); // verifyParamsOfType() already emits a sufficient error message
     }
+    if (TemplateOp parent = getParentOfType<TemplateOp>(defForType.getOperation())) {
+      for (auto [paramOp, value] :
+           llvm::zip_equal(parent.getConstOps<TemplateParamOp>(), tyParams.getValue())) {
+        std::optional<Type> restriction = paramOp.getTypeOpt();
+        if (auto symbolValue = llvm::dyn_cast<SymbolRefAttr>(value);
+            symbolValue && restriction &&
+            failed(verifyParamOfType(tables, symbolValue, ty, origin, restriction))) {
+          return failure();
+        }
+      }
+    }
   }
   return defForType;
 }
