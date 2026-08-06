@@ -89,6 +89,90 @@ module attributes {llzk.lang} {
 // CHECK-NEXT:  }
 // -----
 module attributes {llzk.lang} {
+  // A constant read may observe a descendant shared through a dynamic alias.
+  function.def @constant_read_observes_dynamic_aggregate_alias(
+      %insert_idx: index
+  ) -> !felt.type {
+    %one = felt.const 1
+    %two = felt.const 2
+    %row = array.new : !array.type<2 x !felt.type>
+    %matrix = array.new : !array.type<2,2 x !felt.type>
+    %i0 = arith.constant 0 : index
+    array.write %row[%i0] = %one : !array.type<2 x !felt.type>, !felt.type
+    array.insert %matrix[%insert_idx] = %row :
+        !array.type<2,2 x !felt.type>, !array.type<2 x !felt.type>
+    %observed = array.read %matrix[%i0, %i0] :
+        !array.type<2,2 x !felt.type>, !felt.type
+    array.write %row[%i0] = %two : !array.type<2 x !felt.type>, !felt.type
+    function.return %observed : !felt.type
+  }
+}
+// -----
+module attributes {llzk.lang} {
+  // A distinct dynamic read may equal the dynamic alias index at runtime.
+  function.def @distinct_dynamic_read_observes_dynamic_aggregate_alias(
+      %insert_idx: index, %read_idx: index
+  ) -> !felt.type {
+    %one = felt.const 1
+    %two = felt.const 2
+    %row = array.new : !array.type<2 x !felt.type>
+    %matrix = array.new : !array.type<2,2 x !felt.type>
+    %i0 = arith.constant 0 : index
+    array.write %row[%i0] = %one : !array.type<2 x !felt.type>, !felt.type
+    array.insert %matrix[%insert_idx] = %row :
+        !array.type<2,2 x !felt.type>, !array.type<2 x !felt.type>
+    %observed = array.read %matrix[%read_idx, %i0] :
+        !array.type<2,2 x !felt.type>, !felt.type
+    array.write %row[%i0] = %two : !array.type<2 x !felt.type>, !felt.type
+    function.return %observed : !felt.type
+  }
+}
+// -----
+#offset_map = affine_map<()[s0] -> (s0)>
+module attributes {llzk.lang} {
+  struct.def @AggregateTableOffsetAlias {
+    struct.member @cell : !array.type<2 x !felt.type> {column}
+    struct.member @seen : !felt.type
+
+    function.def @compute(
+        %offset_idx: index, %insert_idx: index, %read_idx: index
+    ) -> !struct.type<@AggregateTableOffsetAlias> {
+      %self = struct.new : !struct.type<@AggregateTableOffsetAlias>
+      %one = felt.const 1
+      %two = felt.const 2
+      %replacement = array.new : !array.type<2 x !felt.type>
+      %aliases = array.new : !array.type<2,2 x !felt.type>
+      %i0 = arith.constant 0 : index
+      %offset = struct.readm %self[@cell] {()[%offset_idx]} :
+          !struct.type<@AggregateTableOffsetAlias>, !array.type<2 x !felt.type> {
+            tableOffset = #offset_map
+          }
+      array.write %offset[%i0] = %one : !array.type<2 x !felt.type>, !felt.type
+      array.insert %aliases[%insert_idx] = %offset :
+          !array.type<2,2 x !felt.type>, !array.type<2 x !felt.type>
+      struct.writem %self[@cell] = %replacement :
+          !struct.type<@AggregateTableOffsetAlias>, !array.type<2 x !felt.type>
+      %read_row = struct.readm %self[@cell] {()[%read_idx]} :
+          !struct.type<@AggregateTableOffsetAlias>, !array.type<2 x !felt.type> {
+            tableOffset = #offset_map
+          }
+      %observed = array.read %read_row[%i0] :
+          !array.type<2 x !felt.type>, !felt.type
+      array.write %aliases[%insert_idx, %i0] = %two :
+          !array.type<2,2 x !felt.type>, !felt.type
+      struct.writem %self[@seen] = %observed :
+          !struct.type<@AggregateTableOffsetAlias>, !felt.type
+      function.return %self : !struct.type<@AggregateTableOffsetAlias>
+    }
+
+    function.def @constrain(
+        %self: !struct.type<@AggregateTableOffsetAlias>, %offset_idx: index,
+        %insert_idx: index, %read_idx: index
+    ) { function.return }
+  }
+}
+// -----
+module attributes {llzk.lang} {
   // Detaching a dynamic aggregate alias must clear candidates shared with its source.
   function.def @dynamic_alias_detached_by_constant_write_preserves_source_candidate(
       %idx: index
