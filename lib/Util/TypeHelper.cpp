@@ -954,6 +954,43 @@ bool isTemplateParamTypeCompatible(std::optional<Type> actualType, Type required
   return isTemplateParamTypeCompatible(*actualType, requiredType);
 }
 
+bool templateParamValuesUnify(
+    Attribute actualValue, Attribute inferredValue, std::optional<Type> requiredType
+) {
+  FeltType requiredFelt;
+  if (requiredType) {
+    requiredFelt = dyn_cast<FeltType>(*requiredType);
+  }
+  if (!requiredFelt) {
+    return typeParamsUnify({actualValue}, {inferredValue});
+  }
+
+  auto asFeltConst = [requiredFelt](Attribute value) -> FeltConstAttr {
+    if (auto feltValue = dyn_cast<FeltConstAttr>(value)) {
+      FailureOr<FeltConstAttr> materialized = feltValue.materializeAs(requiredFelt);
+      return succeeded(materialized) ? *materialized : FeltConstAttr();
+    }
+    if (auto intValue = dyn_cast<IntegerAttr>(value)) {
+      return FeltConstAttr::get(value.getContext(), intValue.getValue(), requiredFelt);
+    }
+    return FeltConstAttr();
+  };
+
+  FeltConstAttr actualFelt = asFeltConst(actualValue);
+  FeltConstAttr inferredFelt = asFeltConst(inferredValue);
+  if (!actualFelt || !inferredFelt) {
+    return typeParamsUnify({actualValue}, {inferredValue});
+  }
+
+  if (actualFelt.getValue() != inferredFelt.getValue()) {
+    return false;
+  }
+  FeltType actualFeltType = actualFelt.getType();
+  FeltType inferredFeltType = inferredFelt.getType();
+  return !actualFeltType.hasField() || !inferredFeltType.hasField() ||
+         actualFeltType == inferredFeltType;
+}
+
 bool isMoreConcreteUnification(
     Type oldTy, Type newTy, llvm::function_ref<bool(Type oldTy, Type newTy)> knownOldToNew
 ) {

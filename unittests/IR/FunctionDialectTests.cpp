@@ -242,6 +242,54 @@ module attributes {llzk.lang} {
   EXPECT_TRUE(verify(calls[1], true));
 }
 
+TEST_F(OpTests, testCallFeltRestrictionNormalizesEquivalentConstants) {
+  constexpr StringLiteral source = R"mlir(
+module attributes {llzk.lang} {
+  poly.template @BoxTemplate {
+    poly.param @P
+    struct.def @Box {
+      function.def @compute() -> !struct.type<@BoxTemplate::@Box<[@P]>> {
+        %self = struct.new : <@BoxTemplate::@Box<[@P]>>
+        function.return %self : !struct.type<@BoxTemplate::@Box<[@P]>>
+      }
+      function.def @constrain(%self: !struct.type<@BoxTemplate::@Box<[@P]>>) {
+        function.return
+      }
+    }
+  }
+
+  poly.template @Target {
+    poly.param @F : !felt.type<"bn128">
+    function.def @accept(%value: !struct.type<@BoxTemplate::@Box<[@F]>>) {
+      function.return
+    }
+  }
+
+  poly.template @Caller {
+    function.def @caller(
+        %value: !struct.type<@BoxTemplate::@Box<[#felt<const 35 : !felt.type<"bn128">>]>>
+    ) {
+      function.call @Target::@accept<[#felt<const 35>]>(%value) :
+          (!struct.type<@BoxTemplate::@Box<[#felt<const 35 : !felt.type<"bn128">>]>>) -> ()
+      function.call @Target::@accept<[35]>(%value) :
+          (!struct.type<@BoxTemplate::@Box<[#felt<const 35 : !felt.type<"bn128">>]>>) -> ()
+      function.return
+    }
+  }
+}
+)mlir";
+
+  auto parsed = parseSourceString<ModuleOp>(source, ParserConfig(&ctx));
+  ASSERT_TRUE(parsed);
+  SmallVector<CallOp> calls;
+  parsed->walk([&calls](CallOp op) { calls.push_back(op); });
+
+  ASSERT_EQ(calls.size(), 2u);
+  ASSERT_TRUE(succeeded(mlir::verify(parsed.get())));
+  EXPECT_TRUE(verify(calls[0], true));
+  EXPECT_TRUE(verify(calls[1], true));
+}
+
 TEST_F(OpTests, testCallFeltRestrictionRejectsIncompatibleLocalSymbols) {
   constexpr StringLiteral source = R"mlir(
 module attributes {llzk.lang} {

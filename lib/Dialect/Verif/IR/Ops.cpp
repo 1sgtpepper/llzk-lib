@@ -891,7 +891,8 @@ LogicalResult IncludeOp::verifyTemplateParamsMatchInferred(
         failed(verifyTemplateParamCompatibility(it->second, paramOp))) {
       return failure();
     }
-    if (it != unifications.end() && !typeParamsUnify({attr}, {it->second})) {
+    if (it != unifications.end() &&
+        !templateParamValuesUnify(attr, it->second, paramOp.getTypeOpt())) {
       return this->emitOpError().append(
           "template instantiation value '", attr, "' for parameter \"@", paramOp.getName(),
           "\" conflicts with value '", it->second, "' inferred from function type signature"

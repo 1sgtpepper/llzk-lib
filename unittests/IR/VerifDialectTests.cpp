@@ -274,6 +274,62 @@ module attributes {llzk.lang} {
   EXPECT_TRUE(verify(includes[1], true));
 }
 
+TEST_F(VerifDialectTests, IncludeFeltRestrictionNormalizesEquivalentConstants) {
+  constexpr StringLiteral source = R"mlir(
+module attributes {llzk.lang} {
+  poly.template @BoxTemplate {
+    poly.param @P
+    struct.def @Box {
+      function.def @compute() -> !struct.type<@BoxTemplate::@Box<[@P]>> {
+        %self = struct.new : <@BoxTemplate::@Box<[@P]>>
+        function.return %self : !struct.type<@BoxTemplate::@Box<[@P]>>
+      }
+      function.def @constrain(%self: !struct.type<@BoxTemplate::@Box<[@P]>>) {
+        function.return
+      }
+    }
+  }
+
+  poly.template @Target {
+    poly.param @F : !felt.type<"bn128">
+    function.def @accept(%value: !struct.type<@BoxTemplate::@Box<[@F]>>) {
+      function.return
+    }
+    verif.contract @Base for @Target::@accept (
+        %value: !struct.type<@BoxTemplate::@Box<[@F]>>
+    ) {
+      %ok = arith.constant true
+      verif.ensure_compute %ok
+    }
+  }
+
+  poly.template @Caller {
+    function.def @caller(
+        %value: !struct.type<@BoxTemplate::@Box<[#felt<const 35 : !felt.type<"bn128">>]>>
+    ) {
+      function.return
+    }
+    verif.contract @Wrapper for @Caller::@caller (
+        %value: !struct.type<@BoxTemplate::@Box<[#felt<const 35 : !felt.type<"bn128">>]>>
+    ) {
+      verif.include @Target::@Base<[#felt<const 35>]>(%value) :
+          (!struct.type<@BoxTemplate::@Box<[#felt<const 35 : !felt.type<"bn128">>]>>) -> ()
+      verif.include @Target::@Base<[35]>(%value) :
+          (!struct.type<@BoxTemplate::@Box<[#felt<const 35 : !felt.type<"bn128">>]>>) -> ()
+    }
+  }
+}
+)mlir";
+
+  auto parsed = parseModule(source);
+  auto includes = findOps<IncludeOp>(*parsed);
+
+  ASSERT_EQ(includes.size(), 2u);
+  ASSERT_TRUE(succeeded(mlir::verify(parsed.get())));
+  EXPECT_TRUE(verify(includes[0], true));
+  EXPECT_TRUE(verify(includes[1], true));
+}
+
 TEST_F(VerifDialectTests, TemplateIncludeRejectsIncompatibleLocalSymbols) {
   constexpr StringLiteral source = R"mlir(
 module attributes {llzk.lang} {

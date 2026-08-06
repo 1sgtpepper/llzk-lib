@@ -752,7 +752,8 @@ LogicalResult CallOp::verifyTemplateParamsMatchInferred(
         failed(verifyTemplateParamCompatibility(it->second, paramOp))) {
       return failure();
     }
-    if (it != unifications.end() && !typeParamsUnify({attr}, {it->second})) {
+    if (it != unifications.end() &&
+        !templateParamValuesUnify(attr, it->second, paramOp.getTypeOpt())) {
       // Tested in call_with_template_params_fail.llzk
       return this->emitOpError().append(
           "template instantiation value '", attr, "' for parameter \"@", paramOp.getName(),
