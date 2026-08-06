@@ -155,12 +155,12 @@ module attributes {llzk.lang} {
       function.return %self : !struct.type<@Element>
     }
     // array.read can return an aggregate, so the selected member subtree is live.
-    function.def @constrain(%self: !struct.type<@Element>) {
+    function.def @constrain(%self: !struct.type<@Element>, %idx: index) {
       %one = felt.const 1
       %two = felt.const 2
       struct.writem %self[@value] = %one : !struct.type<@Element>, !felt.type
       %arr = array.new %self, %self : !array.type<2 x !struct.type<@Element>>
-      %selected = array.read %arr[%self] :
+      %selected = array.read %arr[%idx] :
           !array.type<2 x !struct.type<@Element>>, !struct.type<@Element>
       %observed = struct.readm %selected[@value] :
           !struct.type<@Element>, !felt.type
@@ -226,7 +226,9 @@ module attributes {llzk.lang} {
     }
     // Member-write candidates are block-local too: a write in one branch cannot
     // delete a pre-branch member write observed through the opposite branch.
-    function.def @constrain(%self: !struct.type<@BranchElement>, %cond: i1) {
+    function.def @constrain(
+        %self: !struct.type<@BranchElement>, %idx: index, %cond: i1
+    ) {
       %one = felt.const 1
       %two = felt.const 2
       struct.writem %self[@value] = %one :
@@ -238,7 +240,7 @@ module attributes {llzk.lang} {
             !struct.type<@BranchElement>, !felt.type
         scf.yield %two : !felt.type
       } else {
-        %selected = array.read %arr[%cond] :
+        %selected = array.read %arr[%idx] :
             !array.type<2 x !struct.type<@BranchElement>>,
             !struct.type<@BranchElement>
         %branch_observed = struct.readm %selected[@value] :
