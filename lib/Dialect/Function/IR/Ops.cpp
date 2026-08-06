@@ -619,15 +619,6 @@ void CallOp::build(
 
 LogicalResult
 CallOp::verifyTemplateParamCompatibility(Attribute paramFromCallOp, TemplateParamOp targetParam) {
-  llvm::errs() << "LLZK_PROBE_CALL param=" << paramFromCallOp << " target=@"
-               << targetParam.getName() << " required=";
-  if (std::optional<Type> declaredType = targetParam.getTypeOpt()) {
-    llvm::errs() << *declaredType;
-  } else {
-    llvm::errs() << "<none>";
-  }
-  llvm::errs() << " parent=" << (getParentOfType<TemplateOp>(*this) ? "template" : "module")
-               << '\n';
   // A wildcard `?` (represented as kDynamic) defers inference to a later pass.
   // It is only valid for parameters with a `!poly.tvar` type restriction.
   if (auto intAttr = llvm::dyn_cast<IntegerAttr>(paramFromCallOp)) {
@@ -664,13 +655,6 @@ CallOp::verifyTemplateParamCompatibility(Attribute paramFromCallOp, TemplatePara
           if (binding) {
             resolvedLocal = true;
             compatible = isTemplateParamTypeCompatible(binding.getTypeOpt(), *declaredType);
-            llvm::errs() << "LLZK_PROBE_CALL local actual=";
-            if (std::optional<Type> actualType = binding.getTypeOpt()) {
-              llvm::errs() << *actualType;
-            } else {
-              llvm::errs() << "<none>";
-            }
-            llvm::errs() << " compatible=" << compatible << '\n';
           }
         }
       }
@@ -679,8 +663,6 @@ CallOp::verifyTemplateParamCompatibility(Attribute paramFromCallOp, TemplatePara
         if (auto global = lookupTopLevelSymbol<global::GlobalDefOp>(tables, sym, *this, false);
             succeeded(global)) {
           compatible = isTemplateParamTypeCompatible(global->get().getType(), *declaredType);
-          llvm::errs() << "LLZK_PROBE_CALL global actual=" << global->get().getType()
-                       << " compatible=" << compatible << '\n';
         }
       }
     } else if (llvm::isa<TypeVarType>(*declaredType)) {
