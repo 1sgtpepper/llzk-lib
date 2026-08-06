@@ -18,6 +18,7 @@
 #include "llzk/Dialect/Felt/IR/Attrs.h"
 #include "llzk/Dialect/Felt/IR/Types.h"
 #include "llzk/Dialect/Function/IR/Dialect.h"
+#include "llzk/Dialect/Global/IR/Ops.h"
 #include "llzk/Dialect/LLZK/IR/AttributeHelper.h"
 #include "llzk/Dialect/LLZK/IR/Versioning.h"
 #include "llzk/Dialect/Polymorphic/IR/Types.h"
@@ -651,21 +652,22 @@ CallOp::verifyTemplateParamCompatibility(Attribute paramFromCallOp, TemplatePara
         if (TemplateOp p = *parentTemplate) {
           auto binding = p.getConstNamed<TemplateSymbolBindingOpInterface>(sym.getRootReference());
           if (binding) {
-            // Once we know it references a template symbol binding, assume it's compatible unless
-            // the optional type is present and doesn't unify with the declared type.
-            if (std::optional<Type> actualType = binding.getTypeOpt()) {
-              compatible = typesUnify(*actualType, *declaredType);
-            } else {
-              compatible = true;
-            }
+            compatible = isTemplateParamTypeCompatible(binding.getTypeOpt(), *declaredType);
           }
+        }
+      }
+      if (!compatible) {
+        SymbolTableCollection tables;
+        if (auto global = lookupTopLevelSymbol<global::GlobalDefOp>(tables, sym, *this, false);
+            succeeded(global)) {
+          compatible = isTemplateParamTypeCompatible(global->get().getType(), *declaredType);
         }
       }
     } else if (llvm::isa<TypeVarType>(*declaredType)) {
       compatible = llvm::isa<TypeAttr>(paramFromCallOp);
     } else if (auto feltType = llvm::dyn_cast<FeltType>(*declaredType)) {
       if (auto feltValue = llvm::dyn_cast<FeltConstAttr>(paramFromCallOp)) {
-        compatible = succeeded(feltValue.getMaterializedType(feltType));
+        compatible = succeeded(feltValue.materializeAs(feltType));
       } else if (auto intValue = llvm::dyn_cast<IntegerAttr>(paramFromCallOp)) {
         compatible = isValidConstReadType(intValue.getType());
       }
@@ -694,7 +696,25 @@ LogicalResult CallOp::verifyTemplateParamCompatibility(
     llvm::iterator_range<Region::op_iterator<TemplateParamOp>> targetParamDefs
 ) {
   ArrayAttr callParams = this->getTemplateParamsAttr();
-  assert(!isNullOrEmpty(callParams) && "pre-condition");
+  if (isNullOrEmpty(callParams)) {
+    for (TemplateParamOp paramOp : targetParamDefs) {
+      if (std::optional<Type> declaredType = paramOp.getTypeOpt();
+          declaredType && llvm::isa<TypeVarType>(*declaredType)) {
+        continue;
+      }
+      auto it = unifications.find({FlatSymbolRefAttr::get(paramOp.getNameAttr()), Side::RHS});
+      if (it == unifications.end() || !it->second) {
+        return this->emitOpError().append(
+            "cannot infer template instantiation value for parameter \"@", paramOp.getName(),
+            "\" from function type signature"
+        );
+      }
+      if (failed(verifyTemplateParamCompatibility(it->second, paramOp))) {
+        return failure();
+      }
+    }
+    return success();
+  }
   assert((callParams.size() == llvm::range_size(targetParamDefs)) && "pre-condition");
 
   for (auto [paramOp, attr] : llvm::zip_equal(targetParamDefs, callParams.getValue())) {
@@ -721,6 +741,10 @@ LogicalResult CallOp::verifyTemplateParamsMatchInferred(
       }
     }
     auto it = unifications.find({FlatSymbolRefAttr::get(paramOp.getNameAttr()), Side::RHS});
+    if (it != unifications.end() && it->second &&
+        failed(verifyTemplateParamCompatibility(it->second, paramOp))) {
+      return failure();
+    }
     if (it != unifications.end() && !typeParamsUnify({attr}, {it->second})) {
       // Tested in call_with_template_params_fail.llzk
       return this->emitOpError().append(
@@ -854,7 +878,7 @@ struct KnownTargetVerifier : public CallOpVerifier {
       auto realParams = tgtOpParent.getConstOps<TemplateParamOp>();
       ArrayAttr callParams = callOp->getTemplateParamsAttr();
 
-      // When there is no instantiation list, just ensure that it's not required.
+      // When every parameter appears in the signature, infer and validate omitted arguments.
       if (isNullOrEmpty(callParams)) {
         llvm::SmallDenseSet<SymbolRefAttr> referencedInSignature;
         llzk::getSymbolsUsedIn(tgtType.getInputs(), referencedInSignature);
@@ -864,7 +888,11 @@ struct KnownTargetVerifier : public CallOpVerifier {
           return referencedInSignature.contains(FlatSymbolRefAttr::get(p.getNameAttr()));
         });
         if (allParamsReferenced) {
-          return success();
+          FailureOr<UnificationMap> unifyResult = callOp->unifyTypeSignature(tgtType);
+          if (failed(unifyResult)) {
+            return failure();
+          }
+          return callOp->verifyTemplateParamsMatchInferred(realParams, unifyResult.value());
         }
         // Tested in call_with_template_params_fail.llzk
         return callOp->emitOpError().append(
