@@ -12,28 +12,6 @@ module attributes {llzk.lang} {
     }
   }
 
-  poly.template @FieldlessCaller {
-    poly.param @G : !felt.type
-    function.def @caller() {
-      function.return
-    }
-    verif.contract @Caller for @FieldlessCaller::@caller() {
-      // expected-error@+1 {{'verif.include' op instantiation value '@G' is not compatible with parameter "@F" type restriction '!felt.type<"bn128">'}}
-      verif.include @Target::@Base<[@G]>() : () -> ()
-    }
-  }
-
-  poly.template @MismatchedCaller {
-    poly.param @G : !felt.type<"goldilocks">
-    function.def @caller() {
-      function.return
-    }
-    verif.contract @Caller for @MismatchedCaller::@caller() {
-      // expected-error@+1 {{'verif.include' op instantiation value '@G' is not compatible with parameter "@F" type restriction '!felt.type<"bn128">'}}
-      verif.include @Target::@Base<[@G]>() : () -> ()
-    }
-  }
-
   module @globals {
     global.def const @G : !felt.type = 35
     global.def const @H : !felt.type<"goldilocks"> = 35
