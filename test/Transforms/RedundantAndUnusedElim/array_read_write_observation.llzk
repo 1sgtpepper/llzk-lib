@@ -89,6 +89,52 @@ module attributes {llzk.lang} {
 // CHECK-NEXT:  }
 // -----
 module attributes {llzk.lang} {
+  // Detaching a dynamic aggregate alias must clear candidates shared with its source.
+  function.def @dynamic_alias_detached_by_constant_write_preserves_source_candidate(
+      %idx: index
+  ) -> !felt.type {
+    %one = felt.const 1
+    %two = felt.const 2
+    %row = array.new : !array.type<2 x !felt.type>
+    %matrix = array.new : !array.type<2,2 x !felt.type>
+    %i0 = arith.constant 0 : index
+    %i1 = arith.constant 1 : index
+    array.write %row[%i0] = %one : !array.type<2 x !felt.type>, !felt.type
+    array.insert %matrix[%idx] = %row :
+        !array.type<2,2 x !felt.type>, !array.type<2 x !felt.type>
+    array.write %matrix[%i1, %i1] = %two :
+        !array.type<2,2 x !felt.type>, !felt.type
+    %observed = array.read %matrix[%i0, %i0] :
+        !array.type<2,2 x !felt.type>, !felt.type
+    array.write %row[%i0] = %two : !array.type<2 x !felt.type>, !felt.type
+    function.return %observed : !felt.type
+  }
+}
+// -----
+module attributes {llzk.lang} {
+  // Detaching a constant aggregate alias must clear candidates shared with its source.
+  function.def @constant_alias_detached_by_dynamic_write_preserves_source_candidate(
+      %idx: index
+  ) -> !felt.type {
+    %one = felt.const 1
+    %two = felt.const 2
+    %row = array.new : !array.type<2 x !felt.type>
+    %matrix = array.new : !array.type<2,2 x !felt.type>
+    %i0 = arith.constant 0 : index
+    %i1 = arith.constant 1 : index
+    array.write %row[%i0] = %one : !array.type<2 x !felt.type>, !felt.type
+    array.insert %matrix[%i0] = %row :
+        !array.type<2,2 x !felt.type>, !array.type<2 x !felt.type>
+    array.write %matrix[%idx, %i1] = %two :
+        !array.type<2,2 x !felt.type>, !felt.type
+    %observed = array.read %matrix[%i0, %i0] :
+        !array.type<2,2 x !felt.type>, !felt.type
+    array.write %row[%i0] = %two : !array.type<2 x !felt.type>, !felt.type
+    function.return %observed : !felt.type
+  }
+}
+// -----
+module attributes {llzk.lang} {
   // The scalar read may observe a value supplied by the earlier row insert.
   function.def @dynamic_suffix_read_preserves_prior_insert(
       %col: index
