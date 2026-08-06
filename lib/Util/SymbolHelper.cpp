@@ -217,13 +217,13 @@ LogicalResult verifyTemplateSymbolType(
 ) {
   if (requiredParamType) {
     std::optional<Type> actualType = binding.getTypeOpt();
-    if (!isTemplateParamTypeCompatible(actualType, *requiredParamType)) {
-      if (!actualType) {
-        return origin->emitError().append(
-            "ref \"", param, "\" in type ", parameterizedType, " refers to a '", binding->getName(),
-            "' that must have type ", *requiredParamType
-        );
-      }
+    if (!actualType) {
+      return origin->emitError().append(
+          "ref \"", param, "\" in type ", parameterizedType, " refers to a '", binding->getName(),
+          "' that must have type ", *requiredParamType
+      );
+    }
+    if (!isTemplateParamTypeCompatible(*actualType, *requiredParamType)) {
       return origin->emitError().append(
           "ref \"", param, "\" in type ", parameterizedType, " refers to a '", binding->getName(),
           "' with type ", *actualType, " but expected ", *requiredParamType
