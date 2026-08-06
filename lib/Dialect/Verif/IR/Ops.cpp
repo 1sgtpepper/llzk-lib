@@ -806,22 +806,8 @@ LogicalResult IncludeOp::verifyTemplateParamCompatibility(
           compatible = isTemplateParamTypeCompatible(global->get().getType(), *declaredType);
         }
       }
-    } else if (llvm::isa<TypeVarType>(*declaredType)) {
-      compatible = llvm::isa<TypeAttr>(paramFromIncludeOp);
-    } else if (auto feltType = llvm::dyn_cast<FeltType>(*declaredType)) {
-      if (auto feltValue = llvm::dyn_cast<FeltConstAttr>(paramFromIncludeOp)) {
-        compatible = succeeded(feltValue.materializeAs(feltType));
-      } else if (auto intValue = llvm::dyn_cast<IntegerAttr>(paramFromIncludeOp)) {
-        compatible = isValidConstReadType(intValue.getType());
-      }
-    } else if (llvm::isa<IndexType, IntegerType>(*declaredType)) {
-      // Note: Just like struct type instantiation, there is no restriction on passing a
-      // larger value to an `i1`. The flattening pass will treat 0 as false and any other
-      // value as true (but give a warning if it's not 1).
-      compatible = llvm::isa<IntegerAttr>(paramFromIncludeOp) &&
-                   isValidConstReadType(llvm::cast<TypedAttr>(paramFromIncludeOp).getType());
     } else {
-      llvm_unreachable("inconsistent with `isValidConstReadType()`");
+      compatible = succeeded(materializeTemplateParamValue(paramFromIncludeOp, declaredType));
     }
     if (!compatible) {
       return this->emitOpError().append(

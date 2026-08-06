@@ -954,6 +954,55 @@ bool isTemplateParamTypeCompatible(std::optional<Type> actualType, Type required
   return isTemplateParamTypeCompatible(*actualType, requiredType);
 }
 
+FailureOr<Attribute>
+materializeTemplateParamValue(Attribute actualValue, std::optional<Type> requiredType) {
+  if (!requiredType) {
+    return actualValue;
+  }
+
+  Type restriction = *requiredType;
+  if (isa<TypeVarType>(restriction)) {
+    if (isa<TypeAttr>(actualValue)) {
+      return actualValue;
+    }
+    return failure();
+  }
+
+  if (FeltType feltType = dyn_cast<FeltType>(restriction)) {
+    if (FeltConstAttr feltValue = dyn_cast<FeltConstAttr>(actualValue)) {
+      FailureOr<FeltConstAttr> materialized = feltValue.materializeAs(feltType);
+      if (failed(materialized)) {
+        return failure();
+      }
+      return *materialized;
+    }
+    if (IntegerAttr integerValue = dyn_cast<IntegerAttr>(actualValue)) {
+      if (!isValidConstReadType(integerValue.getType())) {
+        return failure();
+      }
+      return FeltConstAttr::get(actualValue.getContext(), integerValue.getValue(), feltType);
+    }
+    return failure();
+  }
+
+  if (isa<IndexType, IntegerType>(restriction)) {
+    if (IntegerAttr integerValue = dyn_cast<IntegerAttr>(actualValue)) {
+      if (isValidConstReadType(integerValue.getType())) {
+        return actualValue;
+      }
+      return failure();
+    }
+    if (AffineMapAttr affineValue = dyn_cast<AffineMapAttr>(actualValue)) {
+      if (affineValue.getValue().getNumResults() == 1) {
+        return actualValue;
+      }
+      return failure();
+    }
+  }
+
+  return failure();
+}
+
 bool templateParamValuesUnify(
     Attribute actualValue, Attribute inferredValue, std::optional<Type> requiredType
 ) {

@@ -12,6 +12,7 @@
 #include "llzk/Dialect/Felt/IR/Attrs.h"
 #include "llzk/Dialect/Polymorphic/IR/Ops.h"
 #include "llzk/Dialect/Struct/IR/Ops.h"
+#include "llzk/Util/TypeHelper.h"
 
 using namespace mlir;
 using namespace llzk::polymorphic;
@@ -55,13 +56,11 @@ FailureOr<SymbolLookupResult<StructDefOp>> StructType::getDefinition(
     if (parent) {
       for (auto [paramOp, value] :
            llvm::zip_equal(parent.getConstOps<TemplateParamOp>(), typeParams.getValue())) {
-        auto feltValue = llvm::dyn_cast<llzk::felt::FeltConstAttr>(value);
         std::optional<Type> restriction = paramOp.getTypeOpt();
-        if (!feltValue || !restriction) {
+        if (!restriction || llvm::isa<SymbolRefAttr>(value)) {
           continue;
         }
-        auto feltType = llvm::dyn_cast<llzk::felt::FeltType>(*restriction);
-        if (!feltType || failed(feltValue.materializeAs(feltType))) {
+        if (failed(materializeTemplateParamValue(value, restriction))) {
           return op->emitError() << "instantiation value '" << value
                                  << "' is not compatible with parameter \"@" << paramOp.getName()
                                  << "\" type restriction " << *restriction;

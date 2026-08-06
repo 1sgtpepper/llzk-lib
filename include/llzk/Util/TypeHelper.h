@@ -277,6 +277,13 @@ bool isTemplateParamTypeCompatible(mlir::Type actualType, mlir::Type requiredTyp
 /// restriction. For other required types, preserve the existing unrestricted-binding behavior.
 bool isTemplateParamTypeCompatible(std::optional<mlir::Type> actualType, mlir::Type requiredType);
 
+/// Check a concrete template argument against an optional restriction and return its normalized
+/// representation. Fieldless felt values acquire a required field, while affine-map values remain
+/// deferred only for integer-like restrictions where affine instantiation can materialize them.
+mlir::FailureOr<mlir::Attribute> materializeTemplateParamValue(
+    mlir::Attribute actualValue, std::optional<mlir::Type> requiredType
+);
+
 /// Return `true` iff two template argument values are compatible with the same required
 /// restriction. Felt constants and integer attributes are compared by value after applying the
 /// required felt field; all other values use the generic template-parameter unifier.
