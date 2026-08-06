@@ -158,6 +158,7 @@ module attributes {llzk.lang} {
 // -----
 #offset_map = affine_map<()[s0] -> (s0)>
 module attributes {llzk.lang} {
+  // Clearing a symbolic table-offset child must invalidate shared aggregate candidates.
   struct.def @AggregateTableOffsetAlias {
     struct.member @cell : !array.type<2 x !felt.type> {column}
     struct.member @seen : !felt.type
