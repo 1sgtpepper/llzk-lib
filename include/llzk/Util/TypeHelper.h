@@ -275,9 +275,7 @@ bool isTemplateParamTypeCompatible(mlir::Type actualType, mlir::Type requiredTyp
 /// An absent actual restriction is compatible with an unfielded required felt type, but it cannot
 /// satisfy a fielded required felt type because it does not establish the field needed by that
 /// restriction. For other required types, preserve the existing unrestricted-binding behavior.
-bool isTemplateParamTypeCompatible(
-    std::optional<mlir::Type> actualType, mlir::Type requiredType
-);
+bool isTemplateParamTypeCompatible(std::optional<mlir::Type> actualType, mlir::Type requiredType);
 
 /// Return `true` iff the two lists of Type instances are equivalent or could be equivalent after
 /// full instantiation of template parameters (if applicable within the given types).
