@@ -166,7 +166,7 @@ module attributes {llzk.lang} {
       struct.writem %self[@result] = %observed : !struct.type<@Element>, !felt.type
       function.return %self : !struct.type<@Element>
     }
-    function.def @constrain(%self: !struct.type<@Element>) { function.return }
+    function.def @constrain(%self: !struct.type<@Element>, %idx: index) { function.return }
   }
 }
 // CHECK-LABEL: function.def @compute
@@ -248,7 +248,9 @@ module attributes {llzk.lang} {
           !struct.type<@BranchElement>, !felt.type
       function.return %self : !struct.type<@BranchElement>
     }
-    function.def @constrain(%self: !struct.type<@BranchElement>) { function.return }
+    function.def @constrain(
+        %self: !struct.type<@BranchElement>, %idx: index, %cond: i1
+    ) { function.return }
   }
 }
 // CHECK-LABEL: function.def @compute
