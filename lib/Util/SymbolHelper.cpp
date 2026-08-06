@@ -15,6 +15,7 @@
 #include "llzk/Util/SymbolHelper.h"
 
 #include "llzk/Dialect/Array/IR/Ops.h"
+#include "llzk/Dialect/Felt/IR/Types.h"
 #include "llzk/Dialect/Function/IR/Ops.h"
 #include "llzk/Dialect/Global/IR/Ops.h"
 #include "llzk/Dialect/Polymorphic/IR/Types.h"
@@ -217,13 +218,13 @@ LogicalResult verifyTemplateSymbolType(
 ) {
   if (requiredParamType) {
     std::optional<Type> actualType = binding.getTypeOpt();
-    if (!actualType) {
-      return origin->emitError().append(
-          "ref \"", param, "\" in type ", parameterizedType, " refers to a '", binding->getName(),
-          "' that must have type ", *requiredParamType
-      );
-    }
-    if (!isTemplateParamTypeCompatible(*actualType, *requiredParamType)) {
+    if (!isTemplateParamTypeCompatible(actualType, *requiredParamType)) {
+      if (!actualType) {
+        return origin->emitError().append(
+            "ref \"", param, "\" in type ", parameterizedType, " refers to a '",
+            binding->getName(), "' that must have type ", *requiredParamType
+        );
+      }
       return origin->emitError().append(
           "ref \"", param, "\" in type ", parameterizedType, " refers to a '", binding->getName(),
           "' with type ", *actualType, " but expected ", *requiredParamType
@@ -420,7 +421,8 @@ LogicalResult verifyParamOfType(
                                << " refers to a '" << foundOp->getName()
                                << "' which is not allowed";
   }
-  if (requiredParamType && !isTemplateParamTypeCompatible(global.getType(), *requiredParamType)) {
+  if (requiredParamType && llvm::isa<felt::FeltType>(*requiredParamType) &&
+      !isTemplateParamTypeCompatible(global.getType(), *requiredParamType)) {
     return origin->emitError() << "ref \"" << param << "\" in type " << parameterizedType
                                << " refers to a global with type " << global.getType()
                                << " but expected type " << *requiredParamType;

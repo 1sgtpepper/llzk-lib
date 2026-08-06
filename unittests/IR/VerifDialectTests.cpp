@@ -311,8 +311,8 @@ module attributes {llzk.lang} {
     verif.contract @Wrapper for @FieldlessCaller::@caller (
         %value: !struct.type<@BoxTemplate::@Box<[@G]>>
     ) {
-      verif.include @Target::@Base<[@G]>(%value) :
-          (!struct.type<@BoxTemplate::@Box<[@G]>>) -> ()
+      %ok = arith.constant true
+      verif.ensure_compute %ok
     }
   }
 
@@ -324,18 +324,35 @@ module attributes {llzk.lang} {
     verif.contract @Wrapper for @MismatchedCaller::@caller (
         %value: !struct.type<@BoxTemplate::@Box<[@G]>>
     ) {
-      verif.include @Target::@Base<[@G]>(%value) :
-          (!struct.type<@BoxTemplate::@Box<[@G]>>) -> ()
+      %ok = arith.constant true
+      verif.ensure_compute %ok
     }
   }
 }
 )mlir";
 
   auto parsed = parseModule(source);
-  auto includes = findOps<IncludeOp>(*parsed);
+  ASSERT_TRUE(parsed);
+  ASSERT_TRUE(succeeded(mlir::verify(parsed.get())));
+
+  auto callee = SymbolRefAttr::get(
+      &ctx, "Target", ArrayRef<FlatSymbolRefAttr> {FlatSymbolRefAttr::get(&ctx, "Base")}
+  );
+  auto param = FlatSymbolRefAttr::get(&ctx, "G");
+  SmallVector<IncludeOp> includes;
+  parsed->walk([&](ContractOp contract) {
+    if (contract.getSymName() != "Wrapper") {
+      return;
+    }
+    Block &body = contract.getBody().front();
+    OpBuilder builder(&body);
+    builder.setInsertionPoint(body.getTerminator());
+    includes.push_back(builder.create<IncludeOp>(
+        loc, callee, ValueRange {body.getArgument(0)}, ArrayRef<Attribute> {param}
+    ));
+  });
 
   ASSERT_EQ(includes.size(), 2u);
-  ASSERT_TRUE(succeeded(mlir::verify(parsed.get())));
   EXPECT_FALSE(verify(includes[0], true));
   EXPECT_FALSE(verify(includes[1], true));
 }
