@@ -107,6 +107,20 @@ module attributes {llzk.lang} {
     function.return %observed : !felt.type
   }
 }
+// CHECK-LABEL: module attributes {llzk.lang} {
+// CHECK-NEXT:    function.def @constant_read_observes_dynamic_aggregate_alias(%[[VAL_0:[0-9a-zA-Z_\.]+]]: index) -> !felt.type {
+// CHECK-NEXT:      %[[VAL_1:[0-9a-zA-Z_\.]+]] = felt.const  1
+// CHECK-NEXT:      %[[VAL_2:[0-9a-zA-Z_\.]+]] = felt.const  2
+// CHECK-NEXT:      %[[VAL_3:[0-9a-zA-Z_\.]+]] = array.new  : <2 x !felt.type>
+// CHECK-NEXT:      %[[VAL_4:[0-9a-zA-Z_\.]+]] = array.new  : <2,2 x !felt.type>
+// CHECK-NEXT:      %[[VAL_5:[0-9a-zA-Z_\.]+]] = arith.constant 0 : index
+// CHECK-NEXT:      array.write %[[VAL_3]]{{\[}}%[[VAL_5]]] = %[[VAL_1]] : <2 x !felt.type>, !felt.type
+// CHECK-NEXT:      array.insert %[[VAL_4]]{{\[}}%[[VAL_0]]] = %[[VAL_3]] : <2,2 x !felt.type>, <2 x !felt.type>
+// CHECK-NEXT:      %[[VAL_6:[0-9a-zA-Z_\.]+]] = array.read %[[VAL_4]]{{\[}}%[[VAL_5]], %[[VAL_5]]] : <2,2 x !felt.type>, !felt.type
+// CHECK-NEXT:      array.write %[[VAL_3]]{{\[}}%[[VAL_5]]] = %[[VAL_2]] : <2 x !felt.type>, !felt.type
+// CHECK-NEXT:      function.return %[[VAL_6]] : !felt.type
+// CHECK-NEXT:    }
+// CHECK-NEXT:  }
 // -----
 module attributes {llzk.lang} {
   // A distinct dynamic read may equal the dynamic alias index at runtime.
@@ -127,6 +141,20 @@ module attributes {llzk.lang} {
     function.return %observed : !felt.type
   }
 }
+// CHECK-LABEL: module attributes {llzk.lang} {
+// CHECK-NEXT:    function.def @distinct_dynamic_read_observes_dynamic_aggregate_alias(%[[VAL_0:[0-9a-zA-Z_\.]+]]: index, %[[VAL_1:[0-9a-zA-Z_\.]+]]: index) -> !felt.type {
+// CHECK-NEXT:      %[[VAL_2:[0-9a-zA-Z_\.]+]] = felt.const  1
+// CHECK-NEXT:      %[[VAL_3:[0-9a-zA-Z_\.]+]] = felt.const  2
+// CHECK-NEXT:      %[[VAL_4:[0-9a-zA-Z_\.]+]] = array.new  : <2 x !felt.type>
+// CHECK-NEXT:      %[[VAL_5:[0-9a-zA-Z_\.]+]] = array.new  : <2,2 x !felt.type>
+// CHECK-NEXT:      %[[VAL_6:[0-9a-zA-Z_\.]+]] = arith.constant 0 : index
+// CHECK-NEXT:      array.write %[[VAL_4]]{{\[}}%[[VAL_6]]] = %[[VAL_2]] : <2 x !felt.type>, !felt.type
+// CHECK-NEXT:      array.insert %[[VAL_5]]{{\[}}%[[VAL_0]]] = %[[VAL_4]] : <2,2 x !felt.type>, <2 x !felt.type>
+// CHECK-NEXT:      %[[VAL_7:[0-9a-zA-Z_\.]+]] = array.read %[[VAL_5]]{{\[}}%[[VAL_1]], %[[VAL_6]]] : <2,2 x !felt.type>, !felt.type
+// CHECK-NEXT:      array.write %[[VAL_4]]{{\[}}%[[VAL_6]]] = %[[VAL_3]] : <2 x !felt.type>, !felt.type
+// CHECK-NEXT:      function.return %[[VAL_7]] : !felt.type
+// CHECK-NEXT:    }
+// CHECK-NEXT:  }
 // -----
 #offset_map = affine_map<()[s0] -> (s0)>
 module attributes {llzk.lang} {
@@ -171,6 +199,33 @@ module attributes {llzk.lang} {
     ) { function.return }
   }
 }
+// CHECK: #[[$ATTR_0:[0-9a-zA-Z_\.]+]] = affine_map<()[s0] -> (s0)>
+// CHECK-LABEL: module attributes {llzk.lang} {
+// CHECK-NEXT:    struct.def @AggregateTableOffsetAlias {
+// CHECK-NEXT:      struct.member @cell : !array.type<2 x !felt.type> {column}
+// CHECK-NEXT:      struct.member @seen : !felt.type
+// CHECK-NEXT:      function.def @compute(%[[VAL_0:[0-9a-zA-Z_\.]+]]: index, %[[VAL_1:[0-9a-zA-Z_\.]+]]: index, %[[VAL_2:[0-9a-zA-Z_\.]+]]: index) -> !struct.type<@AggregateTableOffsetAlias> attributes {function.allow_witness} {
+// CHECK-NEXT:        %[[VAL_3:[0-9a-zA-Z_\.]+]] = struct.new : <@AggregateTableOffsetAlias>
+// CHECK-NEXT:        %[[VAL_4:[0-9a-zA-Z_\.]+]] = felt.const  1
+// CHECK-NEXT:        %[[VAL_5:[0-9a-zA-Z_\.]+]] = felt.const  2
+// CHECK-NEXT:        %[[VAL_6:[0-9a-zA-Z_\.]+]] = array.new  : <2 x !felt.type>
+// CHECK-NEXT:        %[[VAL_7:[0-9a-zA-Z_\.]+]] = array.new  : <2,2 x !felt.type>
+// CHECK-NEXT:        %[[VAL_8:[0-9a-zA-Z_\.]+]] = arith.constant 0 : index
+// CHECK-NEXT:        %[[VAL_9:[0-9a-zA-Z_\.]+]] = struct.readm %[[VAL_3]][@cell] {(){{\[}}%[[VAL_0]]]} : <@AggregateTableOffsetAlias>, !array.type<2 x !felt.type> {tableOffset = #[[$ATTR_0]]}
+// CHECK-NEXT:        array.write %[[VAL_9]]{{\[}}%[[VAL_8]]] = %[[VAL_4]] : <2 x !felt.type>, !felt.type
+// CHECK-NEXT:        array.insert %[[VAL_7]]{{\[}}%[[VAL_1]]] = %[[VAL_9]] : <2,2 x !felt.type>, <2 x !felt.type>
+// CHECK-NEXT:        struct.writem %[[VAL_3]][@cell] = %[[VAL_6]] : <@AggregateTableOffsetAlias>, !array.type<2 x !felt.type>
+// CHECK-NEXT:        %[[VAL_10:[0-9a-zA-Z_\.]+]] = struct.readm %[[VAL_3]][@cell] {(){{\[}}%[[VAL_2]]]} : <@AggregateTableOffsetAlias>, !array.type<2 x !felt.type> {tableOffset = #[[$ATTR_0]]}
+// CHECK-NEXT:        %[[VAL_11:[0-9a-zA-Z_\.]+]] = array.read %[[VAL_10]]{{\[}}%[[VAL_8]]] : <2 x !felt.type>, !felt.type
+// CHECK-NEXT:        array.write %[[VAL_7]]{{\[}}%[[VAL_1]], %[[VAL_8]]] = %[[VAL_5]] : <2,2 x !felt.type>, !felt.type
+// CHECK-NEXT:        struct.writem %[[VAL_3]][@seen] = %[[VAL_11]] : <@AggregateTableOffsetAlias>, !felt.type
+// CHECK-NEXT:        function.return %[[VAL_3]] : !struct.type<@AggregateTableOffsetAlias>
+// CHECK-NEXT:      }
+// CHECK-NEXT:      function.def @constrain(%[[VAL_12:[0-9a-zA-Z_\.]+]]: !struct.type<@AggregateTableOffsetAlias>, %[[VAL_13:[0-9a-zA-Z_\.]+]]: index, %[[VAL_14:[0-9a-zA-Z_\.]+]]: index, %[[VAL_15:[0-9a-zA-Z_\.]+]]: index) attributes {function.allow_constraint} {
+// CHECK-NEXT:        function.return
+// CHECK-NEXT:      }
+// CHECK-NEXT:    }
+// CHECK-NEXT:  }
 // -----
 module attributes {llzk.lang} {
   // Detaching a dynamic aggregate alias must clear candidates shared with its source.
