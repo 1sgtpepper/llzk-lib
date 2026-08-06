@@ -22,6 +22,8 @@ module attributes {llzk.lang} {
   }
 }
 
+// -----
+
 // A fielded qualified global argument satisfies a fieldless struct restriction.
 module attributes {llzk.lang} {
   poly.template @Target {
