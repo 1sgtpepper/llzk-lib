@@ -277,6 +277,14 @@ bool isTemplateParamTypeCompatible(mlir::Type actualType, mlir::Type requiredTyp
 /// restriction. For other required types, preserve the existing unrestricted-binding behavior.
 bool isTemplateParamTypeCompatible(std::optional<mlir::Type> actualType, mlir::Type requiredType);
 
+/// Return `true` iff two template argument values are compatible with the same required
+/// restriction. Felt constants and integer attributes are compared by value after applying the
+/// required felt field; all other values use the generic template-parameter unifier.
+bool templateParamValuesUnify(
+    mlir::Attribute actualValue, mlir::Attribute inferredValue,
+    std::optional<mlir::Type> requiredType
+);
+
 /// Return `true` iff the two lists of Type instances are equivalent or could be equivalent after
 /// full instantiation of template parameters (if applicable within the given types).
 template <typename Iter1, typename Iter2>

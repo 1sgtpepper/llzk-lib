@@ -12,6 +12,7 @@
 #include "../LLZKTestBase.h"
 
 #include "llzk/Dialect/Array/IR/Types.h"
+#include "llzk/Dialect/Felt/IR/Attrs.h"
 #include "llzk/Dialect/Felt/IR/Types.h"
 #include "llzk/Dialect/POD/IR/Types.h"
 #include "llzk/Dialect/Struct/IR/Types.h"
@@ -117,6 +118,24 @@ TEST_F(TypeHelperTests, test_templateParamTypeCompatibility_feltFields) {
   ASSERT_FALSE(isTemplateParamTypeCompatible(goldilocks, bn128));
   ASSERT_FALSE(isTemplateParamTypeCompatible(IndexType::get(&ctx), bn128));
   ASSERT_FALSE(isTemplateParamTypeCompatible(std::nullopt, bn128));
+}
+
+TEST_F(TypeHelperTests, test_templateParamValuesUnify_feltRepresentations) {
+  FeltType fieldless = FeltType::get(&ctx);
+  FeltType bn128 = FeltType::get(&ctx, "bn128");
+  FeltType goldilocks = FeltType::get(&ctx, "goldilocks");
+  FeltConstAttr unspecified = FeltConstAttr::get(&ctx, APInt(8, 35), fieldless);
+  FeltConstAttr fielded = FeltConstAttr::get(&ctx, APInt(8, 35), bn128);
+  FeltConstAttr differentValue = FeltConstAttr::get(&ctx, APInt(8, 36), bn128);
+  FeltConstAttr differentField = FeltConstAttr::get(&ctx, APInt(8, 35), goldilocks);
+  IntegerAttr integer = IntegerAttr::get(IndexType::get(&ctx), 35);
+
+  EXPECT_TRUE(templateParamValuesUnify(unspecified, fielded, fieldless));
+  EXPECT_TRUE(templateParamValuesUnify(unspecified, fielded, bn128));
+  EXPECT_TRUE(templateParamValuesUnify(integer, fielded, bn128));
+  EXPECT_TRUE(templateParamValuesUnify(fielded, integer, bn128));
+  EXPECT_FALSE(templateParamValuesUnify(differentValue, fielded, bn128));
+  EXPECT_FALSE(templateParamValuesUnify(differentField, fielded, fieldless));
 }
 
 TEST_F(TypeHelperTests, test_forceIntToIndexType_fromI1) {
