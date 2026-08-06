@@ -14,6 +14,8 @@
 #include "llzk/Dialect/Shared/Builders.h"
 
 #include <mlir/Dialect/Arith/IR/Arith.h>
+#include <mlir/IR/Verifier.h>
+#include <mlir/Parser/Parser.h>
 
 using namespace mlir;
 using namespace llzk;
@@ -191,6 +193,92 @@ TEST_F(OpTests, testCallNoAffine_InvalidTemplateParam) {
       },
       "'function.call' op value is too large for `index` type: -1"
   );
+}
+
+TEST_F(OpTests, testCallFeltRestrictionAcceptsFieldedLocalSymbol) {
+  constexpr StringLiteral source = R"mlir(
+module attributes {llzk.lang} {
+  poly.template @BoxTemplate {
+    poly.param @P
+    struct.def @Box {
+      function.def @compute() -> !struct.type<@BoxTemplate::@Box<[@P]>> {
+        %self = struct.new : <@BoxTemplate::@Box<[@P]>>
+        function.return %self : !struct.type<@BoxTemplate::@Box<[@P]>>
+      }
+      function.def @constrain(%self: !struct.type<@BoxTemplate::@Box<[@P]>>) {
+        function.return
+      }
+    }
+  }
+
+  poly.template @Target {
+    poly.param @F : !felt.type
+    function.def @accept(%value: !struct.type<@BoxTemplate::@Box<[@F]>>) {
+      function.return
+    }
+  }
+
+  poly.template @Caller {
+    poly.param @G : !felt.type<"bn128">
+    function.def @caller(%value: !struct.type<@BoxTemplate::@Box<[@G]>>) {
+      function.call @Target::@accept<[@G]>(%value) :
+          (!struct.type<@BoxTemplate::@Box<[@G]>>) -> ()
+      function.call @Target::@accept(%value) :
+          (!struct.type<@BoxTemplate::@Box<[@G]>>) -> ()
+      function.return
+    }
+  }
+}
+)mlir";
+
+  auto parsed = parseSourceString<ModuleOp>(source, ParserConfig(&ctx));
+  ASSERT_TRUE(parsed);
+  SmallVector<CallOp> calls;
+  parsed->walk([&calls](CallOp op) { calls.push_back(op); });
+
+  ASSERT_EQ(calls.size(), 2u);
+  ASSERT_TRUE(succeeded(mlir::verify(parsed.get())));
+  EXPECT_TRUE(verify(calls[0], true));
+  EXPECT_TRUE(verify(calls[1], true));
+}
+
+TEST_F(OpTests, testCallFeltRestrictionRejectsIncompatibleLocalSymbols) {
+  constexpr StringLiteral source = R"mlir(
+module attributes {llzk.lang} {
+  poly.template @Target {
+    poly.param @F : !felt.type<"bn128">
+    function.def @accept() {
+      function.return
+    }
+  }
+
+  poly.template @FieldlessCaller {
+    poly.param @G : !felt.type
+    function.def @caller() {
+      function.call @Target::@accept<[@G]>() : () -> ()
+      function.return
+    }
+  }
+
+  poly.template @MismatchedCaller {
+    poly.param @G : !felt.type<"goldilocks">
+    function.def @caller() {
+      function.call @Target::@accept<[@G]>() : () -> ()
+      function.return
+    }
+  }
+}
+)mlir";
+
+  auto parsed = parseSourceString<ModuleOp>(source, ParserConfig(&ctx));
+  ASSERT_TRUE(parsed);
+  SmallVector<CallOp> calls;
+  parsed->walk([&calls](CallOp op) { calls.push_back(op); });
+
+  ASSERT_EQ(calls.size(), 2u);
+  ASSERT_TRUE(succeeded(mlir::verify(parsed.get())));
+  EXPECT_FALSE(verify(calls[0], true));
+  EXPECT_FALSE(verify(calls[1], true));
 }
 
 //===------------------------------------------------------------------===//
