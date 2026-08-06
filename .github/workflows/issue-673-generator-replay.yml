@@ -68,7 +68,8 @@ jobs:
               )
           PY
 
-          nix --print-build-logs build --no-check '.#debugGCC'
+          nix --print-build-logs build --impure --expr \
+            'let flake = builtins.getFlake (toString ./.); in flake.packages.x86_64-linux.llzk-debug.overrideAttrs (_: { doCheck = false; })'
           llzk_opt="$GITHUB_WORKSPACE/result/bin/llzk-opt"
           filecheck="$(find /nix/store -type f -path '*/bin/FileCheck' -executable -print -quit)"
           test -x "$llzk_opt"
