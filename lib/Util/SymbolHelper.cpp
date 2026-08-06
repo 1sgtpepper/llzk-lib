@@ -221,8 +221,8 @@ LogicalResult verifyTemplateSymbolType(
     if (!isTemplateParamTypeCompatible(actualType, *requiredParamType)) {
       if (!actualType) {
         return origin->emitError().append(
-            "ref \"", param, "\" in type ", parameterizedType, " refers to a '",
-            binding->getName(), "' that must have type ", *requiredParamType
+            "ref \"", param, "\" in type ", parameterizedType, " refers to a '", binding->getName(),
+            "' that must have type ", *requiredParamType
         );
       }
       return origin->emitError().append(
