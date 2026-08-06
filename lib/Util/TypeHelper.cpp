@@ -929,6 +929,31 @@ bool typesUnify(
   return UnifierImpl(unifications, rhsReversePrefix).typesUnify(lhs, rhs);
 }
 
+bool isTemplateParamTypeCompatible(Type actualType, Type requiredType) {
+  FeltType requiredFelt = dyn_cast<FeltType>(requiredType);
+  if (requiredFelt) {
+    FeltType actualFelt = dyn_cast<FeltType>(actualType);
+    if (!actualFelt) {
+      return false;
+    }
+    if (!requiredFelt.hasField()) {
+      return true;
+    }
+    return actualFelt.hasField() && actualFelt == requiredFelt;
+  }
+  return typesUnify(actualType, requiredType);
+}
+
+bool isTemplateParamTypeCompatible(std::optional<Type> actualType, Type requiredType) {
+  if (!actualType) {
+    if (FeltType requiredFelt = dyn_cast<FeltType>(requiredType)) {
+      return !requiredFelt.hasField();
+    }
+    return true;
+  }
+  return isTemplateParamTypeCompatible(*actualType, requiredType);
+}
+
 bool isMoreConcreteUnification(
     Type oldTy, Type newTy, llvm::function_ref<bool(Type oldTy, Type newTy)> knownOldToNew
 ) {

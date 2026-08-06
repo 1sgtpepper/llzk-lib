@@ -19,6 +19,8 @@
 #include <llvm/ADT/DenseMap.h>
 #include <llvm/ADT/StringRef.h>
 
+#include <optional>
+
 namespace llzk {
 
 // Forward declarations
@@ -263,6 +265,18 @@ bool functionTypesUnify(
 bool typesUnify(
     mlir::Type lhs, mlir::Type rhs, mlir::ArrayRef<llvm::StringRef> rhsReversePrefix = {},
     UnificationMap *unifications = nullptr
+);
+
+/// Return `true` iff an actual template argument type satisfies a required type restriction.
+/// Unlike `typesUnify`, this check is directional: a fieldless required felt type accepts any
+/// felt field, while a fielded required felt type accepts only the same explicitly fielded type.
+bool isTemplateParamTypeCompatible(mlir::Type actualType, mlir::Type requiredType);
+
+/// An absent actual restriction is compatible with an unfielded required felt type, but it cannot
+/// satisfy a fielded required felt type because it does not establish the field needed by that
+/// restriction. For other required types, preserve the existing unrestricted-binding behavior.
+bool isTemplateParamTypeCompatible(
+    std::optional<mlir::Type> actualType, mlir::Type requiredType
 );
 
 /// Return `true` iff the two lists of Type instances are equivalent or could be equivalent after

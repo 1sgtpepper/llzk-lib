@@ -12,6 +12,7 @@
 #include "../LLZKTestBase.h"
 
 #include "llzk/Dialect/Array/IR/Types.h"
+#include "llzk/Dialect/Felt/IR/Types.h"
 #include "llzk/Dialect/POD/IR/Types.h"
 #include "llzk/Dialect/Struct/IR/Types.h"
 
@@ -23,6 +24,7 @@ using namespace mlir;
 using namespace llzk;
 using namespace llzk::array;
 using namespace llzk::component;
+using namespace llzk::felt;
 using namespace llzk::pod;
 
 class TypeHelperTests : public LLZKTest {
@@ -101,6 +103,20 @@ TEST_F(TypeHelperTests, test_functionTypesUnify_Output_Fail) {
   FunctionType a = FunctionType::get(&ctx, {tyIndex}, {IntegerType::get(&ctx, 8)});
   FunctionType b = FunctionType::get(&ctx, {tyIndex}, {tyIndex});
   ASSERT_FALSE(functionTypesUnify(a, b));
+}
+
+TEST_F(TypeHelperTests, test_templateParamTypeCompatibility_feltFields) {
+  FeltType fieldless = FeltType::get(&ctx);
+  FeltType bn128 = FeltType::get(&ctx, "bn128");
+  FeltType goldilocks = FeltType::get(&ctx, "goldilocks");
+
+  ASSERT_TRUE(isTemplateParamTypeCompatible(bn128, fieldless));
+  ASSERT_TRUE(isTemplateParamTypeCompatible(fieldless, fieldless));
+  ASSERT_FALSE(isTemplateParamTypeCompatible(fieldless, bn128));
+  ASSERT_TRUE(isTemplateParamTypeCompatible(bn128, bn128));
+  ASSERT_FALSE(isTemplateParamTypeCompatible(goldilocks, bn128));
+  ASSERT_FALSE(isTemplateParamTypeCompatible(IndexType::get(&ctx), bn128));
+  ASSERT_FALSE(isTemplateParamTypeCompatible(std::nullopt, bn128));
 }
 
 TEST_F(TypeHelperTests, test_forceIntToIndexType_fromI1) {
