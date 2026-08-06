@@ -158,7 +158,7 @@ module attributes {llzk.lang} {
     // array.read can return an aggregate, so the selected member subtree is live.
     function.def @live_dynamic_struct_read_preserves_member_write(
         %idx: index
-    ) -> !felt.type {
+    ) -> !felt.type attributes {function.allow_witness} {
       %one = felt.const 1
       %two = felt.const 2
       %first = struct.new : !struct.type<@Element>
@@ -234,7 +234,7 @@ module attributes {llzk.lang} {
     // delete a pre-branch member write observed through the opposite branch.
     function.def @opposite_branch_struct_read_preserves_member_write(
         %idx: index, %cond: i1
-    ) -> !felt.type {
+    ) -> !felt.type attributes {function.allow_witness} {
       %one = felt.const 1
       %two = felt.const 2
       %first = struct.new : !struct.type<@BranchElement>
