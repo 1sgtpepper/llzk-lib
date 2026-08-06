@@ -295,8 +295,7 @@ module attributes {llzk.lang} {
       return;
     }
     Block &body = func.getBody().front();
-    OpBuilder builder(&body);
-    builder.setInsertionPoint(body.getTerminator());
+    OpBuilder builder(&body, body.getTerminator()->getIterator());
     calls.push_back(builder.create<CallOp>(
         loc, TypeRange {}, callee, ValueRange {body.getArgument(0)}, ArrayRef<Attribute> {param}
     ));

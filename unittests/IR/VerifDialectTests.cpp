@@ -345,8 +345,7 @@ module attributes {llzk.lang} {
       return;
     }
     Block &body = contract.getBody().front();
-    OpBuilder builder(&body);
-    builder.setInsertionPoint(body.getTerminator());
+    OpBuilder builder(&body, body.getTerminator()->getIterator());
     includes.push_back(builder.create<IncludeOp>(
         loc, callee, ValueRange {body.getArgument(0)}, ArrayRef<Attribute> {param}
     ));
