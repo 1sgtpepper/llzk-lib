@@ -1,9 +1,22 @@
 // RUN: llzk-opt -split-input-file -verify-diagnostics %s
 
 module attributes {llzk.lang} {
+  poly.template @BoxTemplate {
+    poly.param @P
+    struct.def @Box {
+      function.def @compute() -> !struct.type<@BoxTemplate::@Box<[@P]>> {
+        %self = struct.new : <@BoxTemplate::@Box<[@P]>>
+        function.return %self : !struct.type<@BoxTemplate::@Box<[@P]>>
+      }
+      function.def @constrain(%self: !struct.type<@BoxTemplate::@Box<[@P]>>) {
+        function.return
+      }
+    }
+  }
+
   poly.template @Target {
     poly.param @F : !felt.type<"bn128">
-    function.def @accept() {
+    function.def @accept(%value: !struct.type<@BoxTemplate::@Box<[@F]>>) {
       function.return
     }
   }
@@ -13,15 +26,21 @@ module attributes {llzk.lang} {
     global.def const @H : !felt.type<"goldilocks"> = 35
   }
 
-  function.def @fieldlessGlobal() {
+  function.def @fieldlessGlobal(
+      %value: !struct.type<@BoxTemplate::@Box<[@globals::@G]>>
+  ) {
     // expected-error@+1 {{'function.call' op instantiation value '@globals::@G' is not compatible with parameter "@F" type restriction '!felt.type<"bn128">'}}
-    function.call @Target::@accept<[@globals::@G]>() : () -> ()
+    function.call @Target::@accept<[@globals::@G]>(%value) :
+        (!struct.type<@BoxTemplate::@Box<[@globals::@G]>>) -> ()
     function.return
   }
 
-  function.def @mismatchedGlobal() {
+  function.def @mismatchedGlobal(
+      %value: !struct.type<@BoxTemplate::@Box<[@globals::@H]>>
+  ) {
     // expected-error@+1 {{'function.call' op instantiation value '@globals::@H' is not compatible with parameter "@F" type restriction '!felt.type<"bn128">'}}
-    function.call @Target::@accept<[@globals::@H]>() : () -> ()
+    function.call @Target::@accept<[@globals::@H]>(%value) :
+        (!struct.type<@BoxTemplate::@Box<[@globals::@H]>>) -> ()
     function.return
   }
 }
