@@ -150,13 +150,10 @@ module attributes {llzk.lang} {
 module attributes {llzk.lang} {
   struct.def @Element {
     struct.member @value : !felt.type
-    function.def @compute() -> !struct.type<@Element> {
-      %self = struct.new : !struct.type<@Element>
-      function.return %self : !struct.type<@Element>
-    }
+    struct.member @result : !felt.type
     // array.read can return an aggregate, so the selected member subtree is live.
-    function.def @constrain(%self: !struct.type<@Element>, %idx: index)
-        attributes {function.allow_constraint, function.allow_witness} {
+    function.def @compute(%idx: index) -> !struct.type<@Element> {
+      %self = struct.new : !struct.type<@Element>
       %one = felt.const 1
       %two = felt.const 2
       struct.writem %self[@value] = %one : !struct.type<@Element>, !felt.type
@@ -166,12 +163,13 @@ module attributes {llzk.lang} {
       %observed = struct.readm %selected[@value] :
           !struct.type<@Element>, !felt.type
       struct.writem %self[@value] = %two : !struct.type<@Element>, !felt.type
-      constrain.eq %observed, %one : !felt.type
-      function.return
+      struct.writem %self[@result] = %observed : !struct.type<@Element>, !felt.type
+      function.return %self : !struct.type<@Element>
     }
+    function.def @constrain(%self: !struct.type<@Element>) { function.return }
   }
 }
-// CHECK-LABEL: function.def @constrain
+// CHECK-LABEL: function.def @compute
 // CHECK: %[[ONE:.*]] = felt.const{{ +}}1
 // CHECK: %[[TWO:.*]] = felt.const{{ +}}2
 // CHECK: struct.writem %[[SELF:.*]][@value] = %[[ONE]]
@@ -221,15 +219,13 @@ module attributes {llzk.lang} {
 module attributes {llzk.lang} {
   struct.def @BranchElement {
     struct.member @value : !felt.type
-    function.def @compute() -> !struct.type<@BranchElement> {
+    struct.member @result : !felt.type
+    // A write in one branch cannot delete a pre-branch write observed through
+    // the opposite branch.
+    function.def @compute(
+        %idx: index, %cond: i1
+    ) -> !struct.type<@BranchElement> {
       %self = struct.new : !struct.type<@BranchElement>
-      function.return %self : !struct.type<@BranchElement>
-    }
-    // Member-write candidates are block-local too: a write in one branch cannot
-    // delete a pre-branch member write observed through the opposite branch.
-    function.def @constrain(
-        %self: !struct.type<@BranchElement>, %idx: index, %cond: i1
-    ) attributes {function.allow_constraint, function.allow_witness} {
       %one = felt.const 1
       %two = felt.const 2
       struct.writem %self[@value] = %one :
@@ -248,12 +244,14 @@ module attributes {llzk.lang} {
             !struct.type<@BranchElement>, !felt.type
         scf.yield %branch_observed : !felt.type
       }
-      constrain.eq %observed, %one : !felt.type
-      function.return
+      struct.writem %self[@result] = %observed :
+          !struct.type<@BranchElement>, !felt.type
+      function.return %self : !struct.type<@BranchElement>
     }
+    function.def @constrain(%self: !struct.type<@BranchElement>) { function.return }
   }
 }
-// CHECK-LABEL: function.def @constrain
+// CHECK-LABEL: function.def @compute
 // CHECK: %[[ONE:.*]] = felt.const{{ +}}1
 // CHECK: %[[TWO:.*]] = felt.const{{ +}}2
 // CHECK: %[[FIRST:.*]] = struct.new
