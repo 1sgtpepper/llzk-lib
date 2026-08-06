@@ -784,6 +784,7 @@ LogicalResult IncludeOp::verifyTemplateParamCompatibility(
     // Note: `declaredType` is restricted by `isValidConstReadType()`
     bool compatible = false;
     if (auto sym = llvm::dyn_cast<SymbolRefAttr>(paramFromIncludeOp)) {
+      bool resolvedLocal = false;
       if (sym.getNestedReferences().empty()) {
         SymbolTableCollection tables;
         FailureOr<TemplateOp> parentTemplate = getConstResolutionTemplate(tables, *this);
@@ -793,11 +794,12 @@ LogicalResult IncludeOp::verifyTemplateParamCompatibility(
         if (TemplateOp p = *parentTemplate) {
           auto binding = p.getConstNamed<TemplateSymbolBindingOpInterface>(sym.getRootReference());
           if (binding) {
+            resolvedLocal = true;
             compatible = isTemplateParamTypeCompatible(binding.getTypeOpt(), *declaredType);
           }
         }
       }
-      if (!compatible) {
+      if (!resolvedLocal) {
         SymbolTableCollection tables;
         if (auto global = lookupTopLevelSymbol<global::GlobalDefOp>(tables, sym, *this, false);
             succeeded(global)) {

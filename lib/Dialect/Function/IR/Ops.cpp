@@ -643,6 +643,7 @@ CallOp::verifyTemplateParamCompatibility(Attribute paramFromCallOp, TemplatePara
   if (std::optional<Type> declaredType = targetParam.getTypeOpt()) {
     bool compatible = false;
     if (auto sym = llvm::dyn_cast<SymbolRefAttr>(paramFromCallOp)) {
+      bool resolvedLocal = false;
       if (sym.getNestedReferences().empty()) {
         SymbolTableCollection tables;
         FailureOr<TemplateOp> parentTemplate = getConstResolutionTemplate(tables, *this);
@@ -652,11 +653,12 @@ CallOp::verifyTemplateParamCompatibility(Attribute paramFromCallOp, TemplatePara
         if (TemplateOp p = *parentTemplate) {
           auto binding = p.getConstNamed<TemplateSymbolBindingOpInterface>(sym.getRootReference());
           if (binding) {
+            resolvedLocal = true;
             compatible = isTemplateParamTypeCompatible(binding.getTypeOpt(), *declaredType);
           }
         }
       }
-      if (!compatible) {
+      if (!resolvedLocal) {
         SymbolTableCollection tables;
         if (auto global = lookupTopLevelSymbol<global::GlobalDefOp>(tables, sym, *this, false);
             succeeded(global)) {
