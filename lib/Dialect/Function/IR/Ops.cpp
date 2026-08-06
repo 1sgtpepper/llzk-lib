@@ -696,6 +696,21 @@ LogicalResult CallOp::verifyTemplateParamCompatibility(
     llvm::iterator_range<Region::op_iterator<TemplateParamOp>> targetParamDefs
 ) {
   ArrayAttr callParams = this->getTemplateParamsAttr();
+  assert((callParams.size() == llvm::range_size(targetParamDefs)) && "pre-condition");
+
+  for (auto [paramOp, attr] : llvm::zip_equal(targetParamDefs, callParams.getValue())) {
+    if (failed(verifyTemplateParamCompatibility(attr, paramOp))) {
+      return failure();
+    }
+  }
+  return success();
+}
+
+LogicalResult CallOp::verifyTemplateParamsMatchInferred(
+    llvm::iterator_range<Region::op_iterator<TemplateParamOp>> targetParamDefs,
+    const UnificationMap &unifications
+) {
+  ArrayAttr callParams = this->getTemplateParamsAttr();
   if (isNullOrEmpty(callParams)) {
     for (TemplateParamOp paramOp : targetParamDefs) {
       if (std::optional<Type> declaredType = paramOp.getTypeOpt();
@@ -715,21 +730,6 @@ LogicalResult CallOp::verifyTemplateParamCompatibility(
     }
     return success();
   }
-  assert((callParams.size() == llvm::range_size(targetParamDefs)) && "pre-condition");
-
-  for (auto [paramOp, attr] : llvm::zip_equal(targetParamDefs, callParams.getValue())) {
-    if (failed(verifyTemplateParamCompatibility(attr, paramOp))) {
-      return failure();
-    }
-  }
-  return success();
-}
-
-LogicalResult CallOp::verifyTemplateParamsMatchInferred(
-    llvm::iterator_range<Region::op_iterator<TemplateParamOp>> targetParamDefs,
-    const UnificationMap &unifications
-) {
-  ArrayAttr callParams = this->getTemplateParamsAttr();
   assert(!isNullOrEmpty(callParams) && "pre-condition");
   assert((callParams.size() == llvm::range_size(targetParamDefs)) && "pre-condition");
 
