@@ -763,8 +763,7 @@ class PassImpl : public llzk::impl::RedundantReadAndWriteEliminationPassBase<Pas
     // expose aggregate descendants, so it observes the selected subtree.
     auto doArrayReadLike = [&]<HasInterface<ArrayAccessOpInterface> OpClass>(OpClass readarr) {
       Value resVal = readarr.getResult();
-      std::shared_ptr<ReferenceNode> rootValTree =
-          tryGetValTree(translate(readarr.getArrRef()));
+      std::shared_ptr<ReferenceNode> rootValTree = tryGetValTree(translate(readarr.getArrRef()));
       std::shared_ptr<ReferenceNode> currValTree = rootValTree;
       if (currValTree == nullptr) {
         state.values[resVal] = ReferenceNode::create(resVal, resVal);
