@@ -227,19 +227,28 @@ public:
 
   void clearLastWrite() { lastWrite = nullptr; }
 
+  /// @brief Clear pending overwrite candidates in this node and its descendants.
+  ///
+  /// Aggregate assignment shares descendant nodes, so this must run before a
+  /// subtree is detached from an alias path.
+  void clearLastWritesInSubtree() {
+    clearLastWrite();
+    for (const auto &[_, child] : children) {
+      child->clearLastWritesInSubtree();
+    }
+  }
+
   /// @brief Clear pending writes that may be observed by a live array read or extract.
   ///
   /// Constant indices visit the exact constant child and every dynamic child;
   /// dynamic indices visit every non-attribute child. Once all indices are
   /// consumed, the selected value may expose aggregate descendants.
   void clearLastWritesObservedBy(llvm::ArrayRef<ReferenceID> indices) {
-    clearLastWrite();
     if (indices.empty()) {
-      for (const auto &[_, child] : children) {
-        child->clearLastWritesObservedBy(indices);
-      }
+      clearLastWritesInSubtree();
       return;
     }
+    clearLastWrite();
 
     const ReferenceID &index = indices.front();
     llvm::ArrayRef<ReferenceID> remaining = indices.drop_front();
@@ -276,6 +285,9 @@ public:
   }
 
   void invalidateChildren() {
+    for (const auto &[_, child] : children) {
+      child->clearLastWritesInSubtree();
+    }
     children.clear();
     dynamicChildCount = 0;
   }
@@ -295,7 +307,11 @@ public:
       }
     }
     for (const ReferenceID &id : invalidChildren) {
-      children.erase(id);
+      auto it = children.find(id);
+      if (it != children.end()) {
+        it->second->clearLastWritesInSubtree();
+        children.erase(it);
+      }
     }
     dynamicChildCount = 0;
   }
@@ -312,7 +328,11 @@ public:
       }
     }
     for (const ReferenceID &id : invalidChildren) {
-      children.erase(id);
+      auto it = children.find(id);
+      if (it != children.end()) {
+        it->second->clearLastWritesInSubtree();
+        children.erase(it);
+      }
     }
     dynamicChildCount -= invalidDynamicChildCount;
     return !invalidChildren.empty();
