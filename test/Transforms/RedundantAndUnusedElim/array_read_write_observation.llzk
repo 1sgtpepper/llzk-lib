@@ -155,7 +155,8 @@ module attributes {llzk.lang} {
       function.return %self : !struct.type<@Element>
     }
     // array.read can return an aggregate, so the selected member subtree is live.
-    function.def @constrain(%self: !struct.type<@Element>, %idx: index) {
+    function.def @constrain(%self: !struct.type<@Element>, %idx: index)
+        attributes {function.allow_constraint, function.allow_witness} {
       %one = felt.const 1
       %two = felt.const 2
       struct.writem %self[@value] = %one : !struct.type<@Element>, !felt.type
@@ -228,7 +229,7 @@ module attributes {llzk.lang} {
     // delete a pre-branch member write observed through the opposite branch.
     function.def @constrain(
         %self: !struct.type<@BranchElement>, %idx: index, %cond: i1
-    ) {
+    ) attributes {function.allow_constraint, function.allow_witness} {
       %one = felt.const 1
       %two = felt.const 2
       struct.writem %self[@value] = %one :
