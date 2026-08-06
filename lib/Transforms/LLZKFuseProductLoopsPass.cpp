@@ -12,7 +12,7 @@
 ///
 //===----------------------------------------------------------------------===//
 
-#include "llzk/Dialect/Constrain/IR/OpInterfaces.h"
+#include "llzk/Dialect/Constrain/IR/Ops.h"
 #include "llzk/Dialect/Felt/IR/Ops.h"
 #include "llzk/Dialect/Function/IR/Ops.h"
 #include "llzk/Dialect/Global/IR/Ops.h"
@@ -26,6 +26,7 @@
 #include "llzk/Util/ProductSourceHelper.h"
 
 #include <mlir/Dialect/SCF/Utils/Utils.h>
+#include <mlir/IR/BuiltinAttributes.h>
 #include <mlir/IR/IRMapping.h>
 #include <mlir/IR/PatternMatch.h>
 #include <mlir/Interfaces/SideEffectInterfaces.h>
@@ -158,7 +159,11 @@ static std::optional<unsigned> getIfResultIndex(scf::IfOp ifOp, Value value) {
 
 /// Return whether `op` is individually safe to move before an intervening member write.
 static bool isSafeToMoveConstrainOp(Operation *op) {
-  if (isa<llzk::constrain::ConstraintOpInterface, llzk::NonDetOp>(op)) {
+  // ConstraintOpInterface identifies constraint-producing operations but does not guarantee
+  // movement safety. Keep this whitelist explicit until the interface carries that contract.
+  if (isa<llzk::constrain::EmitEqualityOp, llzk::constrain::EmitContainmentOp, llzk::NonDetOp>(
+          op
+      )) {
     return true;
   }
 
@@ -172,6 +177,22 @@ static bool isSafeToMoveConstrainOp(Operation *op) {
   }
 
   return isPure(op);
+}
+
+/// Return attributes that can be preserved on an operation created by if fusion.
+///
+/// `product_source` identifies the source role of each input operation and cannot be copied to
+/// the operation that combines both roles. All other attributes must agree exactly; otherwise the
+/// transformation declines to guess which source attribute semantics apply to the fused operation.
+static std::optional<DictionaryAttr> getCompatibleFusedAttrs(Operation *a, Operation *b) {
+  NamedAttrList attrsA(a->getAttrs());
+  attrsA.erase(PRODUCT_SOURCE);
+  NamedAttrList attrsB(b->getAttrs());
+  attrsB.erase(PRODUCT_SOURCE);
+  if (attrsA != attrsB) {
+    return std::nullopt;
+  }
+  return attrsA.getDictionary(a->getContext());
 }
 
 /// Return whether moving `constrainIf` before intervening operations can change its behavior.
@@ -273,6 +294,20 @@ static bool canIfsBeFused(scf::IfOp a, scf::IfOp b) {
   if (computeIf.getCondition() != constrainIf.getCondition()) {
     return false;
   }
+  if (!getCompatibleFusedAttrs(computeIf, constrainIf)) {
+    return false;
+  }
+  if (!getCompatibleFusedAttrs(
+          computeIf.thenBlock()->getTerminator(), constrainIf.thenBlock()->getTerminator()
+      )) {
+    return false;
+  }
+  if (!computeIf.getElseRegion().empty() &&
+      !getCompatibleFusedAttrs(
+          computeIf.elseBlock()->getTerminator(), constrainIf.elseBlock()->getTerminator()
+      )) {
+    return false;
+  }
 
   llvm::DenseMap<Value, unsigned> valueToResult;
   return collectConstrainValueMappings(computeIf, constrainIf, valueToResult);
@@ -287,7 +322,7 @@ static void eraseDefaultTerminator(Block *block) {
 }
 
 static void cloneIfBranch(
-    scf::IfOp computeIf, Block *computeBlock, Block *constrainBlock, Block *destBlock,
+    Block *computeBlock, Block *constrainBlock, Block *destBlock,
     const llvm::DenseMap<Value, unsigned> &valueToResult, OpBuilder &builder
 ) {
   eraseDefaultTerminator(destBlock);
@@ -295,6 +330,7 @@ static void cloneIfBranch(
   builder.setInsertionPointToEnd(destBlock);
 
   scf::YieldOp computeYield = cast<scf::YieldOp>(computeBlock->getTerminator());
+  scf::YieldOp constrainYield = cast<scf::YieldOp>(constrainBlock->getTerminator());
   for (Operation &op : computeBlock->without_terminator()) {
     builder.clone(op, mapper);
   }
@@ -311,7 +347,12 @@ static void cloneIfBranch(
   for (Value operand : computeYield.getResults()) {
     yieldOperands.push_back(mapper.lookupOrDefault(operand));
   }
-  builder.create<scf::YieldOp>(computeIf.getLoc(), yieldOperands);
+  auto fusedYield = builder.create<scf::YieldOp>(
+      builder.getFusedLoc({computeYield.getLoc(), constrainYield.getLoc()}), yieldOperands
+  );
+  std::optional<DictionaryAttr> yieldAttrs = getCompatibleFusedAttrs(computeYield, constrainYield);
+  assert(yieldAttrs && "fusion candidates must have compatible yield attributes");
+  fusedYield->setAttrs(*yieldAttrs);
 }
 
 static LogicalResult
@@ -325,20 +366,21 @@ fuseIfPair(scf::IfOp a, scf::IfOp b, MLIRContext *context, IRRewriter &rewriter)
   assert(canMap && "fusion candidates must have already been checked");
 
   rewriter.setInsertionPoint(computeIf);
+  std::optional<DictionaryAttr> fusedAttrs = getCompatibleFusedAttrs(computeIf, constrainIf);
+  assert(fusedAttrs && "fusion candidates must have compatible if attributes");
   scf::IfOp fusedIf = rewriter.create<scf::IfOp>(
-      computeIf.getLoc(), computeIf.getResultTypes(), computeIf.getCondition(),
-      !computeIf.getElseRegion().empty()
+      rewriter.getFusedLoc({computeIf.getLoc(), constrainIf.getLoc()}), computeIf.getResultTypes(),
+      computeIf.getCondition(), !computeIf.getElseRegion().empty()
   );
+  fusedIf->setAttrs(*fusedAttrs);
   setProductSource(fusedIf, "fused");
 
   cloneIfBranch(
-      computeIf, computeIf.thenBlock(), constrainIf.thenBlock(), fusedIf.thenBlock(), valueToResult,
-      rewriter
+      computeIf.thenBlock(), constrainIf.thenBlock(), fusedIf.thenBlock(), valueToResult, rewriter
   );
   if (!computeIf.getElseRegion().empty()) {
     cloneIfBranch(
-        computeIf, computeIf.elseBlock(), constrainIf.elseBlock(), fusedIf.elseBlock(),
-        valueToResult, rewriter
+        computeIf.elseBlock(), constrainIf.elseBlock(), fusedIf.elseBlock(), valueToResult, rewriter
     );
   }
 
