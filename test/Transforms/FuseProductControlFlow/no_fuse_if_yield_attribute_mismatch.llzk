@@ -48,11 +48,9 @@ module attributes {llzk.lang = "llzk"} {
 // CHECK-NEXT:        scf.if %[[VAL_0]] {
 // CHECK-NEXT:          %[[VAL_5:[0-9a-zA-Z_\.]+]] = felt.const  0
 // CHECK-NEXT:          constrain.eq %[[VAL_2]], %[[VAL_5]] : !felt.type, !felt.type
-// CHECK-NEXT:          scf.yield {llzk.fusion_marker = "constrain"}
 // CHECK-NEXT:        } else {
 // CHECK-NEXT:          %[[VAL_6:[0-9a-zA-Z_\.]+]] = felt.const  1
 // CHECK-NEXT:          constrain.eq %[[VAL_2]], %[[VAL_6]] : !felt.type, !felt.type
-// CHECK-NEXT:          scf.yield {llzk.fusion_marker = "constrain"}
 // CHECK-NEXT:        } {llzk.fusion_marker = "if", product_source = "constrain"}
 // CHECK-NEXT:        function.return %[[VAL_1]] : !struct.type<@A>
 // CHECK-NEXT:      }
