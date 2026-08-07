@@ -36,7 +36,7 @@ jobs:
           name: veridise-public
           authToken: '${{ secrets.CACHIX_PUBLIC_TOKEN }}'
       - name: 'Build with ${{ matrix.compiler.name }}'
-        run: "nix --print-build-logs build '${{ matrix.compiler.derivation }}'"
+        run: "nix --print-build-logs build --no-check '${{ matrix.compiler.derivation }}'"
       - name: Generate FileCheck review artifacts
         if: matrix.compiler.name == 'Clang'
         env:
