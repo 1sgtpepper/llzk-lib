@@ -11,11 +11,9 @@ jobs:
         compiler:
           - name: GCC
             derivation: '.#debugGCC'
-            package: debugGCC
             report: gcc-report.xml
           - name: Clang
             derivation: '.#debugClangCov'
-            package: debugClang
             report: clang-report.xml
     runs-on: ubuntu-24.04
     steps:
@@ -38,108 +36,7 @@ jobs:
           name: veridise-public
           authToken: '${{ secrets.CACHIX_PUBLIC_TOKEN }}'
       - name: 'Build with ${{ matrix.compiler.name }}'
-        run: "nix build --impure --print-build-logs --expr \"let flake = builtins.getFlake (toString ./.) ; in flake.packages.x86_64-linux.${{ matrix.compiler.package }}.overrideAttrs (_: { doCheck = false; })\""
-      - name: Generate FileCheck review artifacts
-        if: matrix.compiler.name == 'Clang'
-        env:
-          REVIEW_DIR: ${{ runner.temp }}/llzk-filecheck
-        run: |
-          set -euo pipefail
-          mkdir -p "$REVIEW_DIR/sources"
-          python3 - <<'PY'
-          import os
-          from pathlib import Path
-
-          review_dir = Path(os.environ["REVIEW_DIR"])
-          tests = (
-              "test/Transforms/Flattening/instantiate_function_order.llzk",
-              "test/Transforms/Flattening/instantiate_function_reuse.llzk",
-          )
-
-          for test_name in tests:
-              test_path = Path(test_name)
-              source = test_path.read_text()
-              chunks = source.split("\n// -----\n")
-              for index, chunk in enumerate(chunks, start=1):
-                  lines = [
-                      line
-                      for line in chunk.splitlines()
-                      if not line.startswith("// RUN:")
-                      and not line.startswith("// CHECK")
-                  ]
-                  chunk_path = (
-                      review_dir
-                      / "sources"
-                      / f"{test_path.stem}.{index}.llzk"
-                  )
-                  chunk_path.write_text("\n".join(lines) + "\n")
-          PY
-
-          for source in "$REVIEW_DIR"/sources/*.llzk; do
-            name="$(basename "$source" .llzk)"
-            result/bin/llzk-opt -split-input-file \
-              -llzk-flatten=cleanup=disabled "$source" \
-              > "$REVIEW_DIR/$name.output.llzk"
-            python3 scripts/generate-test-checks.py \
-              < "$REVIEW_DIR/$name.output.llzk" \
-              > "$REVIEW_DIR/$name.generated.llzk"
-          done
-
-          python3 - <<'PY'
-          import os
-          from pathlib import Path
-          import difflib
-
-          review_dir = Path(os.environ["REVIEW_DIR"])
-          tests = (
-              Path("test/Transforms/Flattening/instantiate_function_order.llzk"),
-              Path("test/Transforms/Flattening/instantiate_function_reuse.llzk"),
-          )
-          failures = []
-          report = []
-
-          for test_path in tests:
-              source = test_path.read_text()
-              chunks = source.split("\n// -----\n")
-              for index, chunk in enumerate(chunks, start=1):
-                  expected = [
-                      line.rstrip()
-                      for line in chunk.splitlines()
-                      if line.startswith("// CHECK")
-                  ]
-                  name = f"{test_path.stem}.{index}"
-                  generated_path = review_dir / f"{name}.generated.llzk"
-                  generated = [
-                      line.rstrip()
-                      for line in generated_path.read_text().splitlines()
-                      if line.startswith("// CHECK")
-                  ]
-                  if generated != expected:
-                      failures.append(name)
-                      report.extend(
-                          difflib.unified_diff(
-                              expected,
-                              generated,
-                              fromfile=f"{name}.committed-checks",
-                              tofile=f"{name}.generated-checks",
-                              lineterm="",
-                          )
-                      )
-                  else:
-                      report.append(f"PASS: {name}")
-
-          (review_dir / "comparison.txt").write_text("\n".join(report) + "\n")
-          if failures:
-              raise SystemExit(
-                  "FileCheck generation differs for: " + ", ".join(failures)
-              )
-          PY
-      - name: Upload FileCheck review artifacts
-        if: always() && matrix.compiler.name == 'Clang'
-        uses: actions/upload-artifact@v7
-        with:
-          name: FileCheck review output
-          path: ${{ runner.temp }}/llzk-filecheck
+        run: "nix --print-build-logs build '${{ matrix.compiler.derivation }}'"
       - name: Upload test results
         if: always()
         uses: actions/upload-artifact@v7
