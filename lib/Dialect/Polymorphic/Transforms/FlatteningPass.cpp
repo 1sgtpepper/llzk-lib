@@ -172,17 +172,20 @@ public:
     modified = true;
   }
 
+  /// Return the post-insertion symbol name for this source function and exact concrete bindings.
   std::optional<StringAttr>
-  getFullFuncInstantiation(Operation *sourceFunc, ArrayAttr concreteParams) const {
-    auto it = fullFuncInstantiations.find({sourceFunc, concreteParams});
+  getFullFuncInstantiation(FuncDefOp sourceFunc, ArrayAttr concreteParams) const {
+    auto it = fullFuncInstantiations.find({sourceFunc.getOperation(), concreteParams});
     return it == fullFuncInstantiations.end() ? std::nullopt : std::make_optional(it->second);
   }
 
+  /// Record a successful full specialization using its post-insertion symbol name.
   void recordFullFuncInstantiation(
-      Operation *sourceFunc, ArrayAttr concreteParams, StringAttr instantiatedName
+      FuncDefOp sourceFunc, ArrayAttr concreteParams, StringAttr instantiatedName
   ) {
-    [[maybe_unused]] auto [it, inserted] =
-        fullFuncInstantiations.try_emplace({sourceFunc, concreteParams}, instantiatedName);
+    [[maybe_unused]] auto [it, inserted] = fullFuncInstantiations.try_emplace(
+        {sourceFunc.getOperation(), concreteParams}, instantiatedName
+    );
     assert((inserted || it->second == instantiatedName) && "instantiation identity is stable");
   }
 
@@ -222,9 +225,13 @@ public:
     );
   }
 
-  /// No partial-function cache entry is read after cleanup starts; release its operation names at
-  /// that boundary so the tracker does not retain stale handles while cleanup erases templates.
-  void clearPartialFuncInstantiations() { partialFuncInstantiations.clear(); }
+  /// No function-instantiation cache entry is read after cleanup starts; release its operation
+  /// names at that boundary so the tracker does not retain stale handles while cleanup erases
+  /// templates.
+  void clearFuncInstantiations() {
+    fullFuncInstantiations.clear();
+    partialFuncInstantiations.clear();
+  }
 
   /// Collect the fully-qualified names of all structs and free functions that were instantiated.
   DenseSet<SymbolRefAttr> getInstantiatedDefinitionNames() const {
@@ -1600,7 +1607,9 @@ private:
   }
 
   /// Create or reuse a fully-instantiated clone in the parent module and return the rewritten
-  /// module-level callee reference.
+  /// module-level callee reference. Reuse is keyed by the source function and exact ordered
+  /// concrete bindings; the rendered template name is only a preferred symbol name and may be
+  /// changed by SymbolTable insertion.
   static FailureOr<SymbolRefAttr> instantiateFully(
       CallOp op, PatternRewriter &rewriter, SymbolTableCollection &symTables, FuncDefOp callTgt,
       TemplateOp parentTemplate, ModuleOp parentModule, StringRef templateNameWithAttrs,
@@ -1612,7 +1621,7 @@ private:
         (mlir::Twine(templateNameWithAttrs) + "_" + callTgt.getSymName()).str();
     StringRef actualNewFuncName = newFuncName;
     if (std::optional<StringAttr> cached =
-            tracker.getFullFuncInstantiation(callTgt.getOperation(), concreteParamKey)) {
+            tracker.getFullFuncInstantiation(callTgt, concreteParamKey)) {
       actualNewFuncName = cached->getValue();
       LLVM_DEBUG(
           llvm::dbgs() << "[InstantiateFuncAtCallOp]  reusing full instantiation function: "
@@ -1639,9 +1648,7 @@ private:
           diag.append("failure while creating instantiated function '", actualNewFuncName, '\'');
         });
       }
-      tracker.recordFullFuncInstantiation(
-          callTgt.getOperation(), concreteParamKey, newFunc.getSymNameAttr()
-      );
+      tracker.recordFullFuncInstantiation(callTgt, concreteParamKey, newFunc.getSymNameAttr());
     }
 
     // Callee: drop template & original function names, add the new module-level function name.
@@ -2741,7 +2748,7 @@ class PassImpl : public llzk::polymorphic::impl::FlatteningPassBase<PassImpl> {
       });
     } while (tracker.isModified());
 
-    tracker.clearPartialFuncInstantiations();
+    tracker.clearFuncInstantiations();
 
     // Run user-selected cleanup first.
     if (failed(cleanupSwitch(modOp, tracker))) {
