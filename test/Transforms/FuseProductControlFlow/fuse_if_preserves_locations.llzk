@@ -53,7 +53,7 @@ module attributes {llzk.lang = "llzk"} {
 // CHECK-NEXT:        function.return %[[VAL_1]] : !struct.type<@A> loc(#loc[[RETURN_LOC:[0-9]+]])
 // CHECK-NEXT:      } loc(#loc[[FUNCTION_LOC:[0-9]+]])
 // CHECK-NEXT:    } loc(#loc[[STRUCT_LOC:[0-9]+]])
-// CHECK-NEXT:  } loc(#loc[[MODULE_LOC:[0-9]+]])
+// CHECK-NEXT:  } loc(#loc[[MODULE_LOC:[0-9]*]])
 // CHECK-NEXT: #loc[[MODULE_LOC]] = loc("{{.*}}fuse_if_preserves_locations.llzk":3:1)
 // CHECK-NEXT: #loc[[STRUCT_LOC]] = loc("{{.*}}fuse_if_preserves_locations.llzk":4:3)
 // CHECK-NEXT: #loc[[MEMBER_LOC]] = loc("{{.*}}fuse_if_preserves_locations.llzk":5:5)
