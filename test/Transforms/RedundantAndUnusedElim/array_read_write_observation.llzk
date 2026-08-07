@@ -53,6 +53,26 @@ module attributes {llzk.lang} {
     function.return %observed : !felt.type
   }
 }
+// CHECK-LABEL: module attributes {llzk.lang} {
+// CHECK-NEXT:    function.def @zero_trip_while_preserves_pre_loop_write(%[[VAL_0:[0-9a-zA-Z_\.]+]]: index) -> !felt.type {
+// CHECK-NEXT:      %[[VAL_1:[0-9a-zA-Z_\.]+]] = felt.const  0
+// CHECK-NEXT:      %[[VAL_2:[0-9a-zA-Z_\.]+]] = felt.const  1
+// CHECK-NEXT:      %[[VAL_3:[0-9a-zA-Z_\.]+]] = felt.const  2
+// CHECK-NEXT:      %[[VAL_4:[0-9a-zA-Z_\.]+]] = array.new %[[VAL_1]], %[[VAL_1]] : <2 x !felt.type>
+// CHECK-NEXT:      %[[VAL_5:[0-9a-zA-Z_\.]+]] = arith.constant 0 : index
+// CHECK-NEXT:      %[[VAL_6:[0-9a-zA-Z_\.]+]] = arith.constant false
+// CHECK-NEXT:      array.write %[[VAL_4]]{{\[}}%[[VAL_5]]] = %[[VAL_2]] : <2 x !felt.type>, !felt.type
+// CHECK-NEXT:      %[[VAL_7:[0-9a-zA-Z_\.]+]] = scf.while (%[[VAL_8:[0-9a-zA-Z_\.]+]] = %[[VAL_5]]) : (index) -> index {
+// CHECK-NEXT:        scf.condition(%[[VAL_6]]) %[[VAL_8]] : index
+// CHECK-NEXT:      } do {
+// CHECK-NEXT:      ^bb0(%[[VAL_9:[0-9a-zA-Z_\.]+]]: index):
+// CHECK-NEXT:        array.write %[[VAL_4]]{{\[}}%[[VAL_5]]] = %[[VAL_3]] : <2 x !felt.type>, !felt.type
+// CHECK-NEXT:        scf.yield %[[VAL_9]] : index
+// CHECK-NEXT:      }
+// CHECK-NEXT:      %[[VAL_10:[0-9a-zA-Z_\.]+]] = array.read %[[VAL_4]]{{\[}}%[[VAL_0]]] : <2 x !felt.type>, !felt.type
+// CHECK-NEXT:      function.return %[[VAL_10]] : !felt.type
+// CHECK-NEXT:    }
+// CHECK-NEXT:  }
 // -----
 module attributes {llzk.lang} {
   // A zero-trip loop cannot invalidate a pre-loop write because its body may not execute.
