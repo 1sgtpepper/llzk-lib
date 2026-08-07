@@ -1,2 +1,2 @@
 fixed:
-  - Preserve writes that may be observed by live array reads or extracts.
+  - Fix redundant read/write elimination removing an earlier array write that a later array read or extract may observe through an alias.

@@ -163,6 +163,10 @@ namespace {
 /// or dynamic SSA values. Dynamic children may alias constant siblings, so array
 /// writes clear all children for a dynamic index and only dynamic siblings for a
 /// constant index.
+///
+/// The stored value and child tree are persistent known-value state. `lastWrite`
+/// is transient, block-local overwrite-candidate state and is therefore cleared
+/// at observations and boundaries rather than copied into semantic clones.
 class ReferenceNode {
 public:
   template <typename IdType> static std::shared_ptr<ReferenceNode> create(IdType id, Value v) {
@@ -217,14 +221,18 @@ public:
     return createChild(id, storedVal);
   }
 
-  /// @brief Set the last write that updates this node and return the older write
+  /// @brief Record a block-local overwrite candidate and return the older write
   /// that is being replaced by `writeOp` (or nullptr if there was no prior write).
+  ///
+  /// Candidate state is deliberately separate from the known-value state copied
+  /// by `clone` and intersected at control-flow boundaries.
   Operation *updateLastWrite(Operation *writeOp) {
     Operation *old = lastWrite;
     lastWrite = writeOp;
     return old;
   }
 
+  /// @brief Stop treating this node's latest write as removable by a later overwrite.
   void clearLastWrite() { lastWrite = nullptr; }
 
   /// @brief Clear pending overwrite candidates in this node and its descendants.
@@ -284,6 +292,7 @@ public:
     }
   }
 
+  /// @brief Detach all children after clearing candidates held by their subtrees.
   void invalidateChildren() {
     for (const auto &[_, child] : children) {
       child->clearLastWritesInSubtree();
@@ -295,7 +304,8 @@ public:
   /// @brief Remove dynamic-index children before descending through a constant index.
   ///
   /// A constant-index write can alias an existing dynamic-index child, but not a
-  /// different constant-index child.
+  /// different constant-index child. Removed subtrees are cleared first because
+  /// aggregate aliases may share their candidate state with another reference.
   void invalidateDynamicChildren() {
     if (dynamicChildCount == 0) {
       return;
@@ -316,6 +326,11 @@ public:
     dynamicChildCount = 0;
   }
 
+  /// @brief Remove children whose table offsets may alias the current row.
+  ///
+  /// Integer attribute offsets remain distinct; symbolic, affine, and dynamic
+  /// offsets are cleared before detachment because aliases may share candidates.
+  /// @return Whether any potentially aliased child was removed.
   bool invalidateNonIntegerOffsetChildren() {
     SmallVector<ReferenceID> invalidChildren;
     size_t invalidDynamicChildCount = 0;
@@ -366,7 +381,8 @@ public:
     return os;
   }
 
-  /// @brief Returns true if the nodes are equal, excluding their children.
+  /// @brief Returns true if semantic node state matches, excluding children and
+  /// transient block-local overwrite candidates.
   friend bool
   topLevelEq(const std::shared_ptr<ReferenceNode> &lhs, const std::shared_ptr<ReferenceNode> &rhs) {
     return lhs->identifier == rhs->identifier && lhs->storedValue == rhs->storedValue;
@@ -397,6 +413,7 @@ public:
 private:
   ReferenceID identifier;
   mlir::Value storedValue;
+  // Transient candidate state; semantic clones deliberately leave this null.
   Operation *lastWrite;
   DenseMap<ReferenceID, std::shared_ptr<ReferenceNode>> children;
   // Number of direct dynamic children. Keep it synchronized with every children
@@ -426,8 +443,10 @@ struct KnownState {
 struct BlockWriteCandidates {
   DenseMap<SymbolRefAttr, Operation *> globals;
   DenseMap<Value, Operation *> ram;
+  // Reference nodes whose lastWrite candidates belong to this block.
   SmallVector<std::shared_ptr<ReferenceNode>> referenceNodes;
 
+  /// @brief Clear candidates at an observation, effect, or control-flow boundary.
   void clear() {
     for (const auto &node : referenceNodes) {
       node->clearLastWrite();
@@ -803,12 +822,14 @@ class PassImpl : public llzk::impl::RedundantReadAndWriteEliminationPassBase<Pas
       }
 
       if (currValTree->getStoredValue() != resVal) {
+        // The read will be replaced, so it is not a runtime observation.
         LLVM_DEBUG(
             llvm::dbgs() << readarr.getOperationName() << ": replace " << resVal << " with "
                          << currValTree->getStoredValue() << '\n'
         );
         replacementMap[resVal] = currValTree->getStoredValue();
       } else {
+        // This read remains observable, so clear only the may-alias paths it can see.
         rootValTree->clearLastWritesObservedBy(indices);
         state.values[resVal] = currValTree;
         LLVM_DEBUG(
