@@ -325,37 +325,38 @@ jobs:
             test/Transforms/RedundantAndUnusedElim/array_read_write_observation.llzk \
             -split-input-file \
             -llzk-duplicate-read-write-elim
-          replay_simple_transform pr484-if-containment 84fa7c38aac43db10d9e75574cb6489b23ab3156 test/Transforms/FuseProductLoops/fuse_if_containment.llzk --llzk-fuse-product-loops
-          replay_simple_transform pr484-if-direct 84fa7c38aac43db10d9e75574cb6489b23ab3156 test/Transforms/FuseProductLoops/fuse_if_direct_compute_result_use.llzk --llzk-fuse-product-loops
-          replay_simple_transform pr484-if-multi 84fa7c38aac43db10d9e75574cb6489b23ab3156 test/Transforms/FuseProductLoops/fuse_if_multi_result_direct_uses.llzk --llzk-fuse-product-loops
-          replay_simple_transform pr484-if-no-else 84fa7c38aac43db10d9e75574cb6489b23ab3156 test/Transforms/FuseProductLoops/fuse_if_no_else.llzk --llzk-fuse-product-loops
-          replay_simple_transform pr484-if-member-free 84fa7c38aac43db10d9e75574cb6489b23ab3156 test/Transforms/FuseProductLoops/fuse_if_no_member_read.llzk --llzk-compute-constrain-to-product=root-struct=A --llzk-fuse-product-loops
-          replay_simple_transform pr484-if-nondet 84fa7c38aac43db10d9e75574cb6489b23ab3156 test/Transforms/FuseProductLoops/fuse_if_nondet.llzk --llzk-fuse-product-loops
-          replay_simple_transform pr484-if-attrs 84fa7c38aac43db10d9e75574cb6489b23ab3156 test/Transforms/FuseProductLoops/fuse_if_preserves_attributes.llzk --llzk-fuse-product-loops
-          replay_simple_transform pr484-if-locations 84fa7c38aac43db10d9e75574cb6489b23ab3156 test/Transforms/FuseProductLoops/fuse_if_preserves_locations.llzk --llzk-fuse-product-loops -mlir-print-debuginfo
-          replay_simple_transform pr484-loop-if 84fa7c38aac43db10d9e75574cb6489b23ab3156 test/Transforms/FuseProductLoops/fuse_loop_then_if_positive.llzk --llzk-fuse-product-loops
-          replay_simple_transform pr484-attr-mismatch 84fa7c38aac43db10d9e75574cb6489b23ab3156 test/Transforms/FuseProductLoops/no_fuse_if_attribute_mismatch.llzk --llzk-fuse-product-loops
-          replay_simple_transform pr484-call-write 84fa7c38aac43db10d9e75574cb6489b23ab3156 test/Transforms/FuseProductLoops/no_fuse_if_call_after_write.llzk --llzk-compute-constrain-to-product=root-struct=A --llzk-fuse-product-loops
-          replay_simple_transform pr484-cond-mismatch 84fa7c38aac43db10d9e75574cb6489b23ab3156 test/Transforms/FuseProductLoops/no_fuse_if_condition_mismatch.llzk --llzk-fuse-product-loops
-          replay_simple_transform pr484-else-yield-attr 84fa7c38aac43db10d9e75574cb6489b23ab3156 test/Transforms/FuseProductLoops/no_fuse_if_else_yield_attribute_mismatch.llzk --llzk-fuse-product-loops
-          replay_simple_transform pr484-shape 84fa7c38aac43db10d9e75574cb6489b23ab3156 test/Transforms/FuseProductLoops/no_fuse_if_incompatible_shape.llzk --llzk-fuse-product-loops
-          replay_simple_transform pr484-inferred-if 84fa7c38aac43db10d9e75574cb6489b23ab3156 test/Transforms/FuseProductLoops/no_fuse_if_inferred_product_source.llzk --llzk-fuse-product-loops
-          replay_simple_transform pr484-array-insert 84fa7c38aac43db10d9e75574cb6489b23ab3156 test/Transforms/FuseProductLoops/no_fuse_if_internal_array_insert_in_product.llzk --llzk-fuse-product-loops
-          replay_simple_transform pr484-array-read 84fa7c38aac43db10d9e75574cb6489b23ab3156 test/Transforms/FuseProductLoops/no_fuse_if_internal_array_read_in_product.llzk --llzk-fuse-product-loops
-          replay_simple_transform pr484-array-write 84fa7c38aac43db10d9e75574cb6489b23ab3156 test/Transforms/FuseProductLoops/no_fuse_if_internal_array_write_in_product.llzk --llzk-fuse-product-loops
-          replay_simple_transform pr484-global-read 84fa7c38aac43db10d9e75574cb6489b23ab3156 test/Transforms/FuseProductLoops/no_fuse_if_internal_global_read_in_product.llzk --llzk-fuse-product-loops
-          replay_simple_transform pr484-global-write 84fa7c38aac43db10d9e75574cb6489b23ab3156 test/Transforms/FuseProductLoops/no_fuse_if_internal_global_write_in_product.llzk --llzk-fuse-product-loops
-          replay_simple_transform pr484-pod-write 84fa7c38aac43db10d9e75574cb6489b23ab3156 test/Transforms/FuseProductLoops/no_fuse_if_internal_pod_write_in_product.llzk --llzk-fuse-product-loops
-          replay_simple_transform pr484-ram-load 84fa7c38aac43db10d9e75574cb6489b23ab3156 test/Transforms/FuseProductLoops/no_fuse_if_internal_ram_load_in_product.llzk --llzk-fuse-product-loops
-          replay_simple_transform pr484-ram-store 84fa7c38aac43db10d9e75574cb6489b23ab3156 test/Transforms/FuseProductLoops/no_fuse_if_internal_ram_store_in_product.llzk --llzk-fuse-product-loops
-          replay_simple_transform pr484-member-read 84fa7c38aac43db10d9e75574cb6489b23ab3156 test/Transforms/FuseProductLoops/no_fuse_if_internal_read.llzk --llzk-compute-constrain-to-product=root-struct=A --llzk-fuse-product-loops
-          replay_simple_transform pr484-unknown-effect 84fa7c38aac43db10d9e75574cb6489b23ab3156 test/Transforms/FuseProductLoops/no_fuse_if_internal_unknown_effect_in_product.llzk --allow-unregistered-dialect --llzk-fuse-product-loops
-          replay_simple_transform pr484-witness-call 84fa7c38aac43db10d9e75574cb6489b23ab3156 test/Transforms/FuseProductLoops/no_fuse_if_internal_witness_call_in_product.llzk --llzk-fuse-product-loops
-          replay_simple_transform pr484-writem 84fa7c38aac43db10d9e75574cb6489b23ab3156 test/Transforms/FuseProductLoops/no_fuse_if_internal_writem_in_product.llzk --llzk-fuse-product-loops
-          replay_simple_transform pr484-read-write 84fa7c38aac43db10d9e75574cb6489b23ab3156 test/Transforms/FuseProductLoops/no_fuse_if_read_after_write.llzk --llzk-compute-constrain-to-product=root-struct=A --llzk-fuse-product-loops
-          replay_simple_transform pr484-yield-mismatch 84fa7c38aac43db10d9e75574cb6489b23ab3156 test/Transforms/FuseProductLoops/no_fuse_if_yield_attribute_mismatch.llzk --llzk-fuse-product-loops
-          replay_simple_transform pr484-loop-inferred 84fa7c38aac43db10d9e75574cb6489b23ab3156 test/Transforms/FuseProductLoops/no_fuse_loop_inferred_product_source.llzk --llzk-fuse-product-loops
-          replay_simple_transform pr484-nested-if-after-loop 84fa7c38aac43db10d9e75574cb6489b23ab3156 test/Transforms/FuseProductLoops/no_fuse_nested_if_after_loop.llzk --llzk-compute-constrain-to-product=root-struct=A --llzk-fuse-product-loops
+          replay_simple_transform pr484-if-containment 33a2542f9144174917b5e08a877903511d0778cb test/Transforms/FuseProductLoops/fuse_if_containment.llzk --llzk-fuse-product-loops
+          replay_simple_transform pr484-if-direct 33a2542f9144174917b5e08a877903511d0778cb test/Transforms/FuseProductLoops/fuse_if_direct_compute_result_use.llzk --llzk-fuse-product-loops
+          replay_simple_transform pr484-if-multi 33a2542f9144174917b5e08a877903511d0778cb test/Transforms/FuseProductLoops/fuse_if_multi_result_direct_uses.llzk --llzk-fuse-product-loops
+          replay_simple_transform pr484-if-no-else 33a2542f9144174917b5e08a877903511d0778cb test/Transforms/FuseProductLoops/fuse_if_no_else.llzk --llzk-fuse-product-loops
+          replay_simple_transform pr484-if-member-free 33a2542f9144174917b5e08a877903511d0778cb test/Transforms/FuseProductLoops/fuse_if_no_member_read.llzk --llzk-compute-constrain-to-product=root-struct=A --llzk-fuse-product-loops
+          replay_simple_transform pr484-if-nondet 33a2542f9144174917b5e08a877903511d0778cb test/Transforms/FuseProductLoops/fuse_if_nondet.llzk --llzk-fuse-product-loops
+          replay_simple_transform pr484-if-attrs 33a2542f9144174917b5e08a877903511d0778cb test/Transforms/FuseProductLoops/fuse_if_preserves_attributes.llzk --llzk-fuse-product-loops
+          replay_simple_transform pr484-if-locations 33a2542f9144174917b5e08a877903511d0778cb test/Transforms/FuseProductLoops/fuse_if_preserves_locations.llzk --llzk-fuse-product-loops -mlir-print-debuginfo
+          replay_simple_transform pr484-if-may-trap 33a2542f9144174917b5e08a877903511d0778cb test/Transforms/FuseProductLoops/no_fuse_if_may_trap.llzk --llzk-fuse-product-loops
+          replay_simple_transform pr484-loop-if 33a2542f9144174917b5e08a877903511d0778cb test/Transforms/FuseProductLoops/fuse_loop_then_if_positive.llzk --llzk-fuse-product-loops
+          replay_simple_transform pr484-attr-mismatch 33a2542f9144174917b5e08a877903511d0778cb test/Transforms/FuseProductLoops/no_fuse_if_attribute_mismatch.llzk --llzk-fuse-product-loops
+          replay_simple_transform pr484-call-write 33a2542f9144174917b5e08a877903511d0778cb test/Transforms/FuseProductLoops/no_fuse_if_call_after_write.llzk --llzk-compute-constrain-to-product=root-struct=A --llzk-fuse-product-loops
+          replay_simple_transform pr484-cond-mismatch 33a2542f9144174917b5e08a877903511d0778cb test/Transforms/FuseProductLoops/no_fuse_if_condition_mismatch.llzk --llzk-fuse-product-loops
+          replay_simple_transform pr484-else-yield-attr 33a2542f9144174917b5e08a877903511d0778cb test/Transforms/FuseProductLoops/no_fuse_if_else_yield_attribute_mismatch.llzk --llzk-fuse-product-loops
+          replay_simple_transform pr484-shape 33a2542f9144174917b5e08a877903511d0778cb test/Transforms/FuseProductLoops/no_fuse_if_incompatible_shape.llzk --llzk-fuse-product-loops
+          replay_simple_transform pr484-inferred-if 33a2542f9144174917b5e08a877903511d0778cb test/Transforms/FuseProductLoops/no_fuse_if_inferred_product_source.llzk --llzk-fuse-product-loops
+          replay_simple_transform pr484-array-insert 33a2542f9144174917b5e08a877903511d0778cb test/Transforms/FuseProductLoops/no_fuse_if_internal_array_insert_in_product.llzk --llzk-fuse-product-loops
+          replay_simple_transform pr484-array-read 33a2542f9144174917b5e08a877903511d0778cb test/Transforms/FuseProductLoops/no_fuse_if_internal_array_read_in_product.llzk --llzk-fuse-product-loops
+          replay_simple_transform pr484-array-write 33a2542f9144174917b5e08a877903511d0778cb test/Transforms/FuseProductLoops/no_fuse_if_internal_array_write_in_product.llzk --llzk-fuse-product-loops
+          replay_simple_transform pr484-global-read 33a2542f9144174917b5e08a877903511d0778cb test/Transforms/FuseProductLoops/no_fuse_if_internal_global_read_in_product.llzk --llzk-fuse-product-loops
+          replay_simple_transform pr484-global-write 33a2542f9144174917b5e08a877903511d0778cb test/Transforms/FuseProductLoops/no_fuse_if_internal_global_write_in_product.llzk --llzk-fuse-product-loops
+          replay_simple_transform pr484-pod-write 33a2542f9144174917b5e08a877903511d0778cb test/Transforms/FuseProductLoops/no_fuse_if_internal_pod_write_in_product.llzk --llzk-fuse-product-loops
+          replay_simple_transform pr484-ram-load 33a2542f9144174917b5e08a877903511d0778cb test/Transforms/FuseProductLoops/no_fuse_if_internal_ram_load_in_product.llzk --llzk-fuse-product-loops
+          replay_simple_transform pr484-ram-store 33a2542f9144174917b5e08a877903511d0778cb test/Transforms/FuseProductLoops/no_fuse_if_internal_ram_store_in_product.llzk --llzk-fuse-product-loops
+          replay_simple_transform pr484-member-read 33a2542f9144174917b5e08a877903511d0778cb test/Transforms/FuseProductLoops/no_fuse_if_internal_read.llzk --llzk-compute-constrain-to-product=root-struct=A --llzk-fuse-product-loops
+          replay_simple_transform pr484-unknown-effect 33a2542f9144174917b5e08a877903511d0778cb test/Transforms/FuseProductLoops/no_fuse_if_internal_unknown_effect_in_product.llzk --allow-unregistered-dialect --llzk-fuse-product-loops
+          replay_simple_transform pr484-witness-call 33a2542f9144174917b5e08a877903511d0778cb test/Transforms/FuseProductLoops/no_fuse_if_internal_witness_call_in_product.llzk --llzk-fuse-product-loops
+          replay_simple_transform pr484-writem 33a2542f9144174917b5e08a877903511d0778cb test/Transforms/FuseProductLoops/no_fuse_if_internal_writem_in_product.llzk --llzk-fuse-product-loops
+          replay_simple_transform pr484-read-write 33a2542f9144174917b5e08a877903511d0778cb test/Transforms/FuseProductLoops/no_fuse_if_read_after_write.llzk --llzk-compute-constrain-to-product=root-struct=A --llzk-fuse-product-loops
+          replay_simple_transform pr484-yield-mismatch 33a2542f9144174917b5e08a877903511d0778cb test/Transforms/FuseProductLoops/no_fuse_if_yield_attribute_mismatch.llzk --llzk-fuse-product-loops
+          replay_simple_transform pr484-loop-inferred 33a2542f9144174917b5e08a877903511d0778cb test/Transforms/FuseProductLoops/no_fuse_loop_inferred_product_source.llzk --llzk-fuse-product-loops
+          replay_simple_transform pr484-nested-if-after-loop 33a2542f9144174917b5e08a877903511d0778cb test/Transforms/FuseProductLoops/no_fuse_nested_if_after_loop.llzk --llzk-compute-constrain-to-product=root-struct=A --llzk-fuse-product-loops
           replay_script \
             efb42f37f1ea04315815d07315e07aa597625816 \
             test/Transforms/generate-test-checks-inline-attributes.llzk
