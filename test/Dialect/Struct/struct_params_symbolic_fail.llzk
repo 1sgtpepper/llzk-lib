@@ -41,13 +41,33 @@ module attributes {llzk.lang} {
   }
   module @globals {
     global.def const @Index : index = 35
-    global.def const @Felt : !felt.type = 35
   }
   // expected-error@+1 {{ref "@globals::@Index" in type '!struct.type<@Target::@S<[@globals::@Index]>>' refers to a global with type 'index' but expected type '!poly.tvar<@T>'}}
   function.def @useIndex(%value: !struct.type<@Target::@S<[@globals::@Index]>>) {
     function.return
   }
-  // expected-error@+1 {{ref "@globals::@Felt" in type '!struct.type<@Target::@S<[@globals::@Felt]>>' refers to a global with type '!felt.type' but expected type '!poly.tvar<@T>'}}
+}
+
+// -----
+
+// A felt-valued qualified global cannot satisfy a type-only restriction.
+module attributes {llzk.lang} {
+  poly.template @Target {
+    poly.param @T : !poly.tvar<@T>
+    struct.def @S {
+      function.def @compute() -> !struct.type<@Target::@S<[@T]>> {
+        %self = struct.new : <@Target::@S<[@T]>>
+        function.return %self : !struct.type<@Target::@S<[@T]>>
+      }
+      function.def @constrain(%self: !struct.type<@Target::@S<[@T]>>) {
+        function.return
+      }
+    }
+  }
+  module @globals {
+    global.def const @Felt : !felt.type<"bn128"> = 35
+  }
+  // expected-error@+1 {{ref "@globals::@Felt" in type '!struct.type<@Target::@S<[@globals::@Felt]>>' refers to a global with type '!felt.type<"bn128">' but expected type '!poly.tvar<@T>'}}
   function.def @useFelt(%value: !struct.type<@Target::@S<[@globals::@Felt]>>) {
     function.return
   }
@@ -121,7 +141,7 @@ module attributes {llzk.lang} {
   }
   poly.template @UnrestrictedCaller {
     poly.param @U
-    // expected-error@+1 {{ref "@U" in type '!struct.type<@Target::@S<[@U]>>' refers to a 'poly.param' that must have type !poly.tvar<@T>}}
+    // expected-error@+1 {{ref "@U" in type '!struct.type<@Target::@S<[@U]>>' refers to a 'poly.param' that must have type '!poly.tvar<@T>'}}
     function.def @useType(%value: !struct.type<@Target::@S<[@U]>>) {
       function.return
     }
