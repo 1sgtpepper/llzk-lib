@@ -31,6 +31,30 @@ module attributes {llzk.lang} {
 // CHECK-NEXT:  }
 // -----
 module attributes {llzk.lang} {
+  // A non-entering while loop cannot invalidate a pre-loop write.
+  function.def @zero_trip_while_preserves_pre_loop_write(
+      %idx: index
+  ) -> !felt.type {
+    %zero = felt.const 0
+    %one = felt.const 1
+    %two = felt.const 2
+    %arr = array.new %zero, %zero : !array.type<2 x !felt.type>
+    %i0 = arith.constant 0 : index
+    %false = arith.constant false
+    array.write %arr[%i0] = %one : !array.type<2 x !felt.type>, !felt.type
+    scf.while (%iv = %i0) : (index) -> index {
+      scf.condition(%false) %iv : index
+    } do {
+    ^bb0(%body_iv: index):
+      array.write %arr[%i0] = %two : !array.type<2 x !felt.type>, !felt.type
+      scf.yield %body_iv : index
+    }
+    %observed = array.read %arr[%idx] : !array.type<2 x !felt.type>, !felt.type
+    function.return %observed : !felt.type
+  }
+}
+// -----
+module attributes {llzk.lang} {
   // A zero-trip loop cannot invalidate a pre-loop write because its body may not execute.
   function.def @zero_trip_loop_preserves_pre_loop_write(
       %trip_count: index, %idx: index
