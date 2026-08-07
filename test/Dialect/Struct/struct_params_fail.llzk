@@ -756,8 +756,7 @@ module attributes {llzk.lang, llzk.main = !struct.type<@T::@S<[!felt.type]>>} {
 
 #map = affine_map<(i) -> (i)>
 // An affine map is deferred only for an integer-like restriction, not a felt restriction.
-// expected-error@+1 {{is not compatible with parameter "@N" type restriction '!felt.type<"bn128">'}}
-module attributes {llzk.lang, llzk.main = !struct.type<@T::@S<[#map]>>} {
+module attributes {llzk.lang} {
   poly.template @T {
     poly.param @N : !felt.type<"bn128">
 
@@ -768,5 +767,16 @@ module attributes {llzk.lang, llzk.main = !struct.type<@T::@S<[#map]>>} {
       }
       function.def @constrain(%self: !struct.type<@T::@S<[@N]>>) { function.return }
     }
+  }
+
+  struct.def @Use {
+    // expected-error@+1 {{is not compatible with parameter "@N" type restriction '!felt.type<"bn128">'}}
+    struct.member @value : !struct.type<@T::@S<[#map]>>
+
+    function.def @compute() -> !struct.type<@Use> {
+      %self = struct.new : !struct.type<@Use>
+      function.return %self : !struct.type<@Use>
+    }
+    function.def @constrain(%self: !struct.type<@Use>) { function.return }
   }
 }
