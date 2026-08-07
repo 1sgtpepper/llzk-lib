@@ -38,7 +38,7 @@ jobs:
           name: veridise-public
           authToken: '${{ secrets.CACHIX_PUBLIC_TOKEN }}'
       - name: 'Build with ${{ matrix.compiler.name }}'
-        run: "nix --impure --print-build-logs build --expr \"let flake = builtins.getFlake (toString ./.) ; in flake.packages.x86_64-linux.${{ matrix.compiler.package }}.overrideAttrs (_: { doCheck = false; })\""
+        run: "nix build --impure --print-build-logs --expr \"let flake = builtins.getFlake (toString ./.) ; in flake.packages.x86_64-linux.${{ matrix.compiler.package }}.overrideAttrs (_: { doCheck = false; })\""
       - name: Generate FileCheck review artifacts
         if: matrix.compiler.name == 'Clang'
         env:
