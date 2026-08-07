@@ -73,6 +73,44 @@ module attributes {llzk.lang} {
 
 // -----
 
+// Distinct source paths may render the same preferred specialization name. Each sibling module
+// must retain its own clone, while repeated calls within that source reuse it.
+module attributes {llzk.lang} {
+  module @Left attributes {llzk.lang} {
+    poly.template @T {
+      poly.param @N : index
+      function.def @compute() -> index {
+        %value = poly.read_const @N : index
+        function.return %value : index
+      }
+    }
+
+    function.def @main() -> index {
+      %first = function.call @T::@compute<[4]>() : () -> index
+      %second = function.call @T::@compute<[4]>() : () -> index
+      function.return %second : index
+    }
+  }
+
+  module @Right attributes {llzk.lang} {
+    poly.template @T {
+      poly.param @N : index
+      function.def @compute() -> index {
+        %value = poly.read_const @N : index
+        function.return %value : index
+      }
+    }
+
+    function.def @main() -> index {
+      %first = function.call @T::@compute<[4]>() : () -> index
+      %second = function.call @T::@compute<[4]>() : () -> index
+      function.return %second : index
+    }
+  }
+}
+
+// -----
+
 module attributes {llzk.lang} {
   // A user-defined partial template collides with the preferred name. The specialized source body
   // must remain distinct, and repeated calls must use its post-insertion name.
