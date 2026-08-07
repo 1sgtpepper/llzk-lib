@@ -50,6 +50,31 @@ module attributes {llzk.lang} {
 
 // -----
 
+// A non-felt qualified global is rejected for an index restriction.
+module attributes {llzk.lang} {
+  poly.template @Target {
+    poly.param @N : index
+    struct.def @S {
+      function.def @compute() -> !struct.type<@Target::@S<[@N]>> {
+        %self = struct.new : <@Target::@S<[@N]>>
+        function.return %self : !struct.type<@Target::@S<[@N]>>
+      }
+      function.def @constrain(%self: !struct.type<@Target::@S<[@N]>>) {
+        function.return
+      }
+    }
+  }
+  module @globals {
+    global.def const @G : !felt.type = 35
+  }
+  // expected-error@+1 {{ref "@globals::@G" in type '!struct.type<@Target::@S<[@globals::@G]>>' refers to a global with type '!felt.type' but expected type 'index'}}
+  function.def @useGlobal(%value: !struct.type<@Target::@S<[@globals::@G]>>) {
+    function.return
+  }
+}
+
+// -----
+
 // A fieldless symbolic restriction cannot establish a fielded target restriction.
 module attributes {llzk.lang} {
   poly.template @Target {
