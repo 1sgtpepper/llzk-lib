@@ -45,3 +45,42 @@ module attributes {llzk.lang} {
     function.return
   }
 }
+
+// -----
+
+// A qualified global with a concrete type satisfies both index and type-variable restrictions.
+module attributes {llzk.lang} {
+  poly.template @IndexTarget {
+    poly.param @N : index
+    struct.def @S {
+      function.def @compute() -> !struct.type<@IndexTarget::@S<[@N]>> {
+        %self = struct.new : <@IndexTarget::@S<[@N]>>
+        function.return %self : !struct.type<@IndexTarget::@S<[@N]>>
+      }
+      function.def @constrain(%self: !struct.type<@IndexTarget::@S<[@N]>>) {
+        function.return
+      }
+    }
+  }
+  poly.template @TypeTarget {
+    poly.param @T : !poly.tvar<@T>
+    struct.def @S {
+      function.def @compute() -> !struct.type<@TypeTarget::@S<[@T]>> {
+        %self = struct.new : <@TypeTarget::@S<[@T]>>
+        function.return %self : !struct.type<@TypeTarget::@S<[@T]>>
+      }
+      function.def @constrain(%self: !struct.type<@TypeTarget::@S<[@T]>>) {
+        function.return
+      }
+    }
+  }
+  module @globals {
+    global.def const @G : index = 35
+  }
+  function.def @useIndex(%value: !struct.type<@IndexTarget::@S<[@globals::@G]>>) {
+    function.return
+  }
+  function.def @useType(%value: !struct.type<@TypeTarget::@S<[@globals::@G]>>) {
+    function.return
+  }
+}

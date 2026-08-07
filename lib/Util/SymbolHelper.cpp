@@ -15,7 +15,6 @@
 #include "llzk/Util/SymbolHelper.h"
 
 #include "llzk/Dialect/Array/IR/Ops.h"
-#include "llzk/Dialect/Felt/IR/Types.h"
 #include "llzk/Dialect/Function/IR/Ops.h"
 #include "llzk/Dialect/Global/IR/Ops.h"
 #include "llzk/Dialect/Polymorphic/IR/Types.h"
@@ -421,8 +420,7 @@ LogicalResult verifyParamOfType(
                                << " refers to a '" << foundOp->getName()
                                << "' which is not allowed";
   }
-  if (requiredParamType && llvm::isa<felt::FeltType>(*requiredParamType) &&
-      !isTemplateParamTypeCompatible(global.getType(), *requiredParamType)) {
+  if (requiredParamType && !isTemplateParamTypeCompatible(global.getType(), *requiredParamType)) {
     return origin->emitError() << "ref \"" << param << "\" in type " << parameterizedType
                                << " refers to a global with type " << global.getType()
                                << " but expected type " << *requiredParamType;
