@@ -270,11 +270,16 @@ bool typesUnify(
 /// Return `true` iff an actual template argument type satisfies a required type restriction.
 /// Unlike `typesUnify`, this check is directional: a fieldless required felt type accepts any
 /// felt field, while a fielded required felt type accepts only the same explicitly fielded type.
+/// A TypeVarType restriction is type-only and therefore is compatible only with another
+/// TypeVarType restriction; it must not inherit the wildcard behavior of ordinary type
+/// unification.
 bool isTemplateParamTypeCompatible(mlir::Type actualType, mlir::Type requiredType);
 
 /// An absent actual restriction is compatible with an unfielded required felt type, but it cannot
 /// satisfy a fielded required felt type because it does not establish the field needed by that
-/// restriction. For other required types, preserve the existing unrestricted-binding behavior.
+/// restriction. It also cannot satisfy a type-only TypeVarType restriction because an unrestricted
+/// binding does not establish that the eventual argument is a type. For other required types,
+/// preserve the existing unrestricted-binding behavior.
 bool isTemplateParamTypeCompatible(std::optional<mlir::Type> actualType, mlir::Type requiredType);
 
 /// Check a concrete template argument against an optional restriction and return its normalized

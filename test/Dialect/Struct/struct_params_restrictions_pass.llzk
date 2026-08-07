@@ -15,6 +15,21 @@ module attributes {llzk.lang, llzk.main = !struct.type<@T::@S<[#felt<const 35>]>
   }
 }
 
+// A concrete TypeAttr can instantiate a type-only restriction.
+module attributes {llzk.lang, llzk.main = !struct.type<@T::@S<[!felt.type]>>} {
+  poly.template @T {
+    poly.param @N : !poly.tvar<@N>
+
+    struct.def @S {
+      function.def @compute() -> !struct.type<@T::@S<[@N]>> {
+        %self = struct.new : !struct.type<@T::@S<[@N]>>
+        function.return %self : !struct.type<@T::@S<[@N]>>
+      }
+      function.def @constrain(%self: !struct.type<@T::@S<[@N]>>) { function.return }
+    }
+  }
+}
+
 // -----
 
 // An explicitly fielded concrete felt with the same field is accepted.
