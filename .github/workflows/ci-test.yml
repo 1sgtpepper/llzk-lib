@@ -11,9 +11,11 @@ jobs:
         compiler:
           - name: GCC
             derivation: '.#debugGCC'
+            package: debugGCC
             report: gcc-report.xml
           - name: Clang
             derivation: '.#debugClangCov'
+            package: debugClangCov
             report: clang-report.xml
     runs-on: ubuntu-24.04
     steps:
@@ -36,7 +38,7 @@ jobs:
           name: veridise-public
           authToken: '${{ secrets.CACHIX_PUBLIC_TOKEN }}'
       - name: 'Build with ${{ matrix.compiler.name }}'
-        run: "nix --print-build-logs build --no-check '${{ matrix.compiler.derivation }}'"
+        run: "nix --impure --print-build-logs build --expr \"let flake = builtins.getFlake (toString ./.) ; in flake.packages.x86_64-linux.${{ matrix.compiler.package }}.overrideAttrs (_: { doCheck = false; })\""
       - name: Generate FileCheck review artifacts
         if: matrix.compiler.name == 'Clang'
         env:
