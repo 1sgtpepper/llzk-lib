@@ -109,6 +109,45 @@ module attributes {llzk.lang} {
   }
 }
 
+// CHECK-LABEL: module attributes {llzk.lang} {
+// CHECK-NEXT:    module @Left attributes {llzk.lang} {
+// CHECK-NEXT:      function.def @T_4_compute() -> index {
+// CHECK-NEXT:        %[[VAL_0:[0-9a-zA-Z_\.]+]] = arith.constant 4 : index
+// CHECK-NEXT:        function.return %[[VAL_0]] : index
+// CHECK-NEXT:      }
+// CHECK-NEXT:      poly.template @T {
+// CHECK-NEXT:        poly.param @N : index
+// CHECK-NEXT:        function.def @compute() -> index {
+// CHECK-NEXT:          %[[VAL_1:[0-9a-zA-Z_\.]+]] = poly.read_const @N : index
+// CHECK-NEXT:          function.return %[[VAL_1]] : index
+// CHECK-NEXT:        }
+// CHECK-NEXT:      }
+// CHECK-NEXT:      function.def @main() -> index {
+// CHECK-NEXT:        %[[VAL_2:[0-9a-zA-Z_\.]+]] = function.call @T_4_compute() : () -> index
+// CHECK-NEXT:        %[[VAL_3:[0-9a-zA-Z_\.]+]] = function.call @T_4_compute() : () -> index
+// CHECK-NEXT:        function.return %[[VAL_3]] : index
+// CHECK-NEXT:      }
+// CHECK-NEXT:    }
+// CHECK-NEXT:    module @Right attributes {llzk.lang} {
+// CHECK-NEXT:      function.def @T_4_compute() -> index {
+// CHECK-NEXT:        %[[VAL_4:[0-9a-zA-Z_\.]+]] = arith.constant 4 : index
+// CHECK-NEXT:        function.return %[[VAL_4]] : index
+// CHECK-NEXT:      }
+// CHECK-NEXT:      poly.template @T {
+// CHECK-NEXT:        poly.param @N : index
+// CHECK-NEXT:        function.def @compute() -> index {
+// CHECK-NEXT:          %[[VAL_5:[0-9a-zA-Z_\.]+]] = poly.read_const @N : index
+// CHECK-NEXT:          function.return %[[VAL_5]] : index
+// CHECK-NEXT:        }
+// CHECK-NEXT:      }
+// CHECK-NEXT:      function.def @main() -> index {
+// CHECK-NEXT:        %[[VAL_6:[0-9a-zA-Z_\.]+]] = function.call @T_4_compute() : () -> index
+// CHECK-NEXT:        %[[VAL_7:[0-9a-zA-Z_\.]+]] = function.call @T_4_compute() : () -> index
+// CHECK-NEXT:        function.return %[[VAL_7]] : index
+// CHECK-NEXT:      }
+// CHECK-NEXT:    }
+// CHECK-NEXT:  }
+
 // -----
 
 module attributes {llzk.lang} {
