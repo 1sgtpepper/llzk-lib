@@ -31,6 +31,26 @@ module attributes {llzk.lang} {
 // CHECK-NEXT:  }
 // -----
 module attributes {llzk.lang} {
+  // A zero-trip loop cannot invalidate a pre-loop write because its body may not execute.
+  function.def @zero_trip_loop_preserves_pre_loop_write(
+      %trip_count: index, %idx: index
+  ) -> !felt.type {
+    %zero = felt.const 0
+    %one = felt.const 1
+    %two = felt.const 2
+    %arr = array.new %zero, %zero : !array.type<2 x !felt.type>
+    %i0 = arith.constant 0 : index
+    %step = arith.constant 1 : index
+    array.write %arr[%i0] = %one : !array.type<2 x !felt.type>, !felt.type
+    scf.for %iv = %i0 to %trip_count step %step {
+      array.write %arr[%i0] = %two : !array.type<2 x !felt.type>, !felt.type
+    }
+    %observed = array.read %arr[%idx] : !array.type<2 x !felt.type>, !felt.type
+    function.return %observed : !felt.type
+  }
+}
+// -----
+module attributes {llzk.lang} {
   // A read replaced by a known SSA value is not a runtime observation.
   function.def @known_read_does_not_block_overwrite_elimination() -> !felt.type {
     %zero = felt.const 0
