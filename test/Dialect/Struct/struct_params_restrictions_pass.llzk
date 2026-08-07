@@ -53,7 +53,7 @@ module attributes {llzk.lang, llzk.main = !struct.type<@T::@S<[35]>>} {
 
 // A one-result affine map remains deferred for an integer-like restriction.
 #map = affine_map<(i) -> (i)>
-module attributes {llzk.lang, llzk.main = !struct.type<@T::@S<[#map]>>} {
+module attributes {llzk.lang} {
   poly.template @T {
     poly.param @N : index
 
@@ -64,5 +64,15 @@ module attributes {llzk.lang, llzk.main = !struct.type<@T::@S<[#map]>>} {
       }
       function.def @constrain(%self: !struct.type<@T::@S<[@N]>>) { function.return }
     }
+  }
+
+  struct.def @Use {
+    struct.member @value : !struct.type<@T::@S<[#map]>>
+
+    function.def @compute() -> !struct.type<@Use> {
+      %self = struct.new : !struct.type<@Use>
+      function.return %self : !struct.type<@Use>
+    }
+    function.def @constrain(%self: !struct.type<@Use>) { function.return }
   }
 }
