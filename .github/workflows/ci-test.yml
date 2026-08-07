@@ -15,7 +15,7 @@ jobs:
             report: gcc-report.xml
           - name: Clang
             derivation: '.#debugClangCov'
-            package: debugClangCov
+            package: debugClang
             report: clang-report.xml
     runs-on: ubuntu-24.04
     steps:
