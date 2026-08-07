@@ -1,6 +1,8 @@
 // RUN: llzk-opt -split-input-file -llzk-flatten=cleanup=disabled %s | FileCheck %s
 
 module attributes {llzk.lang} {
+  // A user-defined function collides with the preferred full-specialization name. The clone must
+  // be uniquified, and repeated calls with the same source and binding must reuse that name.
   poly.template @T {
     poly.param @N : index
     function.def @compute() -> index {
@@ -72,6 +74,8 @@ module attributes {llzk.lang} {
 // -----
 
 module attributes {llzk.lang} {
+  // A user-defined partial template collides with the preferred name. The specialized source body
+  // must remain distinct, and repeated calls must use its post-insertion name.
   poly.template @"T_35_\1A" {
     poly.param @Ty : !poly.tvar<@Ty>
     function.def @compute() -> index {
