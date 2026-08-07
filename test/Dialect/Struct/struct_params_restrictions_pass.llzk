@@ -15,6 +15,8 @@ module attributes {llzk.lang, llzk.main = !struct.type<@T::@S<[#felt<const 35>]>
   }
 }
 
+// -----
+
 // A concrete TypeAttr can instantiate a type-only restriction.
 module attributes {llzk.lang, llzk.main = !struct.type<@T::@S<[!felt.type]>>} {
   poly.template @T {
