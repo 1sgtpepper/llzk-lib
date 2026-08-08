@@ -147,7 +147,13 @@ template <> struct DenseMapInfo<ReferenceID> {
 
 namespace {
 
-/// @brief A node in a tree of references that represent known values. A node consists of:
+class ReferenceNode;
+using ReferenceNodePtr = std::shared_ptr<ReferenceNode>;
+using ReferenceNodeCloneMemo = DenseMap<const ReferenceNode *, ReferenceNodePtr>;
+using ReferenceNodeIntersectionMemo = DenseMap<
+    const ReferenceNode *, DenseMap<const ReferenceNode *, ReferenceNodePtr>>;
+
+/// @brief A node in a graph of references that represent known values. A node consists of:
 /// - An identifier (e.g., %self)
 /// - A stored value (i.e., the allocation site or the value last written to the identifier)
 /// - A map of children (e.g., members of a struct or elements of an array).
@@ -155,7 +161,7 @@ namespace {
 /// %self -> @arr -> 1 represents %self[@arr][1].
 /// %self -> @column -> -1 : index represents a prior-row member access.
 ///
-/// Values not in this tree are unknown, and therefore not subject to read/write
+/// Values not in this graph are unknown, and therefore not subject to read/write
 /// elimination until they become known and can be eliminated when redundant operations
 /// are performed.
 ///
@@ -164,7 +170,7 @@ namespace {
 /// writes clear all children for a dynamic index and only dynamic siblings for a
 /// constant index.
 ///
-/// The stored value and child tree are persistent known-value state. `lastWrite`
+/// The stored value and child graph are persistent known-value state. `lastWrite`
 /// is transient, block-local overwrite-candidate state and is therefore cleared
 /// at observations and boundaries rather than copied into semantic clones.
 class ReferenceNode {
@@ -176,15 +182,28 @@ public:
   }
 
   /// @brief Clone semantic value state, excluding block-local write candidates.
-  std::shared_ptr<ReferenceNode> clone(bool withChildren = true) const {
+  ///
+  /// The memo keeps shared descendants shared when one value graph has multiple roots.
+  ReferenceNodePtr clone(bool withChildren = true) const {
+    ReferenceNodeCloneMemo memo;
+    return clone(memo, withChildren);
+  }
+
+  /// @brief Clone a graph using a shared memo for all roots in a value state.
+  ReferenceNodePtr clone(ReferenceNodeCloneMemo &memo, bool withChildren = true) const {
+    if (auto it = memo.find(this); it != memo.end()) {
+      return it->second;
+    }
     ReferenceNode copy(identifier, storedValue);
+    auto result = std::make_shared<ReferenceNode>(std::move(copy));
+    memo[this] = result;
     if (withChildren) {
-      copy.dynamicChildCount = dynamicChildCount;
+      result->dynamicChildCount = dynamicChildCount;
       for (const auto &[id, child] : children) {
-        copy.children[id] = child->clone(withChildren);
+        result->children[id] = child->clone(memo, withChildren);
       }
     }
-    return std::make_shared<ReferenceNode>(std::move(copy));
+    return result;
   }
 
   template <typename IdType>
@@ -388,18 +407,24 @@ public:
     return lhs->identifier == rhs->identifier && lhs->storedValue == rhs->storedValue;
   }
 
-  friend std::shared_ptr<ReferenceNode> greatestCommonSubtree(
-      const std::shared_ptr<ReferenceNode> &lhs, const std::shared_ptr<ReferenceNode> &rhs
+  friend ReferenceNodePtr greatestCommonSubtree(
+      const ReferenceNodePtr &lhs, const ReferenceNodePtr &rhs,
+      ReferenceNodeIntersectionMemo &memo
   ) {
+    auto &rhsNodes = memo[lhs.get()];
+    if (auto it = rhsNodes.find(rhs.get()); it != rhsNodes.end()) {
+      return it->second;
+    }
     if (!topLevelEq(lhs, rhs)) {
       return nullptr;
     }
     auto res = lhs->clone(false); // childless clone
+    rhsNodes[rhs.get()] = res;
     // Find common children and recurse
-    for (auto &[id, lhsChild] : lhs->children) {
+    for (const auto &[id, lhsChild] : lhs->children) {
       if (auto it = rhs->children.find(id); it != rhs->children.end()) {
         auto &rhsChild = it->second;
-        if (auto gcs = greatestCommonSubtree(lhsChild, rhsChild)) {
+        if (auto gcs = greatestCommonSubtree(lhsChild, rhsChild, memo)) {
           res->children[id] = gcs;
           if (id.isValue()) {
             ++res->dynamicChildCount;
@@ -426,9 +451,9 @@ private:
         dynamicChildCount(0) {}
 };
 
-using ValueMap = DenseMap<mlir::Value, std::shared_ptr<ReferenceNode>>;
+using ValueMap = DenseMap<mlir::Value, ReferenceNodePtr>;
 
-/// Known values at a program point, split between tree-shaped value state and
+/// Known values at a program point, split between graph-shaped value state and
 /// flat stateful global/RAM facts.
 struct KnownState {
   ValueMap values;
@@ -447,23 +472,30 @@ struct BlockWriteCandidates {
   SmallVector<std::shared_ptr<ReferenceNode>> referenceNodes;
 
   /// @brief Clear candidates at an observation, effect, or control-flow boundary.
-  void clear() {
+  void clearReferenceCandidates() {
     for (const auto &node : referenceNodes) {
       node->clearLastWrite();
     }
     referenceNodes.clear();
+  }
+
+  /// @brief Clear all block-local overwrite candidates.
+  void clear() {
+    clearReferenceCandidates();
     globals.clear();
     ram.clear();
   }
 };
 
-/// Intersects tree-shaped value facts by retaining only common subtrees.
+/// Intersects graph-shaped value facts by retaining only common subtrees and
+/// preserving an alias only when both input graphs share the same node pair.
 ValueMap intersectValueMap(const ValueMap &lhs, const ValueMap &rhs) {
   ValueMap res;
+  ReferenceNodeIntersectionMemo memo;
   for (const auto &[id, lhsValTree] : lhs) {
     if (auto it = rhs.find(id); it != rhs.end()) {
       const auto &rhsValTree = it->second;
-      res[id] = greatestCommonSubtree(lhsValTree, rhsValTree);
+      res[id] = greatestCommonSubtree(lhsValTree, rhsValTree, memo);
     }
   }
   return res;
@@ -494,13 +526,14 @@ KnownState intersect(const KnownState &lhs, const KnownState &rhs) {
 /// tracking, so that the orig state is not polluted through pointer updates.
 ValueMap cloneValueMap(const ValueMap &orig) {
   ValueMap res;
-  for (const auto &[id, tree] : orig) {
-    res[id] = tree->clone();
+  ReferenceNodeCloneMemo memo;
+  for (const auto &[id, valueGraph] : orig) {
+    res[id] = valueGraph->clone(memo);
   }
   return res;
 }
 
-/// Deep copy the KnownState for exclusive branches/regions so tree updates do
+/// Deep copy the KnownState for exclusive branches/regions so graph updates do
 /// not mutate the incoming state.
 KnownState cloneKnownState(const KnownState &orig) {
   return {cloneValueMap(orig.values), orig.globals, orig.ram, orig.ramExact};
@@ -748,7 +781,7 @@ class PassImpl : public llzk::impl::RedundantReadAndWriteEliminationPassBase<Pas
       return v;
     };
 
-    // Lookup the value tree in the current state or return nullptr.
+    // Lookup the value graph in the current state or return nullptr.
     auto tryGetValTree = [&state](Value v) -> std::shared_ptr<ReferenceNode> {
       if (auto it = state.values.find(v); it != state.values.end()) {
         return it->second;
@@ -802,9 +835,15 @@ class PassImpl : public llzk::impl::RedundantReadAndWriteEliminationPassBase<Pas
     // expose aggregate descendants, so it observes the selected subtree.
     auto doArrayReadLike = [&]<HasInterface<ArrayAccessOpInterface> OpClass>(OpClass readarr) {
       Value resVal = readarr.getResult();
+      const bool readIsLive = !resVal.use_empty();
       std::shared_ptr<ReferenceNode> rootValTree = tryGetValTree(translate(readarr.getArrRef()));
       std::shared_ptr<ReferenceNode> currValTree = rootValTree;
       if (currValTree == nullptr) {
+        if (readIsLive) {
+          // An unknown array root may alias any tracked reference, so a live
+          // read must not allow any reference write candidate to be removed.
+          writeCandidates.clearReferenceCandidates();
+        }
         state.values[resVal] = ReferenceNode::create(resVal, resVal);
         readVals.push_back(resVal);
         return;
@@ -829,8 +868,11 @@ class PassImpl : public llzk::impl::RedundantReadAndWriteEliminationPassBase<Pas
         );
         replacementMap[resVal] = currValTree->getStoredValue();
       } else {
-        // This read remains observable, so clear only the may-alias paths it can see.
-        rootValTree->clearLastWritesObservedBy(indices);
+        // Only a surviving read is a runtime observation, so clear only the
+        // may-alias paths it can see.
+        if (readIsLive) {
+          rootValTree->clearLastWritesObservedBy(indices);
+        }
         state.values[resVal] = currValTree;
         LLVM_DEBUG(
             llvm::dbgs() << readarr.getOperationName() << ": " << resVal << " => " << *currValTree
@@ -847,6 +889,10 @@ class PassImpl : public llzk::impl::RedundantReadAndWriteEliminationPassBase<Pas
     auto doArrayWriteLike = [&]<HasInterface<ArrayAccessOpInterface> OpClass>(OpClass writearr) {
       std::shared_ptr<ReferenceNode> currValTree = tryGetValTree(translate(writearr.getArrRef()));
       if (currValTree == nullptr) {
+        // An unknown array write may modify any tracked reference. Discard
+        // both overwrite candidates and known reference facts conservatively.
+        writeCandidates.clearReferenceCandidates();
+        state.values.clear();
         return;
       }
       Value newVal = translate(writearr.getRvalue());

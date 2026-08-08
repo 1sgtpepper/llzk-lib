@@ -308,6 +308,97 @@ module attributes {llzk.lang} {
 // CHECK-NEXT:  }
 // -----
 module attributes {llzk.lang} {
+  // A live read through an untracked region result may still alias the source array.
+  function.def @scf_result_array_alias_preserves_prior_write(
+      %idx: index, %cond: i1
+  ) -> !felt.type {
+    %zero = felt.const 0
+    %one = felt.const 1
+    %two = felt.const 2
+    %arr = array.new %zero, %zero : !array.type<2 x !felt.type>
+    %alias = scf.if %cond -> (!array.type<2 x !felt.type>) {
+      scf.yield %arr : !array.type<2 x !felt.type>
+    } else {
+      scf.yield %arr : !array.type<2 x !felt.type>
+    }
+    %i0 = arith.constant 0 : index
+    array.write %arr[%i0] = %one : !array.type<2 x !felt.type>, !felt.type
+    %observed = array.read %alias[%idx] : !array.type<2 x !felt.type>, !felt.type
+    array.write %arr[%i0] = %two : !array.type<2 x !felt.type>, !felt.type
+    function.return %observed : !felt.type
+  }
+}
+// -----
+module attributes {llzk.lang} {
+  // An unknown array write must invalidate known facts for every possible alias.
+  function.def @scf_result_array_write_invalidates_prior_fact(
+      %cond: i1
+  ) -> !felt.type {
+    %zero = felt.const 0
+    %one = felt.const 1
+    %two = felt.const 2
+    %arr = array.new %zero, %zero : !array.type<2 x !felt.type>
+    %alias = scf.if %cond -> (!array.type<2 x !felt.type>) {
+      scf.yield %arr : !array.type<2 x !felt.type>
+    } else {
+      scf.yield %arr : !array.type<2 x !felt.type>
+    }
+    %i0 = arith.constant 0 : index
+    array.write %arr[%i0] = %one : !array.type<2 x !felt.type>, !felt.type
+    array.write %alias[%i0] = %two : !array.type<2 x !felt.type>, !felt.type
+    %observed = array.read %arr[%i0] : !array.type<2 x !felt.type>, !felt.type
+    function.return %observed : !felt.type
+  }
+}
+// -----
+module attributes {llzk.lang} {
+  struct.def @PostRegionElement {
+    struct.member @value : !felt.type
+    struct.member @result : !felt.type
+
+    // Aggregate aliases must remain shared after cloning and CFG intersection.
+    function.def @compute(%idx: index, %cond: i1) -> !struct.type<@PostRegionElement> {
+      %self = struct.new : !struct.type<@PostRegionElement>
+      %one = felt.const 1
+      %two = felt.const 2
+      %arr = array.new %self, %self : !array.type<2 x !struct.type<@PostRegionElement>>
+      scf.if %cond {
+      } else {
+      }
+      struct.writem %self[@value] = %one : !struct.type<@PostRegionElement>, !felt.type
+      %selected = array.read %arr[%idx] :
+          !array.type<2 x !struct.type<@PostRegionElement>>,
+          !struct.type<@PostRegionElement>
+      %observed = struct.readm %selected[@value] :
+          !struct.type<@PostRegionElement>, !felt.type
+      struct.writem %self[@value] = %two : !struct.type<@PostRegionElement>, !felt.type
+      struct.writem %self[@result] = %observed : !struct.type<@PostRegionElement>, !felt.type
+      function.return %self : !struct.type<@PostRegionElement>
+    }
+    function.def @constrain(
+        %self: !struct.type<@PostRegionElement>, %idx: index, %cond: i1
+    ) { function.return }
+  }
+}
+// -----
+module attributes {llzk.lang} {
+  // An unresolved read with no users is erased and must not fence a later overwrite.
+  function.def @dead_dynamic_read_does_not_block_overwrite_elimination(
+      %idx: index
+  ) -> !felt.type {
+    %zero = felt.const 0
+    %one = felt.const 1
+    %two = felt.const 2
+    %arr = array.new %zero, %zero : !array.type<2 x !felt.type>
+    %i0 = arith.constant 0 : index
+    array.write %arr[%i0] = %one : !array.type<2 x !felt.type>, !felt.type
+    %dead = array.read %arr[%idx] : !array.type<2 x !felt.type>, !felt.type
+    array.write %arr[%i0] = %two : !array.type<2 x !felt.type>, !felt.type
+    function.return %two : !felt.type
+  }
+}
+// -----
+module attributes {llzk.lang} {
   // Detaching a dynamic aggregate alias must clear candidates shared with its source.
   function.def @dynamic_alias_detached_by_constant_write_preserves_source_candidate(
       %idx: index
