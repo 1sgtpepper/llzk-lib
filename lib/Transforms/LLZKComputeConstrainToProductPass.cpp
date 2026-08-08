@@ -52,7 +52,8 @@ FuncDefOp ProductAligner::alignFuncs(StructDefOp root, FuncDefOp compute, FuncDe
 
   OpBuilder funcBuilder(compute);
 
-  // Add compute/constrain attributes
+  // Mark every source operation with its product role so alignment and fusion can distinguish
+  // corresponding compute and constrain control flow.
   compute.walk([](Operation *op) { setProductSource(op, FUNC_NAME_COMPUTE); });
 
   constrain.walk([](Operation *op) { setProductSource(op, FUNC_NAME_CONSTRAIN); });

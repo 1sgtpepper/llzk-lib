@@ -113,18 +113,22 @@ def ComputeConstrainToProductPass
 
 def FuseProductLoopsPass : LLZKPass<"llzk-fuse-product-loops"> {
   let summary =
-      "Fuse matching witness/constraint control flow in a @product function";
+      "Fuse matching compute/constrain control flow in a @product function";
   let description = [{
     Fuses unambiguous compute/constrain sibling `scf.for` loops with matching trip counts and
-    sibling `scf.if` ops with the same SSA condition, same else structure, and a resultless
-    constrain side.
+    same-block sibling `scf.if` ops with the same SSA condition value, the same else-region
+    presence, and a resultless constrain `scf.if`. `scf.if` fusion requires exact SSA value identity
+    for the condition; it does not perform general signal-equivalence analysis.
 
     For `scf.if`, fusion is skipped if the moved constrain branch reads or writes storage, calls
-    functions (including witness functions), may trap, or has unknown effects. Constraint movement
-    is limited to `constrain.eq`, `constrain.in`, `llzk.nondet`, supported structured control flow,
-    and operations that MLIR proves pure. All attributes other than `product_source` must match
-    on the paired `scf.if` operations and corresponding terminators; matching attributes are
-    preserved on the fused operations.
+    functions (including compute functions), may trap, or has unknown effects. Constraint movement
+    is limited to `constrain.eq`, `constrain.in`, `llzk.nondet`, nested `scf.if`, speculatable
+    `scf.for`, and operations that MLIR proves pure. Unsupported structured control flow, such as
+    `scf.while`, and operations with allocation effects or unknown effects are rejected. The moved
+    constrain branch may cross only member writes whose value is a direct result of the compute
+    `scf.if`; member reads are neither hoisted nor remapped.
+    All attributes other than `product_source` must match on the paired `scf.if` operations and
+    corresponding terminators; matching attributes are preserved on the fused operations.
   }];
 }
 
