@@ -150,8 +150,8 @@ namespace {
 class ReferenceNode;
 using ReferenceNodePtr = std::shared_ptr<ReferenceNode>;
 using ReferenceNodeCloneMemo = DenseMap<const ReferenceNode *, ReferenceNodePtr>;
-using ReferenceNodeIntersectionMemo = DenseMap<
-    const ReferenceNode *, DenseMap<const ReferenceNode *, ReferenceNodePtr>>;
+using ReferenceNodeIntersectionMemo =
+    DenseMap<const ReferenceNode *, DenseMap<const ReferenceNode *, ReferenceNodePtr>>;
 
 /// @brief A node in a graph of references that represent known values. A node consists of:
 /// - An identifier (e.g., %self)
@@ -408,8 +408,7 @@ public:
   }
 
   friend ReferenceNodePtr greatestCommonSubtree(
-      const ReferenceNodePtr &lhs, const ReferenceNodePtr &rhs,
-      ReferenceNodeIntersectionMemo &memo
+      const ReferenceNodePtr &lhs, const ReferenceNodePtr &rhs, ReferenceNodeIntersectionMemo &memo
   ) {
     auto &rhsNodes = memo[lhs.get()];
     if (auto it = rhsNodes.find(rhs.get()); it != rhsNodes.end()) {
