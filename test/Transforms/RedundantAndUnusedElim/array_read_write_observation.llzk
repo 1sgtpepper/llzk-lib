@@ -359,8 +359,10 @@ module attributes {llzk.lang} {
     // Aggregate aliases must remain shared after cloning and CFG intersection.
     function.def @compute(%idx: index, %cond: i1) -> !struct.type<@PostRegionElement> {
       %self = struct.new : !struct.type<@PostRegionElement>
+      %zero = felt.const 0
       %one = felt.const 1
       %two = felt.const 2
+      struct.writem %self[@value] = %zero : !struct.type<@PostRegionElement>, !felt.type
       %arr = array.new %self, %self : !array.type<2 x !struct.type<@PostRegionElement>>
       scf.if %cond {
       } else {
