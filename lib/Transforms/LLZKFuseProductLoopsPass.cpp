@@ -92,7 +92,7 @@ static llvm::SMTExprRef tripCount(scf::ForOp op, llvm::SMTSolver *solver) {
 static inline bool canLoopsBeFused(scf::ForOp a, scf::ForOp b) {
   // A priori, two loops can be fused if:
   // 1. They live in the same parent region,
-  // 2. One comes from witgen and the other comes from constraint gen, and
+  // 2. One is compute-sourced and the other is constrain-sourced, and
   // 3. They have the same trip count
 
   // Check 1.
@@ -130,7 +130,7 @@ static inline bool canLoopsBeFused(scf::ForOp a, scf::ForOp b) {
   return !*solver->check();
 }
 
-/// Return whether two aligned operations came from opposite halves of a product function.
+/// Return whether one operation is compute-sourced and the other is constrain-sourced.
 static inline bool areOppositeProductSources(Operation *a, Operation *b) {
   std::optional<llvm::StringRef> sourceA = getProductSource(a);
   std::optional<llvm::StringRef> sourceB = getProductSource(b);
@@ -157,7 +157,7 @@ static std::optional<unsigned> getIfResultIndex(scf::IfOp ifOp, Value value) {
   return std::nullopt;
 }
 
-/// Return whether `op` is individually safe to move before an intervening member write.
+/// Return whether `op` may move with the constrain branch across compute-side operations.
 static bool isSafeToMoveConstrainOp(Operation *op) {
   // ConstraintOpInterface identifies constraint-producing operations but does not guarantee
   // movement safety. Keep this whitelist explicit until the interface carries that contract.
@@ -167,8 +167,8 @@ static bool isSafeToMoveConstrainOp(Operation *op) {
     return true;
   }
 
-  // The walk checks nested operations separately. Only admit the structured control-flow
-  // operations that this pass recurses into, and retain scf.for's termination requirement.
+  // Nested operations are checked by the walk separately. Admit only the structured control-flow
+  // operations this pass recurses into; scf.for must also pass MLIR's speculatability check.
   if (isa<scf::IfOp>(op)) {
     return true;
   }
@@ -195,11 +195,12 @@ static std::optional<DictionaryAttr> getCompatibleFusedAttrs(Operation *a, Opera
   return attrsA.getDictionary(a->getContext());
 }
 
-/// Return whether moving `constrainIf` before intervening operations can change its behavior.
+/// Return whether the constrain branch contains an operation unsafe to move across compute-side
+/// operations.
 ///
-/// Fusion clones the constrain branch into the earlier compute branch. An operation is therefore
-/// movable only when LLZK defines that movement as safe or MLIR proves it pure. This rejects reads,
-/// writes, calls, traps, and operations with unknown effects.
+/// The branch is cloned into the earlier compute branch. An operation is movable only when this
+/// pass explicitly admits it or MLIR proves it pure; the walk rejects reads, writes, calls, traps,
+/// and unknown effects.
 static bool hasUnsafeMovedConstrainOp(scf::IfOp constrainIf) {
   auto result = constrainIf->walk([&](Operation *op) {
     if (op == constrainIf.getOperation() || isa<scf::YieldOp>(op)) {
@@ -214,16 +215,16 @@ static bool hasUnsafeMovedConstrainOp(scf::IfOp constrainIf) {
   return result.wasInterrupted();
 }
 
-/// Map compute-if values used by `constrainIf` to the corresponding compute-if results.
+/// Collect the compute-if result mappings needed by `constrainIf` and reject unsafe crossings.
 ///
-/// The mapping is valid only when fusing the branches does not move constrain behavior across an
-/// operation whose state or evaluation order could be observed.
+/// The mapping lets cloned constrain operands use branch-local compute values; return false when
+/// intervening definitions or effects would make the move observable.
 static bool collectConstrainValueMappings(
     scf::IfOp computeIf, scf::IfOp constrainIf, llvm::DenseMap<Value, unsigned> &valueToResult
 ) {
-  // `scf.if` fusion moves the constrain branch before intervening member writes of compute-if
-  // results. The moved branch must not read members, write storage, call functions, or have
-  // write-like effects.
+  // Fusion clones the constrain branch before compute-side member writes. Only member writes whose
+  // value is a direct compute-if result are currently proven safe to cross; member reads, other
+  // storage operations, and intervening operations are rejected.
   for (Operation *op = computeIf->getNextNode(); op != constrainIf; op = op->getNextNode()) {
     if (auto writeOp = dyn_cast<MemberWriteOp>(op)) {
       std::optional<unsigned> resultIndex = getIfResultIndex(computeIf, writeOp.getVal());
@@ -235,13 +236,13 @@ static bool collectConstrainValueMappings(
 
     if (isa<MemberReadOp, llzk::global::GlobalReadOp, llzk::global::GlobalWriteOp,
             llzk::ram::LoadOp, llzk::ram::StoreOp>(op)) {
-      // Moving the constrain branch across storage access can change which state it observes or
-      // mutates. In particular, replacing a member read with a branch-local value can also remove
-      // the member signal from emitted constraints.
+      // Moving the constrain branch across storage access changes the state it observes. Replacing
+      // a member read with a branch-local value would also remove that member signal from emitted
+      // constraints.
       return false;
     }
 
-    // Only the mapped member writes above are currently proven safe to cross.
+    // No other operation between the sibling ifs is currently proven safe to cross.
     return false;
   }
 
@@ -272,6 +273,7 @@ static bool collectConstrainValueMappings(
   return !result.wasInterrupted();
 }
 
+/// Return whether two marked sibling `scf.if` ops satisfy the conservative fusion contract.
 static bool canIfsBeFused(scf::IfOp a, scf::IfOp b) {
   if (a->getBlock() != b->getBlock()) {
     return false;
@@ -313,6 +315,7 @@ static bool canIfsBeFused(scf::IfOp a, scf::IfOp b) {
   return collectConstrainValueMappings(computeIf, constrainIf, valueToResult);
 }
 
+/// Remove the destination block's existing `scf.yield` before appending a cloned branch.
 static void eraseDefaultTerminator(Block *block) {
   if (!block->empty()) {
     if (auto yieldOp = dyn_cast<scf::YieldOp>(block->back())) {
@@ -321,6 +324,8 @@ static void eraseDefaultTerminator(Block *block) {
   }
 }
 
+/// Clone compute and constrain branch bodies into `destBlock` and rebuild a compatible yield.
+/// Compute results are remapped to the branch-local values used by constrain operations.
 static void cloneIfBranch(
     Block *computeBlock, Block *constrainBlock, Block *destBlock,
     const llvm::DenseMap<Value, unsigned> &valueToResult, OpBuilder &builder
@@ -355,6 +360,7 @@ static void cloneIfBranch(
   fusedYield->setAttrs(*yieldAttrs);
 }
 
+/// Replace a checked compute/constrain `scf.if` pair with one fused `scf.if`.
 static LogicalResult
 fuseIfPair(scf::IfOp a, scf::IfOp b, MLIRContext *context, IRRewriter &rewriter) {
   scf::IfOp computeIf = hasProductSource(a, FUNC_NAME_COMPUTE) ? a : b;
@@ -398,6 +404,7 @@ fuseIfPair(scf::IfOp a, scf::IfOp b, MLIRContext *context, IRRewriter &rewriter)
   return success();
 }
 
+/// Fuse uniquely matchable marked compute/constrain `scf.if` pairs in `body`.
 static LogicalResult fuseMatchingIfPairs(Region &body, MLIRContext *context) {
   llvm::SmallVector<scf::IfOp> witnessIfs, constraintIfs;
   body.walk<WalkOrder::PreOrder>([&](scf::IfOp ifOp) {
@@ -469,8 +476,9 @@ prepareForFusion(scf::ForOp witnessLoop, scf::ForOp constraintLoop, IRRewriter &
   return success();
 }
 
+/// Fuse uniquely matchable marked compute/constrain `scf.for` pairs in `body`.
 static LogicalResult fuseMatchingLoopPairs(Region &body, MLIRContext *context) {
-  // Start by collecting all possible loops
+  // Collect marked loops before matching unique compute/constrain pairs.
   llvm::SmallVector<scf::ForOp> witnessLoops, constraintLoops;
   body.walk<WalkOrder::PreOrder>([&witnessLoops, &constraintLoops](scf::ForOp forOp) {
     std::optional<llvm::StringRef> productSource = getProductSource(forOp);
@@ -482,7 +490,7 @@ static LogicalResult fuseMatchingLoopPairs(Region &body, MLIRContext *context) {
     } else if (*productSource == FUNC_NAME_CONSTRAIN) {
       constraintLoops.push_back(forOp);
     }
-    // Skipping here, because any nested loops can't possibly be fused at this stage
+    // Defer nested loops until their enclosing pair has been fused.
     return WalkResult::skip();
   });
 
@@ -492,12 +500,12 @@ static LogicalResult fuseMatchingLoopPairs(Region &body, MLIRContext *context) {
       witnessLoops, constraintLoops, canLoopsBeFused
   );
 
-  // This shouldn't happen, since we allow partial matches
+  // Preserve the failure path even though the matcher normally permits partial matches.
   if (failed(fusionCandidates)) {
     return failure();
   }
 
-  // Finally, fuse all the marked loops...
+  // Fuse each unambiguous pair; leave preparation failures unchanged.
   IRRewriter rewriter {context};
   for (auto [w, c] : *fusionCandidates) {
     if (failed(prepareForFusion(w, c, rewriter))) {
@@ -505,7 +513,7 @@ static LogicalResult fuseMatchingLoopPairs(Region &body, MLIRContext *context) {
     }
     auto fusedLoop = fuseIndependentSiblingForLoops(w, c, rewriter);
     setProductSource(fusedLoop, "fused");
-    // ...and recurse to fuse nested control flow
+    // Recurse so nested if/loop pairs become eligible after loop fusion.
     if (failed(fuseMatchingRegionControlFlow(fusedLoop.getBodyRegion(), context))) {
       return failure();
     }
@@ -513,6 +521,7 @@ static LogicalResult fuseMatchingLoopPairs(Region &body, MLIRContext *context) {
   return success();
 }
 
+/// Fuse marked `scf.if` pairs and then `scf.for` pairs in `body`.
 static LogicalResult fuseMatchingRegionControlFlow(Region &body, MLIRContext *context) {
   if (failed(fuseMatchingIfPairs(body, context))) {
     return failure();

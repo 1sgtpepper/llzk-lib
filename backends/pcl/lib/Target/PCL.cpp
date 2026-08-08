@@ -59,7 +59,7 @@ struct NameState {
 
   /// Sets the name of the given value.
   ///
-  /// If the value already had a mapping, it is overriden.
+  /// If the value already had a mapping, it is overridden.
   void set(Value v, std::string name) { names[v] = std::move(name); }
 };
 
@@ -74,7 +74,7 @@ LogicalResult prologue(ModuleOp mod, pcl::Sexps &S) {
   return success();
 }
 
-/// Handles emission of the s-expressions representing a PCL module by a `func.func` operation.
+/// Handles emission of s-expressions for a PCL module represented by a `func.func` operation.
 class ModuleEmitter {
   NameState ns;
   func::FuncOp func;
@@ -166,7 +166,7 @@ class ModuleEmitter {
     return S.sexp({S.atom(sym), *lhs, *rhs});
   }
 
-  /// Helper for emitting an unary expression's s-expressions.
+  /// Helper for emitting a unary expression as an s-expression.
   FailureOr<pcl::Sexp> emitUnaryExpr(llvm::StringLiteral sym, Value v, pcl::Sexps &S) {
     auto vs = emitExpr(v, S);
     if (failed(vs)) {
@@ -189,7 +189,7 @@ class ModuleEmitter {
     return S.sexp({S.atom(sym), *lhs, *rhs});
   }
 
-  /// Helper for emitting an unary formula's s-expressions.
+  /// Helper for emitting a unary formula as an s-expression.
   FailureOr<pcl::Sexp> emitUnaryFormula(llvm::StringLiteral sym, Value v, pcl::Sexps &S) {
     auto vs = emitFormula(v, S);
     if (failed(vs)) {

@@ -394,7 +394,7 @@ template <typename T, typename Fn> SmallVector<T> mapOutputMembers(StructDefOp o
   return out;
 }
 
-/// Converts `function.return` ops into pcl return ops.
+/// Converts `function.return` ops in struct constrain functions into PCL return ops.
 struct ConvertReturnOp : public OpConversionPattern<ReturnOp> {
   using OpConversionPattern<ReturnOp>::OpConversionPattern;
 
@@ -475,7 +475,7 @@ public:
       if (!llvm::isa<FeltType>(argType)) {
         return constrainFuncOp.emitError()
                << "Constrain function's args are expected to be felts. Found " << argType
-               << "for arg #: " << srcArg.getArgNumber();
+               << " for arg #: " << srcArg.getArgNumber();
       }
       mapping.map(srcArg, dstArg);
     }
@@ -550,7 +550,7 @@ struct ConvertConstrainCall : public OpConversionPattern<CallOp> {
     }
 
     if (!callee->get().isStructConstrain()) {
-      // We only care about constrain functions.
+      // Only struct constrain calls are lowered in this conversion step.
       return failure();
     }
 
@@ -643,19 +643,19 @@ static void populateStep3ConversionPatterns(
 static bool isStep1LegalOp(Operation *op) {
   auto structDefOp = op->getParentOfType<StructDefOp>();
   if (!structDefOp) {
-    // Legal because is not within a struct definition.
+    // An operation outside a struct definition is legal.
     return true;
   }
   auto funcDefOp = op->getParentOfType<FuncDefOp>();
   if (!funcDefOp) {
-    // Legal because is not within a function definition.
+    // An operation outside a function definition is legal.
     return true;
   }
-  // Legal if the containing function definition is not the struct's constrain function.
+  // Within a struct, an operation is legal if it is not in the constrain function.
   return structDefOp.getConstrainFuncOp() != funcDefOp;
 }
 
-/// Populates the conversion target with the legallity expected of step 1 of the conversion.
+/// Populates the conversion target with the legality expected of step 1 of the conversion.
 static void populateStep1ConversionTarget(ConversionTarget &target, NonDetOpNames &names) {
   target.addLegalDialect<pcl::PCLDialect, func::FuncDialect>();
   target.addLegalOp<ModuleOp, UnrealizedConversionCastOp>();
@@ -670,14 +670,14 @@ static void populateStep1ConversionTarget(ConversionTarget &target, NonDetOpName
   });
 }
 
-/// Populates the conversion target with the legallity expected of step 2 of the conversion.
+/// Populates the conversion target with the legality expected of step 2 of the conversion.
 static void populateStep2ConversionTarget(ConversionTarget &target) {
   target.addLegalDialect<pcl::PCLDialect>();
   target.addLegalOp<ModuleOp, func::FuncOp, func::CallOp, func::ReturnOp>();
   target.addIllegalOp<StructDefOp>();
 }
 
-/// Populates the conversion target with the legalluty expected of step 3 of the conversion.
+/// Populates the conversion target with the legality expected of step 3 of the conversion.
 static void populateStep3ConversionTarget(
     ConversionTarget &target, DupVarsReplacements &replacements, ModuleOp root
 ) {

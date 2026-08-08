@@ -1,5 +1,5 @@
-// REQUIRES: with-pcl
 // RUN: llzk-opt -I %S -split-input-file -llzk-to-pcl -verify-diagnostics %s
+// REQUIRES: with-pcl
 
 // Expect the test to fail because the ComponentA2's constrain arg is not a felt
 !F = !felt.type<"bn128">
@@ -12,7 +12,7 @@ module attributes {llzk.lang} {
       function.return %self : !struct.type<@ComponentA2>
     }
 
-    // expected-error@+1 {{Constrain function's args are expected to be felts. Found '!struct.type<@ComponentA1>'for arg #: 1}}
+    // expected-error@+1 {{Constrain function's args are expected to be felts. Found '!struct.type<@ComponentA1>' for arg #: 1}}
     function.def @constrain(%self: !struct.type<@ComponentA2>, %p: !struct.type<@ComponentA1>) {
       function.return
     }
