@@ -1,5 +1,5 @@
 added:
-  - Fusion for matching compute/constrain `scf.if` regions in product programs
+  - Fusion for matching compute/constrain `scf.if` operations in product programs
 
 changed:
-  - Preserve compatible `scf.if` and `scf.yield` attributes during fusion and skip conflicting pairs
+  - Preserve compatible attributes on fused `scf.if` and `scf.yield` operations; skip conflicting pairs

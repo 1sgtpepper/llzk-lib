@@ -20,7 +20,7 @@
 
 namespace llzk {
 
-/// Return the product provenance recorded on an aligned or fused operation, if present.
+/// Return the product-source value stored directly on `op`, if present.
 inline std::optional<llvm::StringRef> getProductSource(mlir::Operation *op) {
   if (mlir::StringAttr source = op->getAttrOfType<mlir::StringAttr>(PRODUCT_SOURCE)) {
     return source.getValue();
@@ -28,14 +28,13 @@ inline std::optional<llvm::StringRef> getProductSource(mlir::Operation *op) {
   return std::nullopt;
 }
 
-/// Return whether an operation records the requested product provenance.
+/// Return whether `op` stores the requested product-source value.
 inline bool hasProductSource(mlir::Operation *op, llvm::StringRef source) {
   std::optional<llvm::StringRef> productSource = getProductSource(op);
   return productSource && *productSource == source;
 }
 
-/// Record the product provenance of an operation produced while aligning or fusing
-/// product functions.
+/// Set the product-source value used to classify aligned and fused operations.
 inline void setProductSource(mlir::Operation *op, llvm::StringRef source) {
   op->setAttr(PRODUCT_SOURCE, mlir::StringAttr::get(op->getContext(), source));
 }
