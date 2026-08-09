@@ -451,9 +451,10 @@ module attributes {llzk.lang} {
 module attributes {llzk.lang} {
   struct.def @ArrayReferenceElement {
     struct.member @value : !felt.type
+    struct.member @result : !felt.type
 
     // Struct elements remain reference-semantic when stored in arrays.
-    function.def @compute() -> !felt.type {
+    function.def @compute() -> !struct.type<@ArrayReferenceElement> {
       %self = struct.new : !struct.type<@ArrayReferenceElement>
       %one = felt.const 1
       %two = felt.const 2
@@ -469,7 +470,9 @@ module attributes {llzk.lang} {
           !struct.type<@ArrayReferenceElement>, !felt.type
       %observed = struct.readm %selected[@value] :
           !struct.type<@ArrayReferenceElement>, !felt.type
-      function.return %observed : !felt.type
+      struct.writem %self[@result] = %observed :
+          !struct.type<@ArrayReferenceElement>, !felt.type
+      function.return %self : !struct.type<@ArrayReferenceElement>
     }
     function.def @constrain(
         %self: !struct.type<@ArrayReferenceElement>
@@ -479,7 +482,8 @@ module attributes {llzk.lang} {
 // CHECK-LABEL: module attributes {llzk.lang} {
 // CHECK-NEXT:    struct.def @ArrayReferenceElement {
 // CHECK-NEXT:      struct.member @value : !felt.type
-// CHECK-NEXT:      function.def @compute() -> !felt.type attributes {function.allow_witness} {
+// CHECK-NEXT:      struct.member @result : !felt.type
+// CHECK-NEXT:      function.def @compute() -> !struct.type<@ArrayReferenceElement> attributes {function.allow_witness} {
 // CHECK-NEXT:        %[[VAL_0:[0-9a-zA-Z_\.]+]] = struct.new : <@ArrayReferenceElement>
 // CHECK-NEXT:        %[[VAL_1:[0-9a-zA-Z_\.]+]] = felt.const  1
 // CHECK-NEXT:        %[[VAL_2:[0-9a-zA-Z_\.]+]] = felt.const  2
@@ -489,7 +493,8 @@ module attributes {llzk.lang} {
 // CHECK-NEXT:        %[[VAL_5:[0-9a-zA-Z_\.]+]] = array.read %[[VAL_4]]{{\[}}%[[VAL_3]]] : <2 x !struct.type<@ArrayReferenceElement>>, !struct.type<@ArrayReferenceElement>
 // CHECK-NEXT:        struct.writem %[[VAL_0]][@value] = %[[VAL_2]] : <@ArrayReferenceElement>, !felt.type
 // CHECK-NEXT:        %[[VAL_6:[0-9a-zA-Z_\.]+]] = struct.readm %[[VAL_5]][@value] : <@ArrayReferenceElement>, !felt.type
-// CHECK-NEXT:        function.return %[[VAL_6]] : !felt.type
+// CHECK-NEXT:        struct.writem %[[VAL_0]][@result] = %[[VAL_6]] : <@ArrayReferenceElement>, !felt.type
+// CHECK-NEXT:        function.return %[[VAL_0]] : !struct.type<@ArrayReferenceElement>
 // CHECK-NEXT:      }
 // CHECK-NEXT:      function.def @constrain(%[[VAL_7:[0-9a-zA-Z_\.]+]]: !struct.type<@ArrayReferenceElement>) attributes {function.allow_constraint} {
 // CHECK-NEXT:        function.return
