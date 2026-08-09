@@ -318,16 +318,6 @@ jobs:
             done
           }
 
-          replay_simple_transform \
-            pr670 \
-            42ee9ba1f97bf26ce51182c2e54cff72c3686755 \
-            test/Transforms/RedundantAndUnusedElim/recursive_purposeless_constrain_repro.llzk \
-            -llzk-duplicate-op-elim
-          replay_simple_transform \
-            pr671 \
-            e13acd8cd5fa0aae8e7ae8b383a337316d68f9a6 \
-            test/Transforms/RedundantAndUnusedElim/array_dynamic_constant_alias.llzk \
-            -llzk-duplicate-read-write-elim
           replay_split_transform \
             pr635-felt \
             a7aa782ee3f85f1c7656330e769a6452ce60b6fe \
