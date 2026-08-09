@@ -137,60 +137,69 @@ module attributes {llzk.lang} {
 }
 // -----
 module attributes {llzk.lang} {
-  struct.def @UnknownStructRootElement {
+  struct.def @UnknownStructReadElement {
     struct.member @value : !felt.type
     struct.member @result : !felt.type
 
     // An unknown struct read must protect a possibly observed source write.
-    function.def @unknown_read_observes_source_write(
+    function.def @compute(
         %cond: i1
-    ) -> !struct.type<@UnknownStructRootElement>
+    ) -> !struct.type<@UnknownStructReadElement>
         attributes {function.allow_witness} {
-      %self = struct.new : !struct.type<@UnknownStructRootElement>
+      %self = struct.new : !struct.type<@UnknownStructReadElement>
       %one = felt.const 1
       %two = felt.const 2
-      %alias = scf.if %cond -> (!struct.type<@UnknownStructRootElement>) {
-        scf.yield %self : !struct.type<@UnknownStructRootElement>
+      %alias = scf.if %cond -> (!struct.type<@UnknownStructReadElement>) {
+        scf.yield %self : !struct.type<@UnknownStructReadElement>
       } else {
-        scf.yield %self : !struct.type<@UnknownStructRootElement>
+        scf.yield %self : !struct.type<@UnknownStructReadElement>
       }
       struct.writem %self[@value] = %one :
-          !struct.type<@UnknownStructRootElement>, !felt.type
+          !struct.type<@UnknownStructReadElement>, !felt.type
       %observed = struct.readm %alias[@value] :
-          !struct.type<@UnknownStructRootElement>, !felt.type
+          !struct.type<@UnknownStructReadElement>, !felt.type
       struct.writem %self[@value] = %two :
-          !struct.type<@UnknownStructRootElement>, !felt.type
+          !struct.type<@UnknownStructReadElement>, !felt.type
       struct.writem %self[@result] = %observed :
-          !struct.type<@UnknownStructRootElement>, !felt.type
-      function.return %self : !struct.type<@UnknownStructRootElement>
-    }
-
-    // An unknown struct write must invalidate facts for every possible source alias.
-    function.def @unknown_write_invalidates_source(
-        %cond: i1
-    ) -> !struct.type<@UnknownStructRootElement>
-        attributes {function.allow_witness} {
-      %self = struct.new : !struct.type<@UnknownStructRootElement>
-      %one = felt.const 1
-      %two = felt.const 2
-      %alias = scf.if %cond -> (!struct.type<@UnknownStructRootElement>) {
-        scf.yield %self : !struct.type<@UnknownStructRootElement>
-      } else {
-        scf.yield %self : !struct.type<@UnknownStructRootElement>
-      }
-      struct.writem %self[@value] = %one :
-          !struct.type<@UnknownStructRootElement>, !felt.type
-      struct.writem %alias[@value] = %two :
-          !struct.type<@UnknownStructRootElement>, !felt.type
-      %observed = struct.readm %self[@value] :
-          !struct.type<@UnknownStructRootElement>, !felt.type
-      struct.writem %self[@result] = %observed :
-          !struct.type<@UnknownStructRootElement>, !felt.type
-      function.return %self : !struct.type<@UnknownStructRootElement>
+          !struct.type<@UnknownStructReadElement>, !felt.type
+      function.return %self : !struct.type<@UnknownStructReadElement>
     }
 
     function.def @constrain(
-        %self: !struct.type<@UnknownStructRootElement>, %cond: i1
+        %self: !struct.type<@UnknownStructReadElement>, %cond: i1
+    ) attributes {function.allow_constraint} { function.return }
+  }
+
+  struct.def @UnknownStructWriteElement {
+    struct.member @value : !felt.type
+    struct.member @result : !felt.type
+
+    // An unknown struct write must invalidate facts for every possible source alias.
+    function.def @compute(
+        %cond: i1
+    ) -> !struct.type<@UnknownStructWriteElement>
+        attributes {function.allow_witness} {
+      %self = struct.new : !struct.type<@UnknownStructWriteElement>
+      %one = felt.const 1
+      %two = felt.const 2
+      %alias = scf.if %cond -> (!struct.type<@UnknownStructWriteElement>) {
+        scf.yield %self : !struct.type<@UnknownStructWriteElement>
+      } else {
+        scf.yield %self : !struct.type<@UnknownStructWriteElement>
+      }
+      struct.writem %self[@value] = %one :
+          !struct.type<@UnknownStructWriteElement>, !felt.type
+      struct.writem %alias[@value] = %two :
+          !struct.type<@UnknownStructWriteElement>, !felt.type
+      %observed = struct.readm %self[@value] :
+          !struct.type<@UnknownStructWriteElement>, !felt.type
+      struct.writem %self[@result] = %observed :
+          !struct.type<@UnknownStructWriteElement>, !felt.type
+      function.return %self : !struct.type<@UnknownStructWriteElement>
+    }
+
+    function.def @constrain(
+        %self: !struct.type<@UnknownStructWriteElement>, %cond: i1
     ) attributes {function.allow_constraint} { function.return }
   }
 }
