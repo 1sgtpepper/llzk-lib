@@ -52,7 +52,7 @@ using namespace mlir;
 using namespace llzk;
 using namespace llzk::component;
 
-static LogicalResult fuseMatchingRegionControlFlow(Region &body, MLIRContext *context);
+static void fuseMatchingRegionControlFlow(Region &body, MLIRContext *context);
 static inline bool areOppositeProductSources(Operation *a, Operation *b);
 
 // Bitwidth of `index` for instantiating SMT variables
@@ -364,8 +364,7 @@ static void cloneIfBranch(
 }
 
 /// Replace a checked compute/constrain `scf.if` pair with one fused `scf.if`.
-static LogicalResult
-fuseIfPair(scf::IfOp a, scf::IfOp b, MLIRContext *context, IRRewriter &rewriter) {
+static void fuseIfPair(scf::IfOp a, scf::IfOp b, MLIRContext *context, IRRewriter &rewriter) {
   scf::IfOp computeIf = hasProductSource(a, FUNC_NAME_COMPUTE) ? a : b;
   scf::IfOp constrainIf = computeIf == a ? b : a;
 
@@ -393,25 +392,19 @@ fuseIfPair(scf::IfOp a, scf::IfOp b, MLIRContext *context, IRRewriter &rewriter)
     );
   }
 
-  // Recursive fusion runs after cloning; roll back the provisional op before reporting failure.
-  if (failed(fuseMatchingRegionControlFlow(fusedIf.getThenRegion(), context))) {
-    rewriter.eraseOp(fusedIf);
-    return failure();
-  }
-  if (!fusedIf.getElseRegion().empty() &&
-      failed(fuseMatchingRegionControlFlow(fusedIf.getElseRegion(), context))) {
-    rewriter.eraseOp(fusedIf);
-    return failure();
+  fuseMatchingRegionControlFlow(fusedIf.getThenRegion(), context);
+  if (!fusedIf.getElseRegion().empty()) {
+    fuseMatchingRegionControlFlow(fusedIf.getElseRegion(), context);
   }
 
   computeIf->replaceAllUsesWith(fusedIf->getResults());
   rewriter.eraseOp(constrainIf);
   rewriter.eraseOp(computeIf);
-  return success();
 }
 
-/// Fuse uniquely matchable marked compute/constrain `scf.if` pairs in `body`.
-static LogicalResult fuseMatchingIfPairs(Region &body, MLIRContext *context) {
+/// Fuse uniquely matchable marked compute/constrain `scf.if` pairs in `body`; leave unmatched pairs
+/// unchanged.
+static void fuseMatchingIfPairs(Region &body, MLIRContext *context) {
   llvm::SmallVector<scf::IfOp> witnessIfs, constraintIfs;
   body.walk<WalkOrder::PreOrder>([&](scf::IfOp ifOp) {
     std::optional<llvm::StringRef> productSource = getProductSource(ifOp);
@@ -426,20 +419,14 @@ static LogicalResult fuseMatchingIfPairs(Region &body, MLIRContext *context) {
     return WalkResult::skip();
   });
 
-  auto fusionCandidates =
-      alignmentHelpers::getMatchingPairs<scf::IfOp>(witnessIfs, constraintIfs, canIfsBeFused);
-  if (failed(fusionCandidates)) {
-    return failure();
-  }
+  auto fusionCandidates = *alignmentHelpers::getMatchingPairs<scf::IfOp>(
+      witnessIfs, constraintIfs, canIfsBeFused, /*allowPartial=*/true
+  );
 
   IRRewriter rewriter {context};
-  for (auto [w, c] : *fusionCandidates) {
-    if (failed(fuseIfPair(w, c, context, rewriter))) {
-      return failure();
-    }
+  for (auto [w, c] : fusionCandidates) {
+    fuseIfPair(w, c, context, rewriter);
   }
-
-  return success();
 }
 
 /// Determine which ops need to sink past `constraintLoop`, or return failure() if some of these
@@ -482,8 +469,9 @@ prepareForFusion(scf::ForOp witnessLoop, scf::ForOp constraintLoop, IRRewriter &
   return success();
 }
 
-/// Fuse uniquely matchable marked compute/constrain `scf.for` pairs in `body`.
-static LogicalResult fuseMatchingLoopPairs(Region &body, MLIRContext *context) {
+/// Fuse uniquely matchable marked compute/constrain `scf.for` pairs in `body`; leave unmatched or
+/// unpreparable pairs unchanged.
+static void fuseMatchingLoopPairs(Region &body, MLIRContext *context) {
   // Collect marked loops before matching unique compute/constrain pairs.
   llvm::SmallVector<scf::ForOp> witnessLoops, constraintLoops;
   body.walk<WalkOrder::PreOrder>([&witnessLoops, &constraintLoops](scf::ForOp forOp) {
@@ -502,37 +490,27 @@ static LogicalResult fuseMatchingLoopPairs(Region &body, MLIRContext *context) {
 
   // A pair of loops will be fused iff (1) they can be fused according to the rules above, and (2)
   // neither can be fused with anything else (so there's no ambiguity)
-  auto fusionCandidates = alignmentHelpers::getMatchingPairs<scf::ForOp>(
-      witnessLoops, constraintLoops, canLoopsBeFused
+  auto fusionCandidates = *alignmentHelpers::getMatchingPairs<scf::ForOp>(
+      witnessLoops, constraintLoops, canLoopsBeFused, /*allowPartial=*/true
   );
-
-  // Preserve the failure path even though the matcher normally permits partial matches.
-  if (failed(fusionCandidates)) {
-    return failure();
-  }
 
   // Fuse each unambiguous pair; leave preparation failures unchanged.
   IRRewriter rewriter {context};
-  for (auto [w, c] : *fusionCandidates) {
+  for (auto [w, c] : fusionCandidates) {
     if (failed(prepareForFusion(w, c, rewriter))) {
       continue;
     }
     auto fusedLoop = fuseIndependentSiblingForLoops(w, c, rewriter);
     setProductSource(fusedLoop, "fused");
     // Recurse so nested if/loop pairs become eligible after loop fusion.
-    if (failed(fuseMatchingRegionControlFlow(fusedLoop.getBodyRegion(), context))) {
-      return failure();
-    }
+    fuseMatchingRegionControlFlow(fusedLoop.getBodyRegion(), context);
   }
-  return success();
 }
 
 /// Fuse marked `scf.if` pairs and then `scf.for` pairs in `body`.
-static LogicalResult fuseMatchingRegionControlFlow(Region &body, MLIRContext *context) {
-  if (failed(fuseMatchingIfPairs(body, context))) {
-    return failure();
-  }
-  return fuseMatchingLoopPairs(body, context);
+static void fuseMatchingRegionControlFlow(Region &body, MLIRContext *context) {
+  fuseMatchingIfPairs(body, context);
+  fuseMatchingLoopPairs(body, context);
 }
 
 class PassImpl : public llzk::impl::FuseProductLoopsPassBase<PassImpl> {
@@ -543,9 +521,7 @@ class PassImpl : public llzk::impl::FuseProductLoopsPassBase<PassImpl> {
     ModuleOp mod = getOperation();
     mod.walk([this](function::FuncDefOp funcDef) {
       if (funcDef.isStructProduct()) {
-        if (failed(fuseMatchingRegionControlFlow(funcDef.getFunctionBody(), &getContext()))) {
-          signalPassFailure();
-        }
+        fuseMatchingRegionControlFlow(funcDef.getFunctionBody(), &getContext());
       }
     });
   }
