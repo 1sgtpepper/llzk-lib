@@ -1,0 +1,36 @@
+name: FileCheck probe
+
+on:
+  push:
+    branches:
+      - ci/verify-pr484-filecheck-probe-20260809
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Install FileCheck
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y llvm-18-tools
+      - name: Check location alias patterns
+        run: |
+          filecheck="$(find /usr/lib/llvm-* -type f -name FileCheck -executable -print -quit)"
+          test -x "$filecheck"
+          cat > "$RUNNER_TEMP/input.llzk" <<'EOF'
+          #loc4 = loc("/home/runner/work/_temp/llzk-pr484-if-locations/test/Transforms/FuseProductLoops/fuse_if_preserves_locations.llzk":7:27)
+          module attributes {llzk.lang = "llzk"} {
+          }
+          #loc = loc("/home/runner/work/_temp/llzk-pr484-if-locations/test/Transforms/FuseProductLoops/fuse_if_preserves_locations.llzk":3:1)
+          EOF
+          cat > "$RUNNER_TEMP/checks.txt" <<'EOF'
+          // CHECK: #[[$ATTR_0:[0-9a-zA-Z_\.]+]] = loc("/home/runner/work/_temp/llzk-pr484-if-locations/test/Transforms/FuseProductLoops/fuse_if_preserves_locations.llzk":7:27)
+          // CHECK: #[[$ATTR_1:[0-9a-zA-Z_\.]+]] = loc("/home/runner/work/_temp/llzk-pr484-if-locations/test/Transforms/FuseProductLoops/fuse_if_preserves_locations.llzk":3:1)
+          EOF
+          "$filecheck" --enable-var-scope "$RUNNER_TEMP/checks.txt" < "$RUNNER_TEMP/input.llzk"
