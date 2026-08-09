@@ -14,6 +14,7 @@
 #include "llzk/Analysis/SourceRef.h"
 #include "llzk/Dialect/Felt/IR/Attrs.h"
 #include "llzk/Dialect/Felt/IR/Types.h"
+#include "llzk/Dialect/Global/IR/Ops.h"
 #include "llzk/Dialect/LLZK/IR/Ops.h"
 #include "llzk/Dialect/Polymorphic/IR/Ops.h"
 #include "llzk/Dialect/Verif/Util/ForbiddenPreconditionInfluence.h"
@@ -22,6 +23,7 @@
 #include "llzk/Util/ErrorHelper.h"
 #include "llzk/Util/SymbolHelper.h"
 #include "llzk/Util/SymbolTableLLZK.h"
+#include "llzk/Util/TypeHelper.h"
 #include "llzk/Util/Walk.h"
 
 #include <mlir/Dialect/Arith/IR/Arith.h>
@@ -781,19 +783,31 @@ LogicalResult IncludeOp::verifyTemplateParamCompatibility(
   if (std::optional<Type> declaredType = targetParam.getTypeOpt()) {
     // Note: `declaredType` is restricted by `isValidConstReadType()`
     bool compatible = false;
-    if (llvm::isa<TypeVarType>(*declaredType)) {
-      compatible = llvm::isa<TypeAttr>(paramFromIncludeOp);
-    } else if (llvm::isa<FeltType>(*declaredType)) {
-      compatible = llvm::isa<FeltConstAttr, IntegerAttr>(paramFromIncludeOp) &&
-                   isValidConstReadType(llvm::cast<TypedAttr>(paramFromIncludeOp).getType());
-    } else if (llvm::isa<IndexType, IntegerType>(*declaredType)) {
-      // Note: Just like struct type instantiation, there is no restriction on passing a
-      // larger value to an `i1`. The flattening pass will treat 0 as false and any other
-      // value as true (but give a warning if it's not 1).
-      compatible = llvm::isa<IntegerAttr>(paramFromIncludeOp) &&
-                   isValidConstReadType(llvm::cast<TypedAttr>(paramFromIncludeOp).getType());
+    if (auto sym = llvm::dyn_cast<SymbolRefAttr>(paramFromIncludeOp)) {
+      bool resolvedLocal = false;
+      if (sym.getNestedReferences().empty()) {
+        SymbolTableCollection tables;
+        FailureOr<TemplateOp> parentTemplate = getConstResolutionTemplate(tables, *this);
+        if (failed(parentTemplate)) {
+          return failure();
+        }
+        if (TemplateOp p = *parentTemplate) {
+          auto binding = p.getConstNamed<TemplateSymbolBindingOpInterface>(sym.getRootReference());
+          if (binding) {
+            resolvedLocal = true;
+            compatible = isTemplateParamTypeCompatible(binding.getTypeOpt(), *declaredType);
+          }
+        }
+      }
+      if (!resolvedLocal) {
+        SymbolTableCollection tables;
+        if (auto global = lookupTopLevelSymbol<global::GlobalDefOp>(tables, sym, *this, false);
+            succeeded(global)) {
+          compatible = isTemplateParamTypeCompatible(global->get().getType(), *declaredType);
+        }
+      }
     } else {
-      llvm_unreachable("inconsistent with `isValidConstReadType()`");
+      compatible = succeeded(materializeTemplateParamValue(paramFromIncludeOp, declaredType));
     }
     if (!compatible) {
       return this->emitOpError().append(
@@ -825,6 +839,29 @@ LogicalResult IncludeOp::verifyTemplateParamsMatchInferred(
     const UnificationMap &unifications
 ) {
   ArrayAttr callParams = this->getTemplateParamsAttr();
+  if (isNullOrEmpty(callParams)) {
+    for (TemplateParamOp paramOp : targetParamDefs) {
+      if (std::optional<Type> declaredType = paramOp.getTypeOpt();
+          declaredType && llvm::isa<TypeVarType>(*declaredType)) {
+        continue;
+      }
+      auto it = unifications.find({FlatSymbolRefAttr::get(paramOp.getNameAttr()), Side::RHS});
+      if (it == unifications.end()) {
+        // No inferred value means the signature did not expose this parameter to this include.
+        continue;
+      }
+      if (!it->second) {
+        return this->emitOpError().append(
+            "cannot infer template instantiation value for parameter \"@", paramOp.getName(),
+            "\" from contract type signature"
+        );
+      }
+      if (failed(verifyTemplateParamCompatibility(it->second, paramOp))) {
+        return failure();
+      }
+    }
+    return success();
+  }
   assert(!isNullOrEmpty(callParams) && "pre-condition");
   assert((callParams.size() == llvm::range_size(targetParamDefs)) && "pre-condition");
 
@@ -836,10 +873,20 @@ LogicalResult IncludeOp::verifyTemplateParamsMatchInferred(
       }
     }
     auto it = unifications.find({FlatSymbolRefAttr::get(paramOp.getNameAttr()), Side::RHS});
-    if (it != unifications.end() && !typeParamsUnify({attr}, {it->second})) {
+    if (it != unifications.end() && !it->second) {
+      return this->emitOpError().append(
+          "cannot infer a unique template instantiation value for parameter \"@", paramOp.getName(),
+          "\" from contract type signature"
+      );
+    }
+    if (it != unifications.end() && failed(verifyTemplateParamCompatibility(it->second, paramOp))) {
+      return failure();
+    }
+    if (it != unifications.end() &&
+        !templateParamValuesUnify(attr, it->second, paramOp.getTypeOpt())) {
       return this->emitOpError().append(
           "template instantiation value '", attr, "' for parameter \"@", paramOp.getName(),
-          "\" conflicts with value '", it->second, "' inferred from function type signature"
+          "\" conflicts with value '", it->second, "' inferred from contract type signature"
       );
     }
   }
@@ -904,7 +951,7 @@ struct KnownTargetVerifier : public IncludeOpVerifier {
       auto realParams = tgtOpParent.getConstOps<TemplateParamOp>();
       ArrayAttr callParams = includeOp->getTemplateParamsAttr();
 
-      // When there is no instantiation list, just ensure that it's not required.
+      // When every parameter appears in the signature, infer and validate omitted arguments.
       if (isNullOrEmpty(callParams)) {
         llvm::SmallDenseSet<SymbolRefAttr> referencedInSignature;
         llzk::getSymbolsUsedIn(tgtType.getInputs(), referencedInSignature);
@@ -914,7 +961,11 @@ struct KnownTargetVerifier : public IncludeOpVerifier {
           return referencedInSignature.contains(FlatSymbolRefAttr::get(p.getNameAttr()));
         });
         if (allParamsReferenced) {
-          return success();
+          FailureOr<UnificationMap> unifyResult = includeOp->unifyTypeSignature(tgtType);
+          if (failed(unifyResult)) {
+            return failure();
+          }
+          return includeOp->verifyTemplateParamsMatchInferred(realParams, unifyResult.value());
         }
         return includeOp->emitOpError().append(
             "must provide template instantiation parameters when calling \"@", tgt.getSymName(),
