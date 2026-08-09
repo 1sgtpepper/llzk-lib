@@ -1,4 +1,6 @@
 // RUN: llzk-opt --llzk-compute-constrain-to-product="root-struct=A" --llzk-fuse-product-loops %s | FileCheck --enable-var-scope %s
+// The outer loops fuse successfully. Their nested scf.if operations remain separate because the
+// intervening member accesses make the conditional pair ineligible.
 module attributes {llzk.lang = "llzk"} {
   struct.def @A {
     struct.member @foo : !felt.type
