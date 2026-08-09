@@ -1040,10 +1040,14 @@ bool templateParamValuesUnify(
   FeltConstAttr actualFelt = asFeltConst(actualValue);
   FeltConstAttr inferredFelt = asFeltConst(inferredValue);
   if (!actualFelt || !inferredFelt) {
+    if ((!actualFelt && !isa<SymbolRefAttr>(actualValue)) ||
+        (!inferredFelt && !isa<SymbolRefAttr>(inferredValue))) {
+      return false;
+    }
     return typeParamsUnify({actualValue}, {inferredValue});
   }
 
-  if (actualFelt.getValue() != inferredFelt.getValue()) {
+  if (!llvm::APInt::isSameValue(actualFelt.getValue(), inferredFelt.getValue())) {
     return false;
   }
   FeltType actualFeltType = actualFelt.getType();

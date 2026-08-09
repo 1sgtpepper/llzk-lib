@@ -129,6 +129,8 @@ TEST_F(TypeHelperTests, test_templateParamValuesUnify_feltRepresentations) {
   FeltConstAttr differentValue = FeltConstAttr::get(&ctx, APInt(8, 36), bn128);
   FeltConstAttr differentField = FeltConstAttr::get(&ctx, APInt(8, 35), goldilocks);
   IntegerAttr integer = IntegerAttr::get(IndexType::get(&ctx), 35);
+  FlatSymbolRefAttr actualSymbol = FlatSymbolRefAttr::get(&ctx, "Actual");
+  FlatSymbolRefAttr inferredSymbol = FlatSymbolRefAttr::get(&ctx, "Inferred");
 
   EXPECT_TRUE(templateParamValuesUnify(unspecified, fielded, fieldless));
   EXPECT_TRUE(templateParamValuesUnify(unspecified, fielded, bn128));
@@ -136,6 +138,30 @@ TEST_F(TypeHelperTests, test_templateParamValuesUnify_feltRepresentations) {
   EXPECT_TRUE(templateParamValuesUnify(fielded, integer, bn128));
   EXPECT_FALSE(templateParamValuesUnify(differentValue, fielded, bn128));
   EXPECT_FALSE(templateParamValuesUnify(differentField, fielded, fieldless));
+  EXPECT_FALSE(templateParamValuesUnify(differentField, differentField, bn128));
+  EXPECT_TRUE(templateParamValuesUnify(actualSymbol, inferredSymbol, bn128));
+}
+
+TEST_F(TypeHelperTests, test_templateParamValuesUnify_widthIndependentFeltValues) {
+  static constexpr unsigned NARROW_WIDTH = 8;
+  static constexpr unsigned WIDE_WIDTH = 64;
+  static constexpr unsigned VALUE = 35;
+
+  FeltType fieldless = FeltType::get(&ctx);
+  FeltType bn128 = FeltType::get(&ctx, "bn128");
+  FeltType goldilocks = FeltType::get(&ctx, "goldilocks");
+  IntegerAttr wideInteger = IntegerAttr::get(IntegerType::get(&ctx, WIDE_WIDTH), VALUE);
+  IntegerAttr differentWideInteger =
+      IntegerAttr::get(IntegerType::get(&ctx, WIDE_WIDTH), VALUE + 1);
+  FeltConstAttr narrowBn128 = FeltConstAttr::get(&ctx, APInt(NARROW_WIDTH, VALUE), bn128);
+  FeltConstAttr wideBn128 = FeltConstAttr::get(&ctx, APInt(WIDE_WIDTH, VALUE), bn128);
+  FeltConstAttr narrowGoldilocks = FeltConstAttr::get(&ctx, APInt(NARROW_WIDTH, VALUE), goldilocks);
+
+  EXPECT_TRUE(templateParamValuesUnify(wideInteger, narrowBn128, fieldless));
+  EXPECT_TRUE(templateParamValuesUnify(narrowBn128, wideInteger, fieldless));
+  EXPECT_FALSE(templateParamValuesUnify(differentWideInteger, narrowBn128, fieldless));
+  EXPECT_TRUE(templateParamValuesUnify(wideBn128, narrowBn128, fieldless));
+  EXPECT_FALSE(templateParamValuesUnify(wideBn128, narrowGoldilocks, fieldless));
 }
 
 TEST_F(TypeHelperTests, test_forceIntToIndexType_fromI1) {

@@ -15,6 +15,39 @@ module attributes {llzk.lang} {
 // -----
 
 module attributes {llzk.lang} {
+  poly.template @RepeatedParam {
+    poly.param @N
+
+    function.def @target(
+        %lhs: !array.type<@N x index>, %rhs: !array.type<@N x index>
+    ) {
+      function.return
+    }
+
+    verif.contract @Base for @RepeatedParam::@target (
+        %lhs: !array.type<@N x index>, %rhs: !array.type<@N x index>
+    ) {
+      %ok = arith.constant true
+      verif.ensure_compute %ok
+    }
+  }
+
+  function.def @caller(%lhs: !array.type<5 x index>, %rhs: !array.type<7 x index>) {
+    function.return
+  }
+
+  verif.contract @Wrapper for @caller (
+      %lhs: !array.type<5 x index>, %rhs: !array.type<7 x index>
+  ) {
+    // expected-error@+1 {{'verif.include' op cannot infer a unique template instantiation value for parameter "@N" from contract type signature}}
+    verif.include @RepeatedParam::@Base<[5]>(%lhs, %rhs) :
+        (!array.type<5 x index>, !array.type<7 x index>) -> ()
+  }
+}
+
+// -----
+
+module attributes {llzk.lang} {
   function.def @check(%x: index, %y: index) {
     function.return
   }
