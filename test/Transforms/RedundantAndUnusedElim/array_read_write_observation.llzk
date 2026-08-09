@@ -144,7 +144,8 @@ module attributes {llzk.lang} {
     // An unknown struct read must protect a possibly observed source write.
     function.def @unknown_read_observes_source_write(
         %cond: i1
-    ) -> !struct.type<@UnknownStructRootElement> {
+    ) -> !struct.type<@UnknownStructRootElement>
+        attributes {function.allow_witness} {
       %self = struct.new : !struct.type<@UnknownStructRootElement>
       %one = felt.const 1
       %two = felt.const 2
@@ -167,7 +168,8 @@ module attributes {llzk.lang} {
     // An unknown struct write must invalidate facts for every possible source alias.
     function.def @unknown_write_invalidates_source(
         %cond: i1
-    ) -> !struct.type<@UnknownStructRootElement> {
+    ) -> !struct.type<@UnknownStructRootElement>
+        attributes {function.allow_witness} {
       %self = struct.new : !struct.type<@UnknownStructRootElement>
       %one = felt.const 1
       %two = felt.const 2
