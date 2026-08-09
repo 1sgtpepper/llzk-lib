@@ -1715,7 +1715,10 @@ private:
       FailureOr<Attribute> normalized =
           normalizeConcreteTemplateParam(concreteValue, paramOp.getTypeOpt());
       if (failed(normalized)) {
-        return failIncompatibleInferredParam(op, rewriter, paramName, paramOp);
+        return op.emitOpError().append(
+            "instantiation value '", concreteValue, "' is not compatible with parameter \"@",
+            paramOp.getName(), "\" type restriction ", *paramOp.getTypeOpt()
+        );
       }
       paramNameToConcrete[paramName] = *normalized;
       return success();
