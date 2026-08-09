@@ -154,8 +154,11 @@ using ReferenceNodeCloneMemo = DenseMap<const ReferenceNode *, ReferenceNodePtr>
 using ReferenceNodeIntersectionMemo =
     DenseMap<const ReferenceNode *, DenseMap<const ReferenceNode *, ReferenceNodePtr>>;
 
+/// @brief Per-operation visitation state for shared reference-DAG invalidation.
 struct ReferenceNodeClearMemo {
+  // Nodes reached by a whole-subtree clear need no later path-sensitive visit.
   DenseSet<const ReferenceNode *> clearedSubtrees;
+  // A depth is sufficient because one read supplies the same suffix at each depth.
   DenseMap<const ReferenceNode *, DenseSet<size_t>> observedDepths;
 };
 
@@ -428,9 +431,8 @@ private:
   }
 
   /// @brief Clear observed candidates once per node and remaining path depth.
-  void clearLastWritesObservedByImpl(
-      llvm::ArrayRef<ReferenceID> indices, ReferenceNodeClearMemo &memo
-  ) {
+  void
+  clearLastWritesObservedByImpl(llvm::ArrayRef<ReferenceID> indices, ReferenceNodeClearMemo &memo) {
     if (memo.clearedSubtrees.contains(this) ||
         !memo.observedDepths[this].insert(indices.size()).second) {
       return;
