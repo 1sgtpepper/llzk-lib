@@ -98,6 +98,31 @@ static void reportDelayedDiagnostics(CallOp caller, SmallVector<Diagnostic> &&di
   }
 }
 
+/// Canonicalize a concrete felt binding to its declared field so equivalent spellings share one
+/// specialization identity. Conflicting explicit fields fail; other parameter kinds are unchanged.
+static FailureOr<Attribute>
+normalizeConcreteTemplateParam(Attribute value, std::optional<Type> restriction) {
+  if (!restriction) {
+    return value;
+  }
+  FeltType requiredFelt = llvm::dyn_cast<FeltType>(*restriction);
+  if (!requiredFelt) {
+    return value;
+  }
+  if (FeltConstAttr feltValue = llvm::dyn_cast<FeltConstAttr>(value)) {
+    FeltType valueType = feltValue.getType();
+    if (valueType.hasField() && requiredFelt.hasField() && valueType != requiredFelt) {
+      return failure();
+    }
+    FeltType normalizedType = requiredFelt.hasField() ? requiredFelt : valueType;
+    return FeltConstAttr::get(value.getContext(), feltValue.getValue(), normalizedType);
+  }
+  if (IntegerAttr integerValue = llvm::dyn_cast<IntegerAttr>(value)) {
+    return FeltConstAttr::get(value.getContext(), integerValue.getValue(), requiredFelt);
+  }
+  return failure();
+}
+
 class ConversionTracker {
   /// Published result of one successful partial-function conversion.
   ///
@@ -878,7 +903,7 @@ class StructCloner {
            llvm::zip_equal(paramNames, paramOps, typeAtCallerParams)) {
         if (isConcreteAttr<false>(next)) {
           FailureOr<Attribute> normalized =
-              materializeTemplateParamValue(next, paramOp.getTypeOpt());
+              normalizeConcreteTemplateParam(next, paramOp.getTypeOpt());
           if (failed(normalized)) {
             origStruct.emitOpError().append(
                 "cannot materialize instantiation value '", next, "' for parameter \"@",
@@ -1687,7 +1712,7 @@ private:
         return failIncompatibleInferredParam(op, rewriter, paramName, paramOp);
       }
       FailureOr<Attribute> normalized =
-          materializeTemplateParamValue(concreteValue, paramOp.getTypeOpt());
+          normalizeConcreteTemplateParam(concreteValue, paramOp.getTypeOpt());
       if (failed(normalized)) {
         return failIncompatibleInferredParam(op, rewriter, paramName, paramOp);
       }
