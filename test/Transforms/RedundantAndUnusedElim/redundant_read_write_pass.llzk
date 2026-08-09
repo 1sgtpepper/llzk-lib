@@ -162,7 +162,7 @@ module attributes {llzk.lang} {
 // CHECK-NEXT:      %[[VAL_10:.*]] = arith.constant 3 : index
 // CHECK-NEXT:      %[[VAL_11:.*]] = array.extract %[[VAL_7]]{{\[}}%[[VAL_8]]] : <7,3 x !felt.type>
 // CHECK-NEXT:      %[[VAL_12:.*]] = array.extract %[[VAL_7]]{{\[}}%[[VAL_9]]] : <7,3 x !felt.type>
-// CHECK-NEXT:      %[[ARR_K:.*]] = array.extract %[[VAL_7]]{{\[}}%[[VAL_9]]] : <7,3 x !felt.type>
+// CHECK-NEXT:      %[[ARR_K:.*]] = array.extract %[[VAL_7]]{{\[}}%[[VAL_10]]] : <7,3 x !felt.type>
 // CHECK-NEXT:      constrain.eq %[[VAL_11]], %[[VAL_12]] : !array.type<3 x !felt.type>, !array.type<3 x !felt.type>
 // CHECK-NEXT:      constrain.eq %[[VAL_12]], %[[ARR_K]] : !array.type<3 x !felt.type>, !array.type<3 x !felt.type>
 // CHECK-NEXT:      constrain.eq %[[ARR_K]], %[[VAL_11]] : !array.type<3 x !felt.type>, !array.type<3 x !felt.type>
