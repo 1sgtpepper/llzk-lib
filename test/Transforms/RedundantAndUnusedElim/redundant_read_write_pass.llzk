@@ -166,8 +166,6 @@ module attributes {llzk.lang} {
 // CHECK-NEXT:      constrain.eq %[[VAL_11]], %[[VAL_12]] : !array.type<3 x !felt.type>, !array.type<3 x !felt.type>
 // CHECK-NEXT:      constrain.eq %[[VAL_12]], %[[ARR_K]] : !array.type<3 x !felt.type>, !array.type<3 x !felt.type>
 // CHECK-NEXT:      constrain.eq %[[ARR_K]], %[[VAL_11]] : !array.type<3 x !felt.type>, !array.type<3 x !felt.type>
-// CHECK-NEXT:      constrain.eq %[[VAL_12]], %[[ARR_K]] : !array.type<3 x !felt.type>, !array.type<3 x !felt.type>
-// CHECK-NEXT:      constrain.eq %[[ARR_K]], %[[VAL_11]] : !array.type<3 x !felt.type>, !array.type<3 x !felt.type>
 // CHECK-NEXT:      function.return
 // CHECK-NEXT:    }
 // CHECK-NEXT:  }
