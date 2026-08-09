@@ -215,21 +215,6 @@ public:
     return result;
   }
 
-  /// @brief Clone the mutable container state of an array value.
-  ///
-  /// Array insert/extract operations copy array elements. Scalar and nested-array
-  /// nodes therefore need independent state, while a struct-typed element is a
-  /// reference-semantic object and must remain shared with its source aliases.
-  ReferenceNodePtr cloneArrayValueNode() const {
-    ReferenceNode copy(identifier, storedValue);
-    auto result = std::make_shared<ReferenceNode>(std::move(copy));
-    result->dynamicChildCount = dynamicChildCount;
-    for (const auto &[id, child] : children) {
-      result->children[id] = child->isStructReference() ? child : child->cloneArrayValueNode();
-    }
-    return result;
-  }
-
   template <typename IdType>
   std::shared_ptr<ReferenceNode>
   createChild(IdType id, Value storedVal, const std::shared_ptr<ReferenceNode> &valTree = nullptr) {
@@ -445,6 +430,21 @@ public:
   }
 
 private:
+  /// @brief Clone the mutable container state of an array value.
+  ///
+  /// Array insert/extract operations copy array elements. Scalar and nested-array
+  /// nodes therefore need independent state, while a struct-typed element is a
+  /// reference-semantic object and must remain shared with its source aliases.
+  ReferenceNodePtr cloneArrayValueNode() const {
+    ReferenceNode copy(identifier, storedValue);
+    auto result = std::make_shared<ReferenceNode>(std::move(copy));
+    result->dynamicChildCount = dynamicChildCount;
+    for (const auto &[id, child] : children) {
+      result->children[id] = child->isStructReference() ? child : child->cloneArrayValueNode();
+    }
+    return result;
+  }
+
   bool isStructReference() const {
     return storedValue != nullptr && isa<component::StructType>(storedValue.getType());
   }
@@ -854,15 +854,12 @@ class PassImpl : public llzk::impl::RedundantReadAndWriteEliminationPassBase<Pas
       return nullptr;
     };
 
-    // A scalar read produces an immutable SSA snapshot. Array results copy
-    // their mutable container state, while struct results preserve object
-    // identity so member writes remain visible through every alias.
+    // A read result is an independent SSA snapshot. Array results copy their
+    // mutable container state, while struct results retain shared member nodes
+    // so writes to the referenced object remain visible through every alias.
     auto makeReadSnapshot = [](Value resVal, const ReferenceNodePtr &valueTree) {
-      if (valueTree != nullptr && isa<component::StructType>(resVal.getType())) {
-        return valueTree;
-      }
       auto snapshot = ReferenceNode::create(resVal, resVal);
-      if (valueTree != nullptr && isa<array::ArrayType>(resVal.getType())) {
+      if (valueTree != nullptr) {
         snapshot->setCurrentValue(resVal, valueTree);
       }
       return snapshot;
