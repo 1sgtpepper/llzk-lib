@@ -141,12 +141,6 @@ static inline bool areOppositeProductSources(Operation *a, Operation *b) {
          (*sourceA == FUNC_NAME_CONSTRAIN && *sourceB == FUNC_NAME_COMPUTE);
 }
 
-/// Return whether `op` lies strictly between `before` and `after` in the same block.
-static bool isBetweenInBlock(Operation *op, Operation *before, Operation *after) {
-  return op->getBlock() == before->getBlock() && op->getBlock() == after->getBlock() &&
-         before->isBeforeInBlock(op) && op->isBeforeInBlock(after);
-}
-
 /// Return the result number of `value` on `ifOp`, if `value` is one of its results.
 static std::optional<unsigned> getIfResultIndex(scf::IfOp ifOp, Value value) {
   for (auto [idx, result] : llvm::enumerate(ifOp.getResults())) {
@@ -256,24 +250,7 @@ static bool collectConstrainValueMappings(
   if (hasUnsafeMovedConstrainOp(constrainIf)) {
     return false;
   }
-
-  auto result = constrainIf->walk([&](Operation *op) {
-    for (Value operand : op->getOperands()) {
-      Operation *def = operand.getDefiningOp();
-      if (!def || constrainIf->isAncestor(def)) {
-        continue;
-      }
-      if (valueToResult.contains(operand)) {
-        continue;
-      }
-      if (!isBetweenInBlock(def, computeIf, constrainIf)) {
-        continue;
-      }
-      return WalkResult::interrupt();
-    }
-    return WalkResult::advance();
-  });
-  return !result.wasInterrupted();
+  return true;
 }
 
 /// Return whether two marked sibling `scf.if` ops satisfy the conservative fusion contract.
