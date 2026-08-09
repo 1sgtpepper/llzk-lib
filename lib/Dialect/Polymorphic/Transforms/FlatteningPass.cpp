@@ -117,7 +117,8 @@ class ConversionTracker {
   /// Maps original remote (i.e., use site) type to new remote type.
   /// Note: The keys are always parameterized StructType and the values are no-parameter StructType.
   DenseMap<StructType, StructType> structInstantiations;
-  /// Contains the reverse of mappings in `structInstantiations` for use in legal conversion check.
+  /// Maps each instantiated type to its first (canonical) source type for legal conversion checks.
+  /// Additional representation aliases remain in `structInstantiations` only.
   DenseMap<StructType, StructType> reverseInstantiations;
   /// Tracks original free function definitions for which instantiated clones were created.
   DenseSet<SymbolRefAttr> funcInstantiations;
@@ -142,19 +143,16 @@ public:
 
     auto forwardResult = structInstantiations.try_emplace(oldType, newType);
     if (forwardResult.second) {
-      // Insertion was successful
-      // ASSERT: The reverse map does not contain this mapping either
-      assert(!reverseInstantiations.contains(newType));
-      reverseInstantiations[newType] = oldType;
+      // Preserve the first preimage as canonical; later raw spellings are forward aliases.
+      reverseInstantiations.try_emplace(newType, oldType);
       // Set the modified flag
       modified = true;
     } else {
       // ASSERT: If a mapping already existed for `oldType` it must be `newType`
       assert(forwardResult.first->getSecond() == newType);
-      // ASSERT: The reverse mapping is already present as well
-      assert(reverseInstantiations.lookup(newType) == oldType);
     }
-    assert(structInstantiations.size() == reverseInstantiations.size());
+    assert(reverseInstantiations.contains(newType));
+    assert(structInstantiations.size() >= reverseInstantiations.size());
   }
 
   /// Return the instantiated type of the given StructType, if any.
@@ -893,19 +891,34 @@ class StructCloner {
     // Reduced from `typeAtCallerParams` to contain only the non-concrete Attributes.
     ArrayAttr reducedCallerParams = nullptr;
     SmallVector<Attribute> nonConcreteParams;
+    SmallVector<Attribute> canonicalCallerParams;
     {
       ArrayAttr paramNames = typeAtDef.getParams();
 
       // pre-conditions
       assert(!isNullOrEmpty(paramNames));
       assert(paramNames.size() == typeAtCallerParams.size());
+      auto paramOps = parentTemplate.getConstOps<TemplateParamOp>();
+      assert(paramNames.size() == llvm::range_size(paramOps));
+      canonicalCallerParams.reserve(paramNames.size());
 
-      for (size_t i = 0, e = paramNames.size(); i < e; ++i) {
-        Attribute next = typeAtCallerParams[i];
+      for (auto [paramName, paramOp, next] :
+           llvm::zip_equal(paramNames, paramOps, typeAtCallerParams)) {
         if (isConcreteAttr<false>(next)) {
-          paramNameToConcrete[paramNames[i]] = next;
+          FailureOr<Attribute> normalized =
+              materializeTemplateParamValue(next, paramOp.getTypeOpt());
+          if (failed(normalized)) {
+            origStruct.emitOpError().append(
+                "cannot materialize instantiation value '", next, "' for parameter \"@",
+                paramOp.getName(), '"'
+            );
+            return failure();
+          }
+          paramNameToConcrete[paramName] = *normalized;
+          canonicalCallerParams.push_back(*normalized);
         } else {
           nonConcreteParams.push_back(next);
+          canonicalCallerParams.push_back(next);
         }
       }
       // post-conditions
@@ -918,6 +931,12 @@ class StructCloner {
       if (!nonConcreteParams.empty()) {
         reducedCallerParams = ArrayAttr::get(ctx, nonConcreteParams);
       }
+    }
+
+    StructType canonicalCallerType =
+        StructType::get(typeAtCaller.getNameRef(), ArrayAttr::get(ctx, canonicalCallerParams));
+    if (auto cached = tracker_.getInstantiation(canonicalCallerType)) {
+      return *cached;
     }
 
     FailureOr<InstantiationLayout> layoutResult =
@@ -1055,6 +1074,7 @@ class StructCloner {
           std::make_move_iterator(conversionDiagnostics.end())
       );
     }
+    tracker_.recordInstantiation(canonicalCallerType, newRemoteType);
     return newRemoteType;
   }
 
@@ -1695,7 +1715,12 @@ private:
       if (failed(op.verifyTemplateParamCompatibility(concreteValue, paramOp))) {
         return failIncompatibleInferredParam(op, rewriter, paramName, paramOp);
       }
-      paramNameToConcrete[paramName] = concreteValue;
+      FailureOr<Attribute> normalized =
+          materializeTemplateParamValue(concreteValue, paramOp.getTypeOpt());
+      if (failed(normalized)) {
+        return failIncompatibleInferredParam(op, rewriter, paramName, paramOp);
+      }
+      paramNameToConcrete[paramName] = *normalized;
       return success();
     };
 
@@ -1750,7 +1775,9 @@ private:
       auto paramName = FlatSymbolRefAttr::get(paramOp.getSymNameAttr());
       AttrConcreteness classification = classifyAttrConcreteness(attr);
       if (classification == AttrConcreteness::Concrete) {
-        paramNameToConcrete[paramName] = attr;
+        if (failed(recordConcreteParam(paramName, paramOp, attr))) {
+          return failure();
+        }
         continue;
       }
 
