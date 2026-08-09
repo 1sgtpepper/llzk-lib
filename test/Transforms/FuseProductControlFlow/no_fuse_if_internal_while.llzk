@@ -1,0 +1,81 @@
+// RUN: llzk-opt --llzk-fuse-product-loops %s | FileCheck --enable-var-scope %s
+
+module attributes {llzk.lang = "llzk"} {
+  struct.def @A {
+    struct.member @foo : !felt.type
+
+    function.def @product(%b: i1) -> !struct.type<@A> {
+      %self = struct.new : <@A>
+      %zero = arith.constant 0 : index
+      %one = arith.constant 1 : index
+
+      %computed = scf.if %b -> !felt.type {
+        %zero_felt = felt.const 0
+        scf.yield %zero_felt : !felt.type
+      } else {
+        %one_felt = felt.const 1
+        scf.yield %one_felt : !felt.type
+      } {product_source = "compute"}
+
+      struct.writem %self[@foo] = %computed : <@A>, !felt.type
+
+      // scf.while is unsupported structured control flow and must block movement.
+      scf.if %b {
+        %then_result = scf.while (%i = %zero) : (index) -> index {
+          %condition = arith.cmpi slt, %i, %one : index
+          scf.condition(%condition) %i : index
+        } do {
+        ^bb0(%i_next: index):
+          scf.yield %i_next : index
+        }
+      } else {
+        %else_result = scf.while (%i = %zero) : (index) -> index {
+          %condition = arith.cmpi slt, %i, %one : index
+          scf.condition(%condition) %i : index
+        } do {
+        ^bb0(%i_next: index):
+          scf.yield %i_next : index
+        }
+      } {product_source = "constrain"}
+
+      function.return %self : !struct.type<@A>
+    }
+  }
+}
+
+// CHECK-LABEL: module attributes {llzk.lang = "llzk"} {
+// CHECK-NEXT:    struct.def @A {
+// CHECK-NEXT:      struct.member @foo : !felt.type
+// CHECK-NEXT:      function.def @product(%[[VAL_0:[0-9a-zA-Z_\.]+]]: i1) -> !struct.type<@A> attributes {function.allow_constraint, function.allow_witness} {
+// CHECK-NEXT:        %[[VAL_1:[0-9a-zA-Z_\.]+]] = struct.new : <@A>
+// CHECK-NEXT:        %[[VAL_2:[0-9a-zA-Z_\.]+]] = arith.constant 0 : index
+// CHECK-NEXT:        %[[VAL_3:[0-9a-zA-Z_\.]+]] = arith.constant 1 : index
+// CHECK-NEXT:        %[[VAL_4:[0-9a-zA-Z_\.]+]] = scf.if %[[VAL_0]] -> (!felt.type) {
+// CHECK-NEXT:          %[[VAL_5:[0-9a-zA-Z_\.]+]] = felt.const  0
+// CHECK-NEXT:          scf.yield %[[VAL_5]] : !felt.type
+// CHECK-NEXT:        } else {
+// CHECK-NEXT:          %[[VAL_6:[0-9a-zA-Z_\.]+]] = felt.const  1
+// CHECK-NEXT:          scf.yield %[[VAL_6]] : !felt.type
+// CHECK-NEXT:        } {product_source = "compute"}
+// CHECK-NEXT:        struct.writem %[[VAL_1]][@foo] = %[[VAL_4]] : <@A>, !felt.type
+// CHECK-NEXT:        scf.if %[[VAL_0]] {
+// CHECK-NEXT:          %[[VAL_7:[0-9a-zA-Z_\.]+]] = scf.while (%[[VAL_8:[0-9a-zA-Z_\.]+]] = %[[VAL_2]]) : (index) -> index {
+// CHECK-NEXT:            %[[VAL_9:[0-9a-zA-Z_\.]+]] = arith.cmpi slt, %[[VAL_8]], %[[VAL_3]] : index
+// CHECK-NEXT:            scf.condition(%[[VAL_9]]) %[[VAL_8]] : index
+// CHECK-NEXT:          } do {
+// CHECK-NEXT:          ^bb0(%[[VAL_10:[0-9a-zA-Z_\.]+]]: index):
+// CHECK-NEXT:            scf.yield %[[VAL_10]] : index
+// CHECK-NEXT:          }
+// CHECK-NEXT:        } else {
+// CHECK-NEXT:          %[[VAL_11:[0-9a-zA-Z_\.]+]] = scf.while (%[[VAL_12:[0-9a-zA-Z_\.]+]] = %[[VAL_2]]) : (index) -> index {
+// CHECK-NEXT:            %[[VAL_13:[0-9a-zA-Z_\.]+]] = arith.cmpi slt, %[[VAL_12]], %[[VAL_3]] : index
+// CHECK-NEXT:            scf.condition(%[[VAL_13]]) %[[VAL_12]] : index
+// CHECK-NEXT:          } do {
+// CHECK-NEXT:          ^bb0(%[[VAL_14:[0-9a-zA-Z_\.]+]]: index):
+// CHECK-NEXT:            scf.yield %[[VAL_14]] : index
+// CHECK-NEXT:          }
+// CHECK-NEXT:        } {product_source = "constrain"}
+// CHECK-NEXT:        function.return %[[VAL_1]] : !struct.type<@A>
+// CHECK-NEXT:      }
+// CHECK-NEXT:    }
+// CHECK-NEXT:  }
