@@ -1,0 +1,25 @@
+// RUN: llzk-opt -llzk-duplicate-read-write-elim %s 2>&1 | FileCheck %s
+
+// Focused reproducer: a potentially zero-trip loop must not make a body-only
+// array fact available to the constant read after the loop.
+module attributes {llzk.lang} {
+  function.def @zero_trip_array_fact(%trip_count: index) -> !felt.type {
+    %zero = felt.const 0
+    %one = felt.const 1
+    %two = felt.const 2
+    %arr = array.new %zero : !array.type<1 x !felt.type>
+    %i0 = arith.constant 0 : index
+    %step = arith.constant 1 : index
+    array.write %arr[%i0] = %one : !array.type<1 x !felt.type>, !felt.type
+    scf.for %iv = %i0 to %trip_count step %step {
+      array.write %arr[%i0] = %two : !array.type<1 x !felt.type>, !felt.type
+    }
+    %observed = array.read %arr[%i0] : !array.type<1 x !felt.type>, !felt.type
+    function.return %observed : !felt.type
+  }
+}
+
+// CHECK-LABEL: function.def @zero_trip_array_fact
+// CHECK: %[[BODY_VALUE:[0-9a-zA-Z_\.]+]] = felt.const  2
+// CHECK: scf.for
+// CHECK: function.return %[[BODY_VALUE]] : !felt.type
