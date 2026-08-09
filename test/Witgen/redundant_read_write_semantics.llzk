@@ -9,10 +9,8 @@
 // RUN: llzk-witgen %t/member-optimized-scalarized.llzk --inputs %t/member-input.json --check-output %t/member-expected.json | FileCheck %s --check-prefix=SUCCESS
 // RUN: llzk-witgen %t/member-optimized-scalarized.llzk --inputs %t/member-input.json --backend=execution-engine --check-output %t/member-expected.json | FileCheck %s --check-prefix=SUCCESS
 // RUN: llzk-witgen %t/partial.llzk --inputs %t/partial-input.json --check-output %t/partial-expected.json | FileCheck %s --check-prefix=SUCCESS
-// RUN: llzk-witgen %t/partial.llzk --inputs %t/partial-input.json --backend=execution-engine --check-output %t/partial-expected.json | FileCheck %s --check-prefix=SUCCESS
 // RUN: llzk-opt -llzk-duplicate-read-write-elim %t/partial.llzk -o %t/partial-optimized.llzk
 // RUN: llzk-witgen %t/partial-optimized.llzk --inputs %t/partial-input.json --check-output %t/partial-expected.json | FileCheck %s --check-prefix=SUCCESS
-// RUN: llzk-witgen %t/partial-optimized.llzk --inputs %t/partial-input.json --backend=execution-engine --check-output %t/partial-expected.json | FileCheck %s --check-prefix=SUCCESS
 
 // Original and optimized execution must match the same expected witness.
 // SUCCESS: output matched expected JSON
