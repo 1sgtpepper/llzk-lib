@@ -319,32 +319,39 @@ jobs:
           }
 
           replay_split_transform \
+            pr635-struct-pass3 \
+            4a293e5fdbbe2808f2ae9d612847fe5e879f97e8 \
+            test/Transforms/Flattening/instantiate_structs_pass_3.llzk \
+            -split-input-file \
+            -llzk-flatten \
+            -verify-diagnostics
+          replay_split_transform \
             pr635-felt \
-            3e10fe5007329695a1477266423f6dbe907855aa \
+            4a293e5fdbbe2808f2ae9d612847fe5e879f97e8 \
             test/Transforms/Flattening/instantiate_expr_felt_typevar_completion.llzk \
             -split-input-file \
             -llzk-flatten
           replay_split_transform \
             pr635-partial \
-            3e10fe5007329695a1477266423f6dbe907855aa \
+            4a293e5fdbbe2808f2ae9d612847fe5e879f97e8 \
             test/Transforms/Flattening/instantiate_expr_partial.llzk \
             -split-input-file \
             -llzk-flatten
           replay_split_transform \
             pr635-target-local \
-            3e10fe5007329695a1477266423f6dbe907855aa \
+            4a293e5fdbbe2808f2ae9d612847fe5e879f97e8 \
             test/Transforms/Flattening/instantiate_expr_target_local.llzk \
             -split-input-file \
             '--pass-pipeline=builtin.module(llzk-flatten{cleanup=disabled})'
           replay_split_transform \
             pr635-typevar \
-            3e10fe5007329695a1477266423f6dbe907855aa \
+            4a293e5fdbbe2808f2ae9d612847fe5e879f97e8 \
             test/Transforms/Flattening/instantiate_expr_typevar_completion.llzk \
             -split-input-file \
             -llzk-flatten
           replay_split_transform \
             pr635-normalized-felt \
-            3e10fe5007329695a1477266423f6dbe907855aa \
+            4a293e5fdbbe2808f2ae9d612847fe5e879f97e8 \
             test/Transforms/Flattening/instantiate_func_felt_normalization.llzk \
             -split-input-file \
             -llzk-flatten
