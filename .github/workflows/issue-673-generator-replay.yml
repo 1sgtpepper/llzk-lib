@@ -1,10 +1,12 @@
 name: Issue 673 generator replay
 
 on:
-  push:
-    branches:
-      - validation/issue-673-generator-replay
   workflow_dispatch:
+    inputs:
+      target_sha:
+        description: Exact fork commit to build and compare
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -20,7 +22,7 @@ jobs:
         uses: actions/checkout@v6
         with:
           repository: 1sgtpepper/llzk-lib
-          ref: fix/dynamic-array-read-write-observation
+          ref: ${{ inputs.target_sha }}
           persist-credentials: false
 
       - name: Install Nix
@@ -50,14 +52,20 @@ jobs:
 
           test_file="test/Transforms/RedundantAndUnusedElim/array_read_write_observation.llzk"
           chunk_dir="$RUNNER_TEMP/issue-673-chunks"
+          committed_dir="$RUNNER_TEMP/issue-673-committed-checks"
           mkdir -p "$chunk_dir"
+          mkdir -p "$committed_dir"
 
-          python3 - "$test_file" "$chunk_dir" <<'PY'
+          target_sha="${{ inputs.target_sha }}"
+          test "$(git rev-parse HEAD)" = "$target_sha"
+
+          python3 - "$test_file" "$chunk_dir" "$committed_dir" <<'PY'
           from pathlib import Path
           import sys
 
           source = Path(sys.argv[1]).read_text()
           output = Path(sys.argv[2])
+          committed = Path(sys.argv[3])
           for index, chunk in enumerate(source.split("// -----")):
               lines = [
                   line
@@ -68,6 +76,10 @@ jobs:
               (output / f"chunk-{index:02d}.llzk").write_text(
                   "\n".join(lines).strip() + "\n"
               )
+              checks = [line for line in chunk.splitlines() if line.startswith("// CHECK")]
+              (committed / f"chunk-{index:02d}.committed-checks.txt").write_text(
+                  "\n".join(checks) + "\n"
+              )
           PY
 
           nix --print-build-logs build --impure --expr \
@@ -77,21 +89,34 @@ jobs:
           test -x "$llzk_opt"
           test -n "$filecheck"
 
-          echo "head=$(git rev-parse HEAD)" > "$OUTPUT_PATH/comparison.txt"
+          echo "target_sha=$target_sha" > "$OUTPUT_PATH/comparison.txt"
+          echo "checked_out_head=$(git rev-parse HEAD)" >> "$OUTPUT_PATH/comparison.txt"
           echo "test=$test_file" >> "$OUTPUT_PATH/comparison.txt"
           echo "producer=llzk-opt -split-input-file -llzk-duplicate-read-write-elim <chunk>" >> "$OUTPUT_PATH/comparison.txt"
 
           for input in "$chunk_dir"/chunk-*.llzk; do
               name="$(basename "$input" .llzk)"
               output_file="$OUTPUT_PATH/$name.output.llzk"
+              raw_checks_file="$OUTPUT_PATH/$name.generated-checks.raw.txt"
               checks_file="$OUTPUT_PATH/$name.generated-checks.txt"
+              committed_checks_file="$committed_dir/$name.committed-checks.txt"
               "$llzk_opt" -split-input-file -llzk-duplicate-read-write-elim "$input" \
                   > "$output_file" 2>&1
-              python3 scripts/generate-test-checks.py < "$output_file" > "$checks_file"
-              "$filecheck" "$checks_file" < "$output_file"
+              python3 scripts/generate-test-checks.py < "$output_file" > "$raw_checks_file"
+              python3 - "$raw_checks_file" "$checks_file" <<'PY'
+          from pathlib import Path
+          import sys
+
+          generated = Path(sys.argv[1]).read_text().splitlines()
+          Path(sys.argv[2]).write_text(
+              "\n".join(line for line in generated if line.startswith("// CHECK")) + "\n"
+          )
+          PY
+              "$filecheck" "$committed_checks_file" < "$output_file"
+              diff -u "$committed_checks_file" "$checks_file"
               check_count="$(grep -Ec '^// CHECK' "$checks_file")"
               echo "$name.check_lines=$check_count" >> "$OUTPUT_PATH/comparison.txt"
-              echo "$name.generated_checks_against_exact_head_output=PASS" >> "$OUTPUT_PATH/comparison.txt"
+              echo "$name.committed_vs_generated_checks=PASS" >> "$OUTPUT_PATH/comparison.txt"
           done
 
       - name: Upload exact-head generator evidence
