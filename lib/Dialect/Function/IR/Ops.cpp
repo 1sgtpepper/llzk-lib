@@ -42,7 +42,6 @@
 #include "llzk/Dialect/Function/IR/Ops.cpp.inc"
 
 using namespace mlir;
-using namespace llzk::felt;
 using namespace llzk::component;
 using namespace llzk::polymorphic;
 
