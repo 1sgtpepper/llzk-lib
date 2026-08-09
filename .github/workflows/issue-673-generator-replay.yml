@@ -8,7 +8,7 @@ on:
         required: true
         type: string
       compare_committed:
-        description: Require committed CHECK blocks to match generated output
+        description: Require committed observation CHECK blocks to match generated output
         required: false
         default: true
         type: boolean
@@ -23,7 +23,7 @@ jobs:
       OUTPUT_PATH: /tmp/issue-673-generator
 
     steps:
-      - name: Check out validation branch
+      - name: Check out target commit
         uses: actions/checkout@v6
         with:
           repository: 1sgtpepper/llzk-lib
@@ -55,17 +55,35 @@ jobs:
           rm -rf "$OUTPUT_PATH"
           mkdir -p "$OUTPUT_PATH"
 
-          test_file="test/Transforms/RedundantAndUnusedElim/array_read_write_observation.llzk"
-          chunk_dir="$RUNNER_TEMP/issue-673-chunks"
-          committed_dir="$RUNNER_TEMP/issue-673-committed-checks"
-          mkdir -p "$chunk_dir"
-          mkdir -p "$committed_dir"
-
           target_sha="${{ inputs.target_sha }}"
           compare_committed="${{ inputs.compare_committed }}"
           test "$(git rev-parse HEAD)" = "$target_sha"
 
-          python3 - "$test_file" "$chunk_dir" "$committed_dir" <<'PY'
+          nix --print-build-logs build --impure --expr \
+            'let flake = builtins.getFlake (toString ./.); in flake.packages.x86_64-linux.llzk-debug.overrideAttrs (_: { doCheck = false; })'
+          llzk_opt="$GITHUB_WORKSPACE/result/bin/llzk-opt"
+          llzk_witgen="$GITHUB_WORKSPACE/result/bin/llzk-witgen"
+          filecheck="$(find /nix/store -type f -path '*/bin/FileCheck' -executable -print -quit)"
+          split_file="$(find /nix/store -type f -path '*/bin/split-file' -executable -print -quit)"
+          test -x "$llzk_opt"
+          test -x "$llzk_witgen"
+          test -n "$filecheck"
+          test -n "$split_file"
+
+          echo "target_sha=$target_sha" > "$OUTPUT_PATH/comparison.txt"
+          echo "checked_out_head=$(git rev-parse HEAD)" >> "$OUTPUT_PATH/comparison.txt"
+
+          for test_file in \
+              test/Transforms/RedundantAndUnusedElim/array_read_write_observation.llzk \
+              test/Transforms/RedundantAndUnusedElim/redundant_read_write_pass.llzk \
+              test/Transforms/RedundantAndUnusedElim/redundant_op_pass.llzk; do
+            test_name="$(basename "$test_file" .llzk)"
+            chunk_dir="$RUNNER_TEMP/$test_name-chunks"
+            committed_dir="$RUNNER_TEMP/$test_name-committed"
+            test_output="$OUTPUT_PATH/$test_name"
+            mkdir -p "$chunk_dir" "$committed_dir" "$test_output"
+
+            python3 - "$test_file" "$chunk_dir" "$committed_dir" <<'PY'
           from pathlib import Path
           import sys
 
@@ -88,26 +106,20 @@ jobs:
               )
           PY
 
-          nix --print-build-logs build --impure --expr \
-            'let flake = builtins.getFlake (toString ./.); in flake.packages.x86_64-linux.llzk-debug.overrideAttrs (_: { doCheck = false; })'
-          llzk_opt="$GITHUB_WORKSPACE/result/bin/llzk-opt"
-          filecheck="$(find /nix/store -type f -path '*/bin/FileCheck' -executable -print -quit)"
-          test -x "$llzk_opt"
-          test -n "$filecheck"
-
-          echo "target_sha=$target_sha" > "$OUTPUT_PATH/comparison.txt"
-          echo "checked_out_head=$(git rev-parse HEAD)" >> "$OUTPUT_PATH/comparison.txt"
-          echo "test=$test_file" >> "$OUTPUT_PATH/comparison.txt"
-          echo "producer=llzk-opt -split-input-file -llzk-duplicate-read-write-elim <chunk>" >> "$OUTPUT_PATH/comparison.txt"
-
-          for input in "$chunk_dir"/chunk-*.llzk; do
+            for input in "$chunk_dir"/chunk-*.llzk; do
               name="$(basename "$input" .llzk)"
-              output_file="$OUTPUT_PATH/$name.output.llzk"
-              raw_checks_file="$OUTPUT_PATH/$name.generated-checks.raw.txt"
-              checks_file="$OUTPUT_PATH/$name.generated-checks.txt"
+              output_file="$test_output/$name.output.llzk"
+              raw_checks_file="$test_output/$name.generated-checks.raw.txt"
+              checks_file="$test_output/$name.generated-checks.txt"
               committed_checks_file="$committed_dir/$name.committed-checks.txt"
-              "$llzk_opt" -split-input-file -llzk-duplicate-read-write-elim "$input" \
-                  > "$output_file" 2>&1
+              if [[ "$test_name" == "redundant_op_pass" ]]; then
+                "$llzk_opt" -I test/Inputs -split-input-file -llzk-inline-includes \
+                    -llzk-duplicate-read-write-elim -llzk-duplicate-op-elim "$input" \
+                    > "$output_file" 2>&1
+              else
+                "$llzk_opt" -split-input-file -llzk-duplicate-read-write-elim "$input" \
+                    > "$output_file" 2>&1
+              fi
               python3 scripts/generate-test-checks.py < "$output_file" > "$raw_checks_file"
               python3 - "$raw_checks_file" "$checks_file" <<'PY'
           from pathlib import Path
@@ -118,16 +130,39 @@ jobs:
               "\n".join(line for line in generated if line.startswith("// CHECK")) + "\n"
           )
           PY
+              "$filecheck" "$checks_file" < "$output_file"
               if [ "$compare_committed" = "true" ]; then
-                  "$filecheck" "$committed_checks_file" < "$output_file"
+                "$filecheck" "$committed_checks_file" < "$output_file"
+                if [[ "$test_name" == "array_read_write_observation" ]]; then
                   diff -u "$committed_checks_file" "$checks_file"
-                  comparison_status=PASS
+                fi
+                comparison_status=PASS
               else
-                  comparison_status=SKIPPED
+                comparison_status=SKIPPED
               fi
               check_count="$(grep -Ec '^// CHECK' "$checks_file")"
-              echo "$name.check_lines=$check_count" >> "$OUTPUT_PATH/comparison.txt"
-              echo "$name.committed_vs_generated_checks=$comparison_status" >> "$OUTPUT_PATH/comparison.txt"
+              echo "$test_name.$name.check_lines=$check_count" >> "$OUTPUT_PATH/comparison.txt"
+              echo "$test_name.$name.committed_checks=$comparison_status" \
+                  >> "$OUTPUT_PATH/comparison.txt"
+            done
+          done
+
+          witness_dir="$RUNNER_TEMP/redundant-read-write-semantics"
+          "$split_file" test/Witgen/redundant_read_write_semantics.llzk "$witness_dir"
+          for case_name in member partial; do
+            source="$witness_dir/$case_name.llzk"
+            input="$witness_dir/$case_name-input.json"
+            expected="$witness_dir/$case_name-expected.json"
+            optimized="$witness_dir/$case_name-optimized.llzk"
+            "$llzk_witgen" "$source" --inputs "$input" --check-output "$expected"
+            "$llzk_witgen" "$source" --inputs "$input" --backend=execution-engine \
+                --check-output "$expected"
+            "$llzk_opt" -llzk-duplicate-read-write-elim "$source" -o "$optimized"
+            "$llzk_witgen" "$optimized" --inputs "$input" --check-output "$expected"
+            "$llzk_witgen" "$optimized" --inputs "$input" --backend=execution-engine \
+                --check-output "$expected"
+            echo "$case_name.original_and_optimized_semantics=PASS" \
+                >> "$OUTPUT_PATH/comparison.txt"
           done
 
       - name: Upload exact-head generator evidence
