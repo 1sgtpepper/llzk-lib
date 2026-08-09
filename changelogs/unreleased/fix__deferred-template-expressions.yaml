@@ -1,3 +1,4 @@
 fixed:
   - Preserve used template expressions during partial specialization without blocking unrelated targets
   - Normalize concrete template expression types before folding or deferring them
+  - Canonicalize felt template values before caching function and struct specializations
