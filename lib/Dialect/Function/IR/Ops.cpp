@@ -743,9 +743,8 @@ LogicalResult CallOp::verifyTemplateParamsMatchInferred(
     bool valuesUnify = true;
     if (it != unifications.end()) {
       SymbolTableCollection tables;
-      FailureOr<bool> resolved = resolvedTemplateParamValuesUnify(
-          tables, *this, attr, it->second, paramOp.getTypeOpt()
-      );
+      FailureOr<bool> resolved =
+          resolvedTemplateParamValuesUnify(tables, *this, attr, it->second, paramOp.getTypeOpt());
       if (failed(resolved)) {
         return failure();
       }

@@ -483,9 +483,7 @@ FailureOr<std::optional<TemplateParamSymbolEvidence>> resolveTemplateParamSymbol
       auto binding =
           parent->getConstNamed<TemplateSymbolBindingOpInterface>(symbol.getRootReference());
       if (binding) {
-        return std::make_optional(
-            TemplateParamSymbolEvidence {binding.getTypeOpt(), Attribute()}
-        );
+        return std::make_optional(TemplateParamSymbolEvidence {binding.getTypeOpt(), Attribute()});
       }
     }
   }
@@ -493,10 +491,12 @@ FailureOr<std::optional<TemplateParamSymbolEvidence>> resolveTemplateParamSymbol
   auto global = lookupTopLevelSymbol<GlobalDefOp>(tables, symbol, origin, false);
   if (succeeded(global)) {
     GlobalDefOp globalOp = global->get();
-    return std::make_optional(TemplateParamSymbolEvidence {
-        globalOp.getType(),
-        globalOp.getInitialValueAttr(),
-    });
+    return std::make_optional(
+        TemplateParamSymbolEvidence {
+            globalOp.getType(),
+            globalOp.getInitialValueAttr(),
+        }
+    );
   }
   return std::optional<TemplateParamSymbolEvidence>();
 }
@@ -556,9 +556,10 @@ FailureOr<bool> resolvedTemplateParamValuesUnify(
     return false;
   }
 
-  auto materializeEvidence = [](Attribute fallback, SymbolRefAttr symbol,
-                                const std::optional<TemplateParamSymbolEvidence> &evidence)
-      -> FailureOr<std::optional<Attribute>> {
+  auto materializeEvidence = [](
+                                 Attribute fallback, SymbolRefAttr symbol,
+                                 const std::optional<TemplateParamSymbolEvidence> &evidence
+                             ) -> FailureOr<std::optional<Attribute>> {
     if (!symbol) {
       return std::make_optional(fallback);
     }
@@ -586,14 +587,14 @@ FailureOr<bool> resolvedTemplateParamValuesUnify(
     );
   }
   if (*explicitConcrete && inferredEvidence && inferredEvidence->restriction) {
-    return succeeded(materializeTemplateParamValue(
-        explicitConcrete->value(), inferredEvidence->restriction
-    ));
+    return succeeded(
+        materializeTemplateParamValue(explicitConcrete->value(), inferredEvidence->restriction)
+    );
   }
   if (*inferredConcrete && explicitEvidence && explicitEvidence->restriction) {
-    return succeeded(materializeTemplateParamValue(
-        inferredConcrete->value(), explicitEvidence->restriction
-    ));
+    return succeeded(
+        materializeTemplateParamValue(inferredConcrete->value(), explicitEvidence->restriction)
+    );
   }
   return contextFreeResult;
 }
