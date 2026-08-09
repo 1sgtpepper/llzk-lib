@@ -396,7 +396,7 @@ template <typename T, typename Fn> SmallVector<T> mapOutputMembers(StructDefOp o
   return out;
 }
 
-/// Converts `function.return` ops in struct constrain functions into `func.return` ops.
+/// Converts `function.return` ops inside `@constrain` functions into func return ops.
 struct ConvertReturnOp : public OpConversionPattern<ReturnOp> {
   using OpConversionPattern<ReturnOp>::OpConversionPattern;
 
@@ -485,7 +485,7 @@ public:
       auto argType = srcArg.getType();
       if (!llvm::isa<FeltType>(argType)) {
         return srcFuncOp->emitError() << "function's args are expected to be felts. Found "
-                                      << argType << " for arg #: " << srcArg.getArgNumber();
+                                      << argType << "for arg #: " << srcArg.getArgNumber();
       }
       mapping.map(srcArg, dstArg);
     }
@@ -636,7 +636,7 @@ struct ConvertConstrainCall : public OpConversionPattern<CallOp> {
   ) const override {
     SymbolTableCollection tables;
     auto callee = op.getCalleeTarget(tables);
-    // Only struct constrain calls are lowered in this conversion step.
+    // We only care about constrain functions.
     if (failed(callee) || !callee->get().isStructConstrain()) {
       return failure();
     }
@@ -788,16 +788,16 @@ static bool isStep1LegalOp(Operation *op, llvm::DenseSet<FuncDefOp> &usedFreeFun
   if (auto structDefOp = op->getParentOfType<StructDefOp>()) {
     auto funcDefOp = op->getParentOfType<FuncDefOp>();
     if (!funcDefOp) {
-      // An operation outside a function definition is legal.
+      // Legal because is not within a function definition.
       return true;
     }
-    // Within a struct, an operation is legal if it is not in the constrain function.
+    // Legal if the containing function definition is not the struct's constrain function.
     return structDefOp.getConstrainFuncOp() != funcDefOp;
   }
 
   auto funcDefOp = op->getParentOfType<FuncDefOp>();
   if (!funcDefOp) {
-    // An operation outside a struct and free function definition is legal.
+    // Legal because is not within a struct nor a free function definition.
     return true;
   }
 
@@ -806,7 +806,7 @@ static bool isStep1LegalOp(Operation *op, llvm::DenseSet<FuncDefOp> &usedFreeFun
   return !usedFreeFunctions.contains(funcDefOp);
 }
 
-/// Populates the conversion target with the legality expected of step 1 of the conversion.
+/// Populates the conversion target with the legallity expected of step 1 of the conversion.
 static void populateStep1ConversionTarget(
     ConversionTarget &target, NonDetOpNames &names, llvm::DenseSet<FuncDefOp> &usedFreeFunctions
 ) {
@@ -826,7 +826,7 @@ static void populateStep1ConversionTarget(
   });
 }
 
-/// Populates the conversion target with the legality expected of step 2 of the conversion.
+/// Populates the conversion target with the legallity expected of step 2 of the conversion.
 static void populateStep2ConversionTarget(ConversionTarget &target) {
   target.addLegalDialect<pcl::PCLDialect>();
   target.addLegalOp<ModuleOp, func::FuncOp, func::CallOp, func::ReturnOp>();

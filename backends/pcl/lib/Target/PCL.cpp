@@ -67,7 +67,7 @@ struct NameState {
 
   /// Sets the name of the given value.
   ///
-  /// If the value already had a mapping, it is overridden.
+  /// If the value already had a mapping, it is overriden.
   void set(Value v, std::string name) {
     LLVM_DEBUG({
       llvm::dbgs() << "[NameState] Mapping value " << v << " to name \"" << name << "\"\n";
@@ -94,7 +94,7 @@ class SexpCache {
 public:
   /// If the s-expression is a success, map it to the value.
   ///
-  /// Returns the s-expression intact to facilitate using this method
+  /// Returns the s-expression intact to faciliate using this method
   /// as a pass-through.
   FailureOr<pcl::Sexp> map(Value v, FailureOr<pcl::Sexp> s) {
     if (succeeded(s)) {
@@ -124,7 +124,7 @@ public:
     }                                                                                              \
   }
 
-/// Handles emission of s-expressions for a PCL module represented by a `func.func` operation.
+/// Handles emission of the s-expressions representing a PCL module by a `func.func` operation.
 class ModuleEmitter {
   NameState ns;
   func::FuncOp func;
@@ -219,7 +219,7 @@ class ModuleEmitter {
     return S.sexp({S.atom(sym), *lhs, *rhs});
   }
 
-  /// Helper for emitting a unary expression as an s-expression.
+  /// Helper for emitting an unary expression's s-expressions.
   template <typename Op>
   FailureOr<pcl::Sexp> emitUnaryExpr(llvm::StringLiteral sym, Op op, pcl::Sexps &S) {
     auto vs = emitExpr(op.getValue(), S);
@@ -243,7 +243,7 @@ class ModuleEmitter {
     return S.sexp({S.atom(sym), *lhs, *rhs});
   }
 
-  /// Helper for emitting a unary formula as an s-expression.
+  /// Helper for emitting an unary formula's s-expressions.
   template <typename Op>
   FailureOr<pcl::Sexp> emitUnaryFormula(llvm::StringLiteral sym, Op op, pcl::Sexps &S) {
     auto vs = emitFormula(op.getValue(), S);
