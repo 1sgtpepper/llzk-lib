@@ -482,7 +482,8 @@ module attributes {llzk.lang} {
     // An unknown aggregate array read may alias the source struct.
     function.def @compute(
         %cond: i1
-    ) -> !felt.type attributes {function.allow_witness} {
+    ) -> !struct.type<@UnknownAggregateReadElement>
+        attributes {function.allow_witness} {
       %self = struct.new : !struct.type<@UnknownAggregateReadElement>
       %one = felt.const 1
       %two = felt.const 2
@@ -507,11 +508,13 @@ module attributes {llzk.lang} {
           !struct.type<@UnknownAggregateReadElement>, !felt.type
       %observed = struct.readm %self[@value] :
           !struct.type<@UnknownAggregateReadElement>, !felt.type
-      function.return %observed : !felt.type
+      struct.writem %self[@result] = %observed :
+          !struct.type<@UnknownAggregateReadElement>, !felt.type
+      function.return %self : !struct.type<@UnknownAggregateReadElement>
     }
     function.def @constrain(
         %self: !struct.type<@UnknownAggregateReadElement>, %cond: i1
-    ) { function.return }
+    ) attributes {function.allow_constraint} { function.return }
   }
 }
 // CHECK-LABEL: module attributes {llzk.lang} {
