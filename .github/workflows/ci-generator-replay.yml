@@ -358,7 +358,7 @@ jobs:
 
           generate_split_transform \
             pr675 \
-            0217102de40b02380d0eebb713318d1a6bf2df5b \
+            185456dc1dbe01422bd9714397d1da72374d3bd4 \
             test/Transforms/RedundantAndUnusedElim/array_read_write_observation.llzk \
             -split-input-file \
             -llzk-duplicate-read-write-elim
