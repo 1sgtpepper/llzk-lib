@@ -292,7 +292,7 @@ jobs:
 
           capture_transform \
             pr635-normalized-felt \
-            eaf51373b83f63de174c3b094a6edb1398fbc80f \
+            812beb993eca40a4e1a1513bf12e729d1f68c1e4 \
             test/Transforms/Flattening/instantiate_func_felt_normalization.llzk \
             -split-input-file \
             -llzk-flatten
