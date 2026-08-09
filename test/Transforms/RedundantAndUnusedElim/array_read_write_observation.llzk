@@ -480,7 +480,7 @@ module attributes {llzk.lang} {
     struct.member @result : !felt.type
 
     // An unknown aggregate array read may alias the source struct.
-    function.def @unknown_aggregate_read_write_must_invalidate_source(
+    function.def @compute(
         %cond: i1
     ) -> !felt.type attributes {function.allow_witness} {
       %self = struct.new : !struct.type<@UnknownAggregateReadElement>
