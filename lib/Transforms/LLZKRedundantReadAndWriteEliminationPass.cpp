@@ -1007,6 +1007,10 @@ class PassImpl : public llzk::impl::RedundantReadAndWriteEliminationPassBase<Pas
         // destination. Do not classify a source write as removable before
         // that copy has observed it.
         valTree->clearLastWritesInSubtree();
+      } else if (isa<array::ArrayType>(newVal.getType())) {
+        // An unknown array source may alias any tracked reference and is still
+        // read by array.insert, so it must clear all reference candidates.
+        writeCandidates.clearReferenceCandidates();
       }
 
       for (Value origIdx : writearr.getIndices()) {
@@ -1152,6 +1156,10 @@ class PassImpl : public llzk::impl::RedundantReadAndWriteEliminationPassBase<Pas
       if (valTree != nullptr && isa<array::ArrayType>(writeVal.getType())) {
         // Assigning an array-typed member copies its source elements.
         valTree->clearLastWritesInSubtree();
+      } else if (isa<array::ArrayType>(writeVal.getType())) {
+        // An unknown array source may alias any tracked reference and is still
+        // read by the member copy, so it must clear all reference candidates.
+        writeCandidates.clearReferenceCandidates();
       }
 
       auto access = member->getOrCreateChild(zeroTableOffset);

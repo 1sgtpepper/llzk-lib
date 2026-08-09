@@ -46,6 +46,29 @@ module attributes {llzk.lang} {
     %observed = array.read %copy[%i0] : !array.type<2 x !felt.type>, !felt.type
     function.return %observed : !felt.type
   }
+
+  // An unknown inserted source still observes writes made before the copy.
+  function.def @unknown_array_insert_observes_source(
+      %cond: i1
+  ) -> !felt.type {
+    %one = felt.const 1
+    %two = felt.const 2
+    %source = array.new : !array.type<2 x !felt.type>
+    %matrix = array.new : !array.type<1,2 x !felt.type>
+    %i0 = arith.constant 0 : index
+    %unknown_source = scf.if %cond -> (!array.type<2 x !felt.type>) {
+      scf.yield %source : !array.type<2 x !felt.type>
+    } else {
+      scf.yield %source : !array.type<2 x !felt.type>
+    }
+    array.write %source[%i0] = %one : !array.type<2 x !felt.type>, !felt.type
+    array.insert %matrix[%i0] = %unknown_source :
+        !array.type<1,2 x !felt.type>, !array.type<2 x !felt.type>
+    array.write %source[%i0] = %two : !array.type<2 x !felt.type>, !felt.type
+    %observed = array.read %matrix[%i0, %i0] :
+        !array.type<1,2 x !felt.type>, !felt.type
+    function.return %observed : !felt.type
+  }
 }
 // CHECK-LABEL: module attributes {llzk.lang} {
 // CHECK-NEXT:    function.def @array_insert_extract_after_source_mutation() -> !felt.type {
@@ -112,32 +135,6 @@ module attributes {llzk.lang} {
 // CHECK-NEXT:  }
 // -----
 module attributes {llzk.lang} {
-  // A copied row remains independent when its source is mutated in a branch.
-  function.def @array_insert_extract_after_source_mutation_in_cfg(
-      %cond: i1
-  ) -> !felt.type {
-    %one = felt.const 1
-    %two = felt.const 2
-    %row = array.new : !array.type<2 x !felt.type>
-    %matrix = array.new : !array.type<1,2 x !felt.type>
-    %i0 = arith.constant 0 : index
-    array.write %row[%i0] = %one : !array.type<2 x !felt.type>, !felt.type
-    array.insert %matrix[%i0] = %row :
-        !array.type<1,2 x !felt.type>, !array.type<2 x !felt.type>
-    scf.if %cond {
-      array.write %row[%i0] = %two : !array.type<2 x !felt.type>, !felt.type
-      scf.yield
-    } else {
-      array.write %row[%i0] = %two : !array.type<2 x !felt.type>, !felt.type
-      scf.yield
-    }
-    %copy = array.extract %matrix[%i0] : !array.type<1,2 x !felt.type>
-    %observed = array.read %copy[%i0] : !array.type<2 x !felt.type>, !felt.type
-    function.return %observed : !felt.type
-  }
-}
-// -----
-module attributes {llzk.lang} {
   // An unknown inserted row must detach stale facts from the destination row.
   function.def @unknown_array_insert_overwrites_known_row(%cond: i1) -> !felt.type {
     %one = felt.const 1
@@ -154,8 +151,8 @@ module attributes {llzk.lang} {
     }
     array.insert %matrix[%i0] = %unknown_row :
         !array.type<1,2 x !felt.type>, !array.type<2 x !felt.type>
-    %observed = array.read %matrix[%i0, %i0] :
-        !array.type<1,2 x !felt.type>, !felt.type
+    %copy = array.extract %matrix[%i0] : !array.type<1,2 x !felt.type>
+    %observed = array.read %copy[%i0] : !array.type<2 x !felt.type>, !felt.type
     function.return %observed : !felt.type
   }
 }
@@ -720,8 +717,8 @@ module attributes {llzk.lang} {
           !array.type<2 x !felt.type>, !felt.type
       scf.yield
     }
-    %observed = array.read %matrix[%i0, %i0] :
-        !array.type<1,2 x !felt.type>, !felt.type
+    %copy = array.extract %matrix[%i0] : !array.type<1,2 x !felt.type>
+    %observed = array.read %copy[%i0] : !array.type<2 x !felt.type>, !felt.type
     function.return %observed : !felt.type
   }
 }
