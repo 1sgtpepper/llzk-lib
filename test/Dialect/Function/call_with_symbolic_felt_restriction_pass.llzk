@@ -40,6 +40,13 @@ module attributes {llzk.lang} {
           ]>>) -> ()
       function.return
     }
+    function.def @fieldless_concrete(
+        %value: !struct.type<@BoxTemplate::@Box<[#felt<const 35>]>>
+    ) {
+      function.call @Target::@accept<[@G]>(%value) :
+          (!struct.type<@BoxTemplate::@Box<[#felt<const 35>]>>) -> ()
+      function.return
+    }
   }
 
   module @globals {
@@ -59,6 +66,14 @@ module attributes {llzk.lang} {
         (!struct.type<@BoxTemplate::@Box<[
             #felt<const 35 : !felt.type<"bn128">>
         ]>>) -> ()
+    function.return
+  }
+
+  function.def @qualified_fieldless_concrete(
+      %value: !struct.type<@BoxTemplate::@Box<[#felt<const 35>]>>
+  ) {
+    function.call @Target::@accept<[@globals::@G]>(%value) :
+        (!struct.type<@BoxTemplate::@Box<[#felt<const 35>]>>) -> ()
     function.return
   }
 }

@@ -890,6 +890,12 @@ LogicalResult IncludeOp::verifyTemplateParamsMatchInferred(
       // resolved field or value to reject evidence that conflicts with the inferred witness.
       if (auto sym = llvm::dyn_cast<SymbolRefAttr>(attr);
           sym && !llvm::isa<SymbolRefAttr>(it->second)) {
+        auto inferredFieldMatches = [&](Type evidenceType) {
+          auto evidenceFelt = llvm::dyn_cast<FeltType>(evidenceType);
+          auto inferredFelt = llvm::dyn_cast<FeltConstAttr>(it->second);
+          return !evidenceFelt || !inferredFelt || !evidenceFelt.hasField() ||
+                 !inferredFelt.getType().hasField() || evidenceFelt == inferredFelt.getType();
+        };
         bool resolvedLocal = false;
         if (sym.getNestedReferences().empty()) {
           SymbolTableCollection tables;
@@ -903,7 +909,8 @@ LogicalResult IncludeOp::verifyTemplateParamsMatchInferred(
             if (binding) {
               resolvedLocal = true;
               if (std::optional<Type> bindingType = binding.getTypeOpt()) {
-                valuesUnify = succeeded(materializeTemplateParamValue(it->second, bindingType));
+                valuesUnify = inferredFieldMatches(*bindingType) &&
+                              succeeded(materializeTemplateParamValue(it->second, bindingType));
               }
             }
           }
@@ -914,9 +921,11 @@ LogicalResult IncludeOp::verifyTemplateParamsMatchInferred(
               succeeded(global)) {
             global::GlobalDefOp globalOp = global->get();
             if (Attribute value = globalOp.getInitialValueAttr()) {
-              valuesUnify = templateParamValuesUnify(value, it->second, globalOp.getType());
+              valuesUnify = inferredFieldMatches(globalOp.getType()) &&
+                            templateParamValuesUnify(value, it->second, globalOp.getType());
             } else {
               valuesUnify =
+                  inferredFieldMatches(globalOp.getType()) &&
                   succeeded(materializeTemplateParamValue(it->second, globalOp.getType()));
             }
           }

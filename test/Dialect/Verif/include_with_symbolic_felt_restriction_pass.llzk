@@ -62,6 +62,17 @@ module attributes {llzk.lang} {
               #felt<const 35 : !felt.type<"bn128">>
           ]>>) -> ()
     }
+    function.def @fieldless_concrete(
+        %value: !struct.type<@BoxTemplate::@Box<[#felt<const 35>]>>
+    ) {
+      function.return
+    }
+    verif.contract @FieldlessConcrete for @Caller::@fieldless_concrete (
+        %value: !struct.type<@BoxTemplate::@Box<[#felt<const 35>]>>
+    ) {
+      verif.include @Target::@Base<[@G]>(%value) :
+          (!struct.type<@BoxTemplate::@Box<[#felt<const 35>]>>) -> ()
+    }
   }
 
   module @globals {
@@ -92,5 +103,17 @@ module attributes {llzk.lang} {
         (!struct.type<@BoxTemplate::@Box<[
             #felt<const 35 : !felt.type<"bn128">>
         ]>>) -> ()
+  }
+
+  function.def @qualified_fieldless_concrete(
+      %value: !struct.type<@BoxTemplate::@Box<[#felt<const 35>]>>
+  ) {
+    function.return
+  }
+  verif.contract @QualifiedFieldlessConcrete for @qualified_fieldless_concrete (
+      %value: !struct.type<@BoxTemplate::@Box<[#felt<const 35>]>>
+  ) {
+    verif.include @Target::@Base<[@globals::@G]>(%value) :
+        (!struct.type<@BoxTemplate::@Box<[#felt<const 35>]>>) -> ()
   }
 }
