@@ -23,6 +23,16 @@ jobs:
         run: |
           filecheck="$(find /usr/lib/llvm-* -type f -name FileCheck -executable -print -quit)"
           test -x "$filecheck"
-          sed '/ATTR_2:/,$d' "$GITHUB_WORKSPACE/ci-probe-checks.txt" > "$RUNNER_TEMP/first-two-checks.txt"
-          "$filecheck" --enable-var-scope "$RUNNER_TEMP/first-two-checks.txt" \
-            < "$GITHUB_WORKSPACE/ci-probe-input.llzk"
+          for count in $(seq 2 23); do
+            head -n $((8 + count)) "$GITHUB_WORKSPACE/ci-probe-checks.txt" \
+              > "$RUNNER_TEMP/truncated-checks.txt"
+            if "$filecheck" --enable-var-scope "$RUNNER_TEMP/truncated-checks.txt" \
+              < "$GITHUB_WORKSPACE/ci-probe-input.llzk" \
+              > "$RUNNER_TEMP/filecheck.log" 2>&1; then
+              echo "attribute_checks_through_$((count - 1))=PASS"
+            else
+              echo "attribute_checks_through_$((count - 1))=FAIL"
+              cat "$RUNNER_TEMP/filecheck.log"
+              break
+            fi
+          done
