@@ -5,6 +5,7 @@ on:
     branches:
       - ci/verify-generator-replays-20260805-final-heads
       - ci/verify-generator-replays-20260807-llzk-prs
+      - ci/verify-pr484-location-filecheck-20260809
   workflow_dispatch:
 
 permissions:
