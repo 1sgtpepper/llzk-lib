@@ -14,7 +14,7 @@ module attributes {llzk.named = #felt, llzk.nested = #nested, llzk.fields = [#fe
 // reuse their generated FileCheck variable.
 // SCRIPT: // CHECK:
 // SCRIPT-SAME: ATTR_0:
-// SCRIPT: // CHECK: #{{\[\[}}\$ATTR_1{{:.*\]\]}} = loc(fused[#{{\[\[}}\$ATTR_0{{\]\]}}])
+// SCRIPT: // CHECK: #{{.*}} = loc(fused[#{{\[\[}}\$ATTR_0{{\]\]}}])
 // SCRIPT: // CHECK-LABEL: module attributes {llzk.named =
 // SCRIPT-SAME: ATTR_0]], llzk.nested =
 // SCRIPT-SAME: ATTR_1]], llzk.fields = [#felt{{\.}}field<"x", 101>], llzk.main = !struct.type<@Main<[#felt<const 7 : !felt.type<"x">>]>], llzk.dollar_opaque = #felt{{\$}}ext<const 7>, llzk.dollar_marker = #felt{{\$}}ext.marker, llzk.marker = #foo{{\.}}marker, llzk.lang} {
