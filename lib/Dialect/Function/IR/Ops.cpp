@@ -742,9 +742,8 @@ LogicalResult CallOp::verifyTemplateParamsMatchInferred(
     if (it != unifications.end() && failed(verifyTemplateParamCompatibility(it->second, paramOp))) {
       return failure();
     }
-    bool valuesUnify =
-        it == unifications.end() ||
-        templateParamValuesUnify(attr, it->second, paramOp.getTypeOpt());
+    bool valuesUnify = it == unifications.end() ||
+                       templateParamValuesUnify(attr, it->second, paramOp.getTypeOpt());
     std::optional<Type> requiredType = paramOp.getTypeOpt();
     if (it != unifications.end() && requiredType && llvm::isa<FeltType>(*requiredType)) {
       // The context-free unifier must defer symbols. Here, the verifier can use a symbol's
@@ -764,8 +763,7 @@ LogicalResult CallOp::verifyTemplateParamsMatchInferred(
             if (binding) {
               resolvedLocal = true;
               if (std::optional<Type> bindingType = binding.getTypeOpt()) {
-                valuesUnify =
-                    succeeded(materializeTemplateParamValue(it->second, bindingType));
+                valuesUnify = succeeded(materializeTemplateParamValue(it->second, bindingType));
               }
             }
           }
