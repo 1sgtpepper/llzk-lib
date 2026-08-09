@@ -71,35 +71,44 @@ module attributes {llzk.lang, llzk.main = !struct.type<@Main>} {
     struct.member @result : !felt.type<"babybear"> {llzk.pub}
 
     function.def @compute(
-        %source: !array.type<2 x !felt.type<"babybear">> {function.arg_name = "source"},
-        %selector: !felt.type<"babybear"> {function.arg_name = "selector"}
+        %first_selector: !felt.type<"babybear"> {function.arg_name = "first_selector"},
+        %second_selector: !felt.type<"babybear"> {function.arg_name = "second_selector"}
     ) -> !struct.type<@Main> {
       %self = struct.new : !struct.type<@Main>
       %one = felt.const 1 <"babybear">
       %two = felt.const 2 <"babybear">
       %i0 = arith.constant 0 : index
-      %i1 = arith.constant 1 : index
-      %cond = bool.cmp eq(%selector, %one) :
+      %first_cond = bool.cmp eq(%first_selector, %one) :
           !felt.type<"babybear">, !felt.type<"babybear">
-      %idx = scf.if %cond -> index {
-        scf.yield %i1 : index
-      } else {
-        scf.yield %i0 : index
-      }
+      %second_cond = bool.cmp eq(%second_selector, %one) :
+          !felt.type<"babybear">, !felt.type<"babybear">
+      %row = array.new : !array.type<2 x !felt.type<"babybear">>
       %matrix = array.new : !array.type<1,2 x !felt.type<"babybear">>
-      array.write %source[%i0] = %one :
-          !array.type<2 x !felt.type<"babybear">>, !felt.type<"babybear">
-      array.insert %matrix[%i0] = %source :
+      scf.if %first_cond {
+        array.write %row[%i0] = %one :
+            !array.type<2 x !felt.type<"babybear">>, !felt.type<"babybear">
+        scf.yield
+      } else {
+        array.write %row[%i0] = %two :
+            !array.type<2 x !felt.type<"babybear">>, !felt.type<"babybear">
+        scf.yield
+      }
+      array.insert %matrix[%i0] = %row :
           !array.type<1,2 x !felt.type<"babybear">>,
           !array.type<2 x !felt.type<"babybear">>
-      array.write %source[%idx] = %two :
-          !array.type<2 x !felt.type<"babybear">>, !felt.type<"babybear">
-      array.write %source[%i0] = %one :
-          !array.type<2 x !felt.type<"babybear">>, !felt.type<"babybear">
-      array.insert %matrix[%i0] = %source :
+      scf.if %second_cond {
+        array.write %row[%i0] = %one :
+            !array.type<2 x !felt.type<"babybear">>, !felt.type<"babybear">
+        scf.yield
+      } else {
+        array.write %row[%i0] = %two :
+            !array.type<2 x !felt.type<"babybear">>, !felt.type<"babybear">
+        scf.yield
+      }
+      array.insert %matrix[%i0] = %row :
           !array.type<1,2 x !felt.type<"babybear">>,
           !array.type<2 x !felt.type<"babybear">>
-      %observed = array.read %matrix[%i0, %idx] :
+      %observed = array.read %matrix[%i0, %i0] :
           !array.type<1,2 x !felt.type<"babybear">>, !felt.type<"babybear">
       struct.writem %self[@result] = %observed :
           !struct.type<@Main>, !felt.type<"babybear">
@@ -108,14 +117,14 @@ module attributes {llzk.lang, llzk.main = !struct.type<@Main>} {
 
     function.def @constrain(
         %self: !struct.type<@Main>,
-        %source: !array.type<2 x !felt.type<"babybear">>,
-        %selector: !felt.type<"babybear">
+        %first_selector: !felt.type<"babybear">,
+        %second_selector: !felt.type<"babybear">
     ) { function.return }
   }
 }
 
 //--- partial-input.json
-{"source": [9, 8], "selector": 1}
+{"first_selector": 1, "second_selector": 0}
 
 //--- partial-expected.json
 {"result": "2"}
