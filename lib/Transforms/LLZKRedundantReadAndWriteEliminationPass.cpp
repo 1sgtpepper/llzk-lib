@@ -834,15 +834,19 @@ class PassImpl : public llzk::impl::RedundantReadAndWriteEliminationPassBase<Pas
     // expose aggregate descendants, so it observes the selected subtree.
     auto doArrayReadLike = [&]<HasInterface<ArrayAccessOpInterface> OpClass>(OpClass readarr) {
       Value resVal = readarr.getResult();
-      const bool readIsLive = !resVal.use_empty();
+      if (resVal.use_empty()) {
+        // A directly dead read is erased after replacements. Do not let it
+        // become the canonical source for a later live read.
+        readVals.push_back(resVal);
+        return;
+      }
+
       std::shared_ptr<ReferenceNode> rootValTree = tryGetValTree(translate(readarr.getArrRef()));
       std::shared_ptr<ReferenceNode> currValTree = rootValTree;
       if (currValTree == nullptr) {
-        if (readIsLive) {
-          // An unknown array root may alias any tracked reference, so a live
-          // read must not allow any reference write candidate to be removed.
-          writeCandidates.clearReferenceCandidates();
-        }
+        // An unknown array root may alias any tracked reference, so a live
+        // read must not allow any reference write candidate to be removed.
+        writeCandidates.clearReferenceCandidates();
         state.values[resVal] = ReferenceNode::create(resVal, resVal);
         readVals.push_back(resVal);
         return;
@@ -869,9 +873,7 @@ class PassImpl : public llzk::impl::RedundantReadAndWriteEliminationPassBase<Pas
       } else {
         // Only a surviving read is a runtime observation, so clear only the
         // may-alias paths it can see.
-        if (readIsLive) {
-          rootValTree->clearLastWritesObservedBy(indices);
-        }
+        rootValTree->clearLastWritesObservedBy(indices);
         state.values[resVal] = currValTree;
         LLVM_DEBUG(
             llvm::dbgs() << readarr.getOperationName() << ": " << resVal << " => " << *currValTree
