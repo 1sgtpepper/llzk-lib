@@ -82,6 +82,23 @@ module attributes {llzk.lang} {
 // CHECK-NEXT:      array.write %[[VAL_2]]{{\[}}%[[VAL_4]]] = %[[VAL_1]] : <2 x !felt.type>, !felt.type
 // CHECK-NEXT:      function.return %[[VAL_0]] : !felt.type
 // CHECK-NEXT:    }
+// CHECK-NEXT:    function.def @unknown_array_insert_observes_source(%[[VAL_5:[0-9a-zA-Z_\.]+]]: i1) -> !felt.type {
+// CHECK-NEXT:      %[[VAL_6:[0-9a-zA-Z_\.]+]] = felt.const  1
+// CHECK-NEXT:      %[[VAL_7:[0-9a-zA-Z_\.]+]] = felt.const  2
+// CHECK-NEXT:      %[[VAL_8:[0-9a-zA-Z_\.]+]] = array.new  : <2 x !felt.type>
+// CHECK-NEXT:      %[[VAL_9:[0-9a-zA-Z_\.]+]] = array.new  : <1,2 x !felt.type>
+// CHECK-NEXT:      %[[VAL_10:[0-9a-zA-Z_\.]+]] = arith.constant 0 : index
+// CHECK-NEXT:      %[[VAL_11:[0-9a-zA-Z_\.]+]] = scf.if %[[VAL_5]] -> (!array.type<2 x !felt.type>) {
+// CHECK-NEXT:        scf.yield %[[VAL_8]] : !array.type<2 x !felt.type>
+// CHECK-NEXT:      } else {
+// CHECK-NEXT:        scf.yield %[[VAL_8]] : !array.type<2 x !felt.type>
+// CHECK-NEXT:      }
+// CHECK-NEXT:      array.write %[[VAL_8]]{{\[}}%[[VAL_10]]] = %[[VAL_6]] : <2 x !felt.type>, !felt.type
+// CHECK-NEXT:      array.insert %[[VAL_9]]{{\[}}%[[VAL_10]]] = %[[VAL_11]] : <1,2 x !felt.type>, <2 x !felt.type>
+// CHECK-NEXT:      array.write %[[VAL_8]]{{\[}}%[[VAL_10]]] = %[[VAL_7]] : <2 x !felt.type>, !felt.type
+// CHECK-NEXT:      %[[VAL_12:[0-9a-zA-Z_\.]+]] = array.read %[[VAL_9]]{{\[}}%[[VAL_10]], %[[VAL_10]]] : <1,2 x !felt.type>, !felt.type
+// CHECK-NEXT:      function.return %[[VAL_12]] : !felt.type
+// CHECK-NEXT:    }
 // CHECK-NEXT:  }
 // -----
 module attributes {llzk.lang} {
@@ -170,8 +187,9 @@ module attributes {llzk.lang} {
 // CHECK-NEXT:        scf.yield %[[VAL_2]] : !array.type<2 x !felt.type>
 // CHECK-NEXT:      }
 // CHECK-NEXT:      array.insert %[[VAL_3]]{{\[}}%[[VAL_4]]] = %[[VAL_5]] : <1,2 x !felt.type>, <2 x !felt.type>
-// CHECK-NEXT:      %[[VAL_6:[0-9a-zA-Z_\.]+]] = array.read %[[VAL_3]]{{\[}}%[[VAL_4]], %[[VAL_4]]] : <1,2 x !felt.type>, !felt.type
-// CHECK-NEXT:      function.return %[[VAL_6]] : !felt.type
+// CHECK-NEXT:      %[[VAL_6:[0-9a-zA-Z_\.]+]] = array.extract %[[VAL_3]]{{\[}}%[[VAL_4]]] : <1,2 x !felt.type>
+// CHECK-NEXT:      %[[VAL_7:[0-9a-zA-Z_\.]+]] = array.read %[[VAL_6]]{{\[}}%[[VAL_4]]] : <2 x !felt.type>, !felt.type
+// CHECK-NEXT:      function.return %[[VAL_7]] : !felt.type
 // CHECK-NEXT:    }
 // CHECK-NEXT:  }
 // -----
