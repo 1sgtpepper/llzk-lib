@@ -23,15 +23,15 @@ jobs:
         run: |
           filecheck="$(find /usr/lib/llvm-* -type f -name FileCheck -executable -print -quit)"
           test -x "$filecheck"
-          for count in $(seq 2 23); do
-            head -n $((8 + count)) "$GITHUB_WORKSPACE/ci-probe-checks.txt" \
+          for lines in 30 32 33 34 35 36 37 38 39 40 41 42 43 44 45 46 47 48 49 50 51 52 53; do
+            head -n "$lines" "$GITHUB_WORKSPACE/ci-probe-checks.txt" \
               > "$RUNNER_TEMP/truncated-checks.txt"
             if "$filecheck" --enable-var-scope "$RUNNER_TEMP/truncated-checks.txt" \
               < "$GITHUB_WORKSPACE/ci-probe-input.llzk" \
               > "$RUNNER_TEMP/filecheck.log" 2>&1; then
-              echo "attribute_checks_through_$((count - 1))=PASS"
+              echo "check_lines_through_${lines}=PASS"
             else
-              echo "attribute_checks_through_$((count - 1))=FAIL"
+              echo "check_lines_through_${lines}=FAIL"
               cat "$RUNNER_TEMP/filecheck.log"
               break
             fi
