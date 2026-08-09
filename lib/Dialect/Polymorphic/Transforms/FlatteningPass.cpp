@@ -1708,7 +1708,7 @@ private:
     );
 
     auto recordConcreteParam = [&](FlatSymbolRefAttr paramName, TemplateParamOp paramOp,
-                                   Attribute concreteValue) {
+                                   Attribute concreteValue) -> LogicalResult {
       if (failed(op.verifyTemplateParamCompatibility(concreteValue, paramOp))) {
         return failIncompatibleInferredParam(op, rewriter, paramName, paramOp);
       }
