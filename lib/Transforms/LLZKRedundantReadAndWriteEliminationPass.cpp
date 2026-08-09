@@ -457,6 +457,7 @@ public:
   }
 
 private:
+  /// @brief Compare known contents recursively while tolerating shared DAG nodes.
   bool hasSameKnownValueImpl(
       const ReferenceNode *other,
       DenseMap<const ReferenceNode *, DenseSet<const ReferenceNode *>> &memo
@@ -494,6 +495,7 @@ private:
     return result;
   }
 
+  /// @brief Return whether this node stores a mutable struct reference.
   bool isStructReference() const {
     return storedValue != nullptr && isa<component::StructType>(storedValue.getType());
   }
