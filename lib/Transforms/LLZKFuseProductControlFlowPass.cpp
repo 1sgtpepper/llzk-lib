@@ -225,9 +225,9 @@ static bool hasUnsafeMovedConstrainOp(scf::IfOp constrainIf) {
 static bool collectConstrainValueMappings(
     scf::IfOp computeIf, scf::IfOp constrainIf, llvm::DenseMap<Value, unsigned> &valueToResult
 ) {
-  // Fusion clones the constrain branch before compute-side member writes. Only member writes whose
-  // value is a direct compute-if result are currently proven safe to cross; member reads, other
-  // storage operations, and intervening operations are rejected.
+  // Fusion clones the constrain branch before direct compute-result member writes. Only member
+  // writes whose value is a direct compute-if result are currently proven safe to cross; member
+  // reads, other storage operations, and intervening operations are rejected.
   for (Operation *op = computeIf->getNextNode(); op != constrainIf; op = op->getNextNode()) {
     if (auto writeOp = dyn_cast<MemberWriteOp>(op)) {
       std::optional<unsigned> resultIndex = getIfResultIndex(computeIf, writeOp.getVal());
