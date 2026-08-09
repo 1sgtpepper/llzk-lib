@@ -12,7 +12,6 @@
 #include "llzk/Analysis/AnalysisUtil.h"
 #include "llzk/Analysis/ConstraintDependencyGraph.h"
 #include "llzk/Analysis/SourceRef.h"
-#include "llzk/Dialect/Felt/IR/Types.h"
 #include "llzk/Dialect/Global/IR/Ops.h"
 #include "llzk/Dialect/LLZK/IR/Ops.h"
 #include "llzk/Dialect/Polymorphic/IR/Ops.h"
@@ -881,46 +880,16 @@ LogicalResult IncludeOp::verifyTemplateParamsMatchInferred(
     if (it != unifications.end() && failed(verifyTemplateParamCompatibility(it->second, paramOp))) {
       return failure();
     }
-    bool valuesUnify = it == unifications.end() ||
-                       templateParamValuesUnify(attr, it->second, paramOp.getTypeOpt());
-    std::optional<Type> requiredType = paramOp.getTypeOpt();
-    if (it != unifications.end() && requiredType && llvm::isa<FeltType>(*requiredType)) {
-      // The context-free unifier must defer symbols. Here, the verifier can use a symbol's
-      // resolved field or value to reject evidence that conflicts with the inferred witness.
-      if (auto sym = llvm::dyn_cast<SymbolRefAttr>(attr);
-          sym && !llvm::isa<SymbolRefAttr>(it->second)) {
-        bool resolvedLocal = false;
-        if (sym.getNestedReferences().empty()) {
-          SymbolTableCollection tables;
-          FailureOr<TemplateOp> parentTemplate = getConstResolutionTemplate(tables, *this);
-          if (failed(parentTemplate)) {
-            return failure();
-          }
-          if (TemplateOp p = *parentTemplate) {
-            auto binding =
-                p.getConstNamed<TemplateSymbolBindingOpInterface>(sym.getRootReference());
-            if (binding) {
-              resolvedLocal = true;
-              if (std::optional<Type> bindingType = binding.getTypeOpt()) {
-                valuesUnify = succeeded(materializeTemplateParamValue(it->second, bindingType));
-              }
-            }
-          }
-        }
-        if (!resolvedLocal) {
-          SymbolTableCollection tables;
-          if (auto global = lookupTopLevelSymbol<global::GlobalDefOp>(tables, sym, *this, false);
-              succeeded(global)) {
-            global::GlobalDefOp globalOp = global->get();
-            if (Attribute value = globalOp.getInitialValueAttr()) {
-              valuesUnify = templateParamValuesUnify(value, it->second, globalOp.getType());
-            } else {
-              valuesUnify =
-                  succeeded(materializeTemplateParamValue(it->second, globalOp.getType()));
-            }
-          }
-        }
+    bool valuesUnify = true;
+    if (it != unifications.end()) {
+      SymbolTableCollection tables;
+      FailureOr<bool> resolved = resolvedTemplateParamValuesUnify(
+          tables, *this, attr, it->second, paramOp.getTypeOpt()
+      );
+      if (failed(resolved)) {
+        return failure();
       }
+      valuesUnify = *resolved;
     }
     if (!valuesUnify) {
       return this->emitOpError().append(

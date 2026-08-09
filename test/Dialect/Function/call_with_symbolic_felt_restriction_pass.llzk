@@ -24,6 +24,7 @@ module attributes {llzk.lang} {
 
   poly.template @Caller {
     poly.param @G : !felt.type<"bn128">
+    poly.param @H : !felt.type<"bn128">
     function.def @caller(%value: !struct.type<@BoxTemplate::@Box<[@G]>>) {
       function.call @Target::@accept<[@G]>(%value) :
           (!struct.type<@BoxTemplate::@Box<[@G]>>) -> ()
@@ -45,6 +46,16 @@ module attributes {llzk.lang} {
     ) {
       function.call @Target::@accept<[@G]>(%value) :
           (!struct.type<@BoxTemplate::@Box<[#felt<const 35>]>>) -> ()
+      function.return
+    }
+    function.def @concrete_vs_symbol(%value: !struct.type<@BoxTemplate::@Box<[@G]>>) {
+      function.call @Target::@accept<[#felt<const 35 : !felt.type<"bn128">>]>(%value) :
+          (!struct.type<@BoxTemplate::@Box<[@G]>>) -> ()
+      function.return
+    }
+    function.def @symbols_match(%value: !struct.type<@BoxTemplate::@Box<[@H]>>) {
+      function.call @Target::@accept<[@G]>(%value) :
+          (!struct.type<@BoxTemplate::@Box<[@H]>>) -> ()
       function.return
     }
   }
