@@ -390,11 +390,14 @@ fuseIfPair(scf::IfOp a, scf::IfOp b, MLIRContext *context, IRRewriter &rewriter)
     );
   }
 
+  // Recursive fusion runs after cloning; roll back the provisional op before reporting failure.
   if (failed(fuseMatchingRegionControlFlow(fusedIf.getThenRegion(), context))) {
+    rewriter.eraseOp(fusedIf);
     return failure();
   }
   if (!fusedIf.getElseRegion().empty() &&
       failed(fuseMatchingRegionControlFlow(fusedIf.getElseRegion(), context))) {
+    rewriter.eraseOp(fusedIf);
     return failure();
   }
 
