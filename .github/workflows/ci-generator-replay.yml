@@ -260,6 +260,43 @@ jobs:
             } > "$output_path/comparison.txt"
           }
 
+          capture_transform() {
+            local name="$1"
+            local head="$2"
+            local test_file="$3"
+            shift 3
+            local tested_path="$RUNNER_TEMP/llzk-$name"
+            local output_path="$OUTPUT_PATH/$name"
+
+            git fetch --no-tags --filter=blob:none https://github.com/1sgtpepper/llzk-lib.git "$head"
+            git worktree add --detach "$tested_path" "$head"
+            test "$(git -C "$tested_path" rev-parse HEAD)" = "$head"
+
+            (
+              cd "$tested_path"
+              nix --print-build-logs build '.#debugGCC'
+            )
+
+            mkdir -p "$output_path"
+            local llzk_opt="$tested_path/result/bin/llzk-opt"
+            test -x "$llzk_opt"
+            cp "$(readlink -f "$llzk_opt")" "$output_path/llzk-opt"
+            "$llzk_opt" --version > "$output_path/llzk-opt.version"
+            cp "$tested_path/$test_file" "$output_path/source.llzk"
+            "$llzk_opt" "$@" "$tested_path/$test_file" \
+              > "$output_path/producer-output.llzk" 2>&1
+            python3 "$tested_path/scripts/generate-test-checks.py" \
+              < "$output_path/producer-output.llzk" \
+              > "$output_path/generated-checks.txt"
+          }
+
+          capture_transform \
+            pr635-normalized-felt \
+            00c5330d78bb327fd7cd701f1e932782f8d2d280 \
+            test/Transforms/Flattening/instantiate_func_felt_normalization.llzk \
+            -llzk-flatten
+          exit 0
+
           replay_simple_transform \
             pr670 \
             42ee9ba1f97bf26ce51182c2e54cff72c3686755 \
