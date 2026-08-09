@@ -424,13 +424,14 @@ public:
       );
     }
 
-    FailureOr<FeltConstAttr> materialized = a.materializeAs(feltType);
+    FailureOr<Attribute> materialized =
+        normalizeConcreteTemplateParam(a, std::optional<Type>(feltType));
     if (failed(materialized)) {
       return op->emitOpError().append(
           "felt constant ", a, " is incompatible with converted result type ", feltType
       );
     }
-    replaceOpWithNewOp<FeltConstantOp>(rewriter, op, *materialized);
+    replaceOpWithNewOp<FeltConstantOp>(rewriter, op, llvm::cast<FeltConstAttr>(*materialized));
     return success();
   }
 };
