@@ -7,6 +7,7 @@ on:
       - ci/verify-generator-replays-20260807-llzk-prs
       - ci/verify-pr484-location-filecheck-20260809
       - ci/verify-pr484-generator-replay-final-20260809
+      - ci/verify-pr484-generator-replay-edcc88b-20260810
   workflow_dispatch:
 
 permissions:
@@ -59,7 +60,7 @@ jobs:
             local test_file="$3"
             shift 3
             if [[ "$head" == "36156d1b37f229b6ae791eda6cfcb96a7575c752" ]]; then
-              head="cf1dff528e52765c0a8eb747cfd6f2a41e93e6bc"
+              head="edcc88b20f993813273a21b959369fe9f17909be"
             fi
             local tested_path="$RUNNER_TEMP/llzk-$name"
             local output_path="$OUTPUT_PATH/$name"
@@ -223,7 +224,7 @@ jobs:
             local head="$1"
             local test_file="$2"
             if [[ "$head" == "efb42f37f1ea04315815d07315e07aa597625816" ]]; then
-              head="cf1dff528e52765c0a8eb747cfd6f2a41e93e6bc"
+              head="edcc88b20f993813273a21b959369fe9f17909be"
             fi
             local tested_path="$RUNNER_TEMP/llzk-pr672"
             local output_path="$OUTPUT_PATH/pr672"
