@@ -22,10 +22,10 @@ module attributes {llzk.lang} {
       %k = arith.constant 3 : index // redundant constant
       %arr_i = array.extract %mat[%i] : !array.type<7,3 x !felt.type>
       %arr_j = array.extract %mat[%j] : !array.type<7,3 x !felt.type>
-      %arr_k = array.extract %mat[%k] : !array.type<7,3 x !felt.type> // redundant extract
+      %arr_k = array.extract %mat[%k] : !array.type<7,3 x !felt.type> // retained aggregate snapshot
       constrain.eq %arr_i, %arr_j : !array.type<3 x !felt.type>
-      constrain.eq %arr_j, %arr_k : !array.type<3 x !felt.type> // this constraint is unnecessary, ends comparing %mat[3] == %mat[3]
-      constrain.eq %arr_k, %arr_i : !array.type<3 x !felt.type> // this is the same as the first constrain.eq op, just with LHS and RHS flipped
+      constrain.eq %arr_j, %arr_k : !array.type<3 x !felt.type>
+      constrain.eq %arr_k, %arr_i : !array.type<3 x !felt.type>
       function.return
     }
   }
@@ -49,7 +49,10 @@ module attributes {llzk.lang} {
 // CHECK-NEXT:      %[[VAL_9:.*]] = arith.constant 3 : index
 // CHECK-NEXT:      %[[VAL_10:.*]] = array.extract %[[VAL_7]]{{\[}}%[[VAL_8]]] : <7,3 x !felt.type>
 // CHECK-NEXT:      %[[VAL_11:.*]] = array.extract %[[VAL_7]]{{\[}}%[[VAL_9]]] : <7,3 x !felt.type>
+// CHECK-NEXT:      %[[ARR_K:.*]] = array.extract %[[VAL_7]]{{\[}}%[[VAL_9]]] : <7,3 x !felt.type>
 // CHECK-NEXT:      constrain.eq %[[VAL_10]], %[[VAL_11]] : !array.type<3 x !felt.type>, !array.type<3 x !felt.type>
+// CHECK-NEXT:      constrain.eq %[[VAL_11]], %[[ARR_K]] : !array.type<3 x !felt.type>, !array.type<3 x !felt.type>
+// CHECK-NEXT:      constrain.eq %[[ARR_K]], %[[VAL_10]] : !array.type<3 x !felt.type>, !array.type<3 x !felt.type>
 // CHECK-NEXT:      function.return
 // CHECK-NEXT:    }
 // CHECK-NEXT:  }
