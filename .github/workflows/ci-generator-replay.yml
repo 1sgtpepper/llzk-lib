@@ -242,11 +242,17 @@ jobs:
 
             (
               cd "$tested_path"
-              nix --print-build-logs build '.#debugGCC' --no-check
+              nix develop --command bash -c '
+                cmake -G Ninja -S . -B build \
+                  -DCMAKE_BUILD_TYPE=Debug \
+                  -DLLZK_BUILD_DEVTOOLS=ON \
+                  -DLLZK_VERSION_OVERRIDE=3.0.0
+                cmake --build build --target llzk-opt
+              '
             )
 
             mkdir -p "$chunk_dir" "$output_path"
-            local llzk_opt="$tested_path/result/bin/llzk-opt"
+            local llzk_opt="$tested_path/build/bin/llzk-opt"
             test -x "$llzk_opt"
             cp "$(readlink -f "$llzk_opt")" "$output_path/llzk-opt"
             "$llzk_opt" --version > "$output_path/llzk-opt.version"
