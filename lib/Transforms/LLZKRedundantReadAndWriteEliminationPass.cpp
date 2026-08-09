@@ -28,6 +28,7 @@
 #include <llvm/ADT/ArrayRef.h>
 #include <llvm/ADT/DenseMap.h>
 #include <llvm/ADT/DenseMapInfo.h>
+#include <llvm/ADT/DenseSet.h>
 #include <llvm/ADT/SmallVector.h>
 #include <llvm/Support/Debug.h>
 
@@ -153,6 +154,11 @@ using ReferenceNodeCloneMemo = DenseMap<const ReferenceNode *, ReferenceNodePtr>
 using ReferenceNodeIntersectionMemo =
     DenseMap<const ReferenceNode *, DenseMap<const ReferenceNode *, ReferenceNodePtr>>;
 
+struct ReferenceNodeClearMemo {
+  DenseSet<const ReferenceNode *> clearedSubtrees;
+  DenseMap<const ReferenceNode *, DenseSet<size_t>> observedDepths;
+};
+
 /// @brief A node in a graph of references that represent known values. A node consists of:
 /// - An identifier (e.g., %self)
 /// - A stored value (i.e., the allocation site or the value last written to the identifier)
@@ -259,10 +265,8 @@ public:
   /// Aggregate assignment shares descendant nodes, so this must run before a
   /// subtree is detached from an alias path.
   void clearLastWritesInSubtree() {
-    clearLastWrite();
-    for (const auto &[_, child] : children) {
-      child->clearLastWritesInSubtree();
-    }
+    ReferenceNodeClearMemo memo;
+    clearLastWritesInSubtreeImpl(memo);
   }
 
   /// @brief Clear pending writes that may be observed by a live array read or extract.
@@ -271,34 +275,8 @@ public:
   /// dynamic indices visit every non-attribute child. Once all indices are
   /// consumed, the selected value may expose aggregate descendants.
   void clearLastWritesObservedBy(llvm::ArrayRef<ReferenceID> indices) {
-    if (indices.empty()) {
-      clearLastWritesInSubtree();
-      return;
-    }
-    clearLastWrite();
-
-    const ReferenceID &index = indices.front();
-    llvm::ArrayRef<ReferenceID> remaining = indices.drop_front();
-    if (!index.isConst()) {
-      for (const auto &[id, child] : children) {
-        if (!id.isAttribute()) {
-          child->clearLastWritesObservedBy(remaining);
-        }
-      }
-      return;
-    }
-
-    if (auto it = children.find(index); it != children.end()) {
-      it->second->clearLastWritesObservedBy(remaining);
-    }
-    if (dynamicChildCount == 0) {
-      return;
-    }
-    for (const auto &[id, child] : children) {
-      if (id.isValue()) {
-        child->clearLastWritesObservedBy(remaining);
-      }
-    }
+    ReferenceNodeClearMemo memo;
+    clearLastWritesObservedByImpl(indices, memo);
   }
 
   void setCurrentValue(Value v, const std::shared_ptr<ReferenceNode> &valTree = nullptr) {
@@ -313,8 +291,9 @@ public:
 
   /// @brief Detach all children after clearing candidates held by their subtrees.
   void invalidateChildren() {
+    ReferenceNodeClearMemo memo;
     for (const auto &[_, child] : children) {
-      child->clearLastWritesInSubtree();
+      child->clearLastWritesInSubtreeImpl(memo);
     }
     children.clear();
     dynamicChildCount = 0;
@@ -335,10 +314,11 @@ public:
         invalidChildren.push_back(id);
       }
     }
+    ReferenceNodeClearMemo memo;
     for (const ReferenceID &id : invalidChildren) {
       auto it = children.find(id);
       if (it != children.end()) {
-        it->second->clearLastWritesInSubtree();
+        it->second->clearLastWritesInSubtreeImpl(memo);
         children.erase(it);
       }
     }
@@ -361,10 +341,11 @@ public:
         }
       }
     }
+    ReferenceNodeClearMemo memo;
     for (const ReferenceID &id : invalidChildren) {
       auto it = children.find(id);
       if (it != children.end()) {
-        it->second->clearLastWritesInSubtree();
+        it->second->clearLastWritesInSubtreeImpl(memo);
         children.erase(it);
       }
     }
@@ -435,6 +416,55 @@ public:
   }
 
 private:
+  /// @brief Recursively clear candidates once per shared subtree node.
+  void clearLastWritesInSubtreeImpl(ReferenceNodeClearMemo &memo) {
+    if (!memo.clearedSubtrees.insert(this).second) {
+      return;
+    }
+    clearLastWrite();
+    for (const auto &[_, child] : children) {
+      child->clearLastWritesInSubtreeImpl(memo);
+    }
+  }
+
+  /// @brief Clear observed candidates once per node and remaining path depth.
+  void clearLastWritesObservedByImpl(
+      llvm::ArrayRef<ReferenceID> indices, ReferenceNodeClearMemo &memo
+  ) {
+    if (memo.clearedSubtrees.contains(this) ||
+        !memo.observedDepths[this].insert(indices.size()).second) {
+      return;
+    }
+    if (indices.empty()) {
+      clearLastWritesInSubtreeImpl(memo);
+      return;
+    }
+    clearLastWrite();
+
+    const ReferenceID &index = indices.front();
+    llvm::ArrayRef<ReferenceID> remaining = indices.drop_front();
+    if (!index.isConst()) {
+      for (const auto &[id, child] : children) {
+        if (!id.isAttribute()) {
+          child->clearLastWritesObservedByImpl(remaining, memo);
+        }
+      }
+      return;
+    }
+
+    if (auto it = children.find(index); it != children.end()) {
+      it->second->clearLastWritesObservedByImpl(remaining, memo);
+    }
+    if (dynamicChildCount == 0) {
+      return;
+    }
+    for (const auto &[id, child] : children) {
+      if (id.isValue()) {
+        child->clearLastWritesObservedByImpl(remaining, memo);
+      }
+    }
+  }
+
   ReferenceID identifier;
   mlir::Value storedValue;
   // Transient candidate state; semantic clones deliberately leave this null.
@@ -847,6 +877,11 @@ class PassImpl : public llzk::impl::RedundantReadAndWriteEliminationPassBase<Pas
         // An unknown array root may alias any tracked reference, so a live
         // read must not allow any reference write candidate to be removed.
         writeCandidates.clearReferenceCandidates();
+        if (isa<array::ArrayType, component::StructType>(resVal.getType())) {
+          // An unknown aggregate result may alias any tracked aggregate; do
+          // not retain facts that a later write through the result could stale.
+          state.values.clear();
+        }
         state.values[resVal] = ReferenceNode::create(resVal, resVal);
         readVals.push_back(resVal);
         return;

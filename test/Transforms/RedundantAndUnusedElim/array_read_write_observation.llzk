@@ -446,6 +446,78 @@ module attributes {llzk.lang} {
 // CHECK-NEXT:  }
 // -----
 module attributes {llzk.lang} {
+  // An unknown aggregate root may alias the source, so a write through an
+  // extracted result must invalidate the source's known element facts.
+  function.def @unknown_extract_write_must_invalidate_source(
+      %cond: i1
+  ) -> !felt.type {
+    %one = felt.const 1
+    %two = felt.const 2
+    %matrix = array.new : !array.type<2,2 x !felt.type>
+    %alias = scf.if %cond -> (!array.type<2,2 x !felt.type>) {
+      scf.yield %matrix : !array.type<2,2 x !felt.type>
+    } else {
+      scf.yield %matrix : !array.type<2,2 x !felt.type>
+    }
+    %i0 = arith.constant 0 : index
+    array.write %matrix[%i0, %i0] = %one :
+        !array.type<2,2 x !felt.type>, !felt.type
+    %row = array.extract %alias[%i0] :
+        !array.type<2,2 x !felt.type>
+    array.write %row[%i0] = %two :
+        !array.type<2 x !felt.type>, !felt.type
+    %observed = array.read %matrix[%i0, %i0] :
+        !array.type<2,2 x !felt.type>, !felt.type
+    function.return %observed : !felt.type
+  }
+}
+// CHECK-LABEL: module attributes {llzk.lang} {
+// CHECK-NEXT:    function.def @unknown_extract_write_must_invalidate_source(%[[VAL_0:[0-9a-zA-Z_\.]+]]: i1) -> !felt.type {
+// -----
+module attributes {llzk.lang} {
+  struct.def @UnknownAggregateReadElement {
+    struct.member @value : !felt.type
+    struct.member @result : !felt.type
+
+    // An unknown aggregate array read may alias the source struct.
+    function.def @unknown_aggregate_read_write_must_invalidate_source(
+        %cond: i1
+    ) -> !felt.type {
+      %self = struct.new : !struct.type<@UnknownAggregateReadElement>
+      %one = felt.const 1
+      %two = felt.const 2
+      %matrix = array.new %self, %self :
+          !array.type<2 x !struct.type<@UnknownAggregateReadElement>>
+      %alias = scf.if %cond -> (
+          !array.type<2 x !struct.type<@UnknownAggregateReadElement>>
+      ) {
+        scf.yield %matrix :
+            !array.type<2 x !struct.type<@UnknownAggregateReadElement>>
+      } else {
+        scf.yield %matrix :
+            !array.type<2 x !struct.type<@UnknownAggregateReadElement>>
+      }
+      %i0 = arith.constant 0 : index
+      struct.writem %self[@value] = %one :
+          !struct.type<@UnknownAggregateReadElement>, !felt.type
+      %selected = array.read %alias[%i0] :
+          !array.type<2 x !struct.type<@UnknownAggregateReadElement>>,
+          !struct.type<@UnknownAggregateReadElement>
+      struct.writem %selected[@value] = %two :
+          !struct.type<@UnknownAggregateReadElement>, !felt.type
+      %observed = struct.readm %self[@value] :
+          !struct.type<@UnknownAggregateReadElement>, !felt.type
+      function.return %observed : !felt.type
+    }
+    function.def @constrain(
+        %self: !struct.type<@UnknownAggregateReadElement>, %cond: i1
+    ) { function.return }
+  }
+}
+// CHECK-LABEL: module attributes {llzk.lang} {
+// CHECK-NEXT:    struct.def @UnknownAggregateReadElement {
+// -----
+module attributes {llzk.lang} {
   // A dead unresolved read must not become the canonical source of a later
   // live duplicate, which must preserve the earlier observable write.
   function.def @dead_then_live_duplicate_read_preserves_prior_write(
