@@ -466,11 +466,13 @@ LogicalResult verifyParamsOfType(
 
 namespace {
 
+/// Type and value facts established by resolving one symbolic template argument.
 struct TemplateParamSymbolEvidence {
   std::optional<Type> restriction;
   Attribute concreteValue;
 };
 
+/// Resolve a local template binding or qualified global without rejecting genuinely unknown refs.
 FailureOr<std::optional<TemplateParamSymbolEvidence>> resolveTemplateParamSymbolEvidence(
     SymbolTableCollection &tables, Operation *origin, SymbolRefAttr symbol
 ) {
@@ -501,6 +503,7 @@ FailureOr<std::optional<TemplateParamSymbolEvidence>> resolveTemplateParamSymbol
   return std::optional<TemplateParamSymbolEvidence>();
 }
 
+/// Return whether two known felt restrictions require different explicit fields.
 bool feltRestrictionsConflict(std::optional<Type> lhs, std::optional<Type> rhs) {
   if (!lhs || !rhs) {
     return false;
@@ -556,6 +559,7 @@ FailureOr<bool> resolvedTemplateParamValuesUnify(
     return false;
   }
 
+  // Replace a resolved global with its value; local bindings retain only their type evidence.
   auto materializeEvidence = [](
                                  Attribute fallback, SymbolRefAttr symbol,
                                  const std::optional<TemplateParamSymbolEvidence> &evidence
