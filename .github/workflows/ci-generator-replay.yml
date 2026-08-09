@@ -75,7 +75,6 @@ jobs:
             test -x "$llzk_opt"
             test -n "$filecheck"
 
-            cp "$(readlink -f "$llzk_opt")" "$output_path/llzk-opt"
             "$llzk_opt" --version > "$output_path/llzk-opt.version"
             cp "$tested_path/$test_file" "$output_path/committed-test.llzk"
             "$llzk_opt" "$@" "$tested_path/$test_file" \
@@ -132,7 +131,6 @@ jobs:
             test -x "$llzk_opt"
             test -n "$filecheck"
 
-            cp "$(readlink -f "$llzk_opt")" "$output_path/llzk-opt"
             "$llzk_opt" --version > "$output_path/llzk-opt.version"
             python3 - "$tested_path/$test_file" "$chunk_dir" <<'PY'
           from pathlib import Path
@@ -320,14 +318,6 @@ jobs:
             done
           }
 
-          capture_transform \
-            pr635-normalized-felt \
-            812beb993eca40a4e1a1513bf12e729d1f68c1e4 \
-            test/Transforms/Flattening/instantiate_func_felt_normalization.llzk \
-            -split-input-file \
-            -llzk-flatten
-          exit 0
-
           replay_simple_transform \
             pr670 \
             42ee9ba1f97bf26ce51182c2e54cff72c3686755 \
@@ -340,28 +330,42 @@ jobs:
             -llzk-duplicate-read-write-elim
           replay_split_transform \
             pr635-felt \
-            1e83a0529f5b955aeec63195f5decc3900ebac0e \
+            a7aa782ee3f85f1c7656330e769a6452ce60b6fe \
             test/Transforms/Flattening/instantiate_expr_felt_typevar_completion.llzk \
             -split-input-file \
             -llzk-flatten
           replay_split_transform \
             pr635-partial \
-            1e83a0529f5b955aeec63195f5decc3900ebac0e \
+            a7aa782ee3f85f1c7656330e769a6452ce60b6fe \
             test/Transforms/Flattening/instantiate_expr_partial.llzk \
             -split-input-file \
             -llzk-flatten
           replay_split_transform \
             pr635-target-local \
-            1e83a0529f5b955aeec63195f5decc3900ebac0e \
+            a7aa782ee3f85f1c7656330e769a6452ce60b6fe \
             test/Transforms/Flattening/instantiate_expr_target_local.llzk \
             -split-input-file \
             '--pass-pipeline=builtin.module(llzk-flatten{cleanup=disabled})'
           replay_split_transform \
             pr635-typevar \
-            1e83a0529f5b955aeec63195f5decc3900ebac0e \
+            a7aa782ee3f85f1c7656330e769a6452ce60b6fe \
             test/Transforms/Flattening/instantiate_expr_typevar_completion.llzk \
             -split-input-file \
             -llzk-flatten
+          replay_split_transform \
+            pr635-normalized-felt \
+            a7aa782ee3f85f1c7656330e769a6452ce60b6fe \
+            test/Transforms/Flattening/instantiate_func_felt_normalization.llzk \
+            -split-input-file \
+            -llzk-flatten
+          replay_split_transform \
+            pr635-struct-rollback \
+            a7aa782ee3f85f1c7656330e769a6452ce60b6fe \
+            test/Transforms/Flattening/instantiate_struct_rollback.llzk \
+            -split-input-file \
+            -llzk-flatten \
+            -verify-diagnostics
+          exit 0
           replay_split_transform \
             pr637-order \
             52f02ffd0573b23af34331174b551118ab75f421 \
