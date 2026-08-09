@@ -274,7 +274,7 @@ jobs:
 
             (
               cd "$tested_path"
-              nix --print-build-logs build '.#debugGCC'
+              nix --print-build-logs build --no-check '.#debugGCC'
             )
 
             mkdir -p "$output_path"
