@@ -178,6 +178,9 @@ static bool isSafeToMoveConstrainOp(Operation *op) {
   if (isa<scf::IfOp>(op)) {
     return true;
   }
+  if (isa<scf::WhileOp>(op)) {
+    return false;
+  }
   if (auto forOp = dyn_cast<scf::ForOp>(op)) {
     return forOp.getSpeculatability() != Speculation::NotSpeculatable;
   }
