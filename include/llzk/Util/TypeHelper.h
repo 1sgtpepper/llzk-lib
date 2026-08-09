@@ -290,7 +290,9 @@ materializeTemplateParamValue(mlir::Attribute actualValue, std::optional<mlir::T
 
 /// Return `true` iff two template argument values are compatible with the same required
 /// restriction. Felt constants and integer attributes are compared by value after applying the
-/// required felt field; all other values use the generic template-parameter unifier.
+/// required felt field, independent of APInt storage width. Deferred symbol references use the
+/// generic template-parameter unifier; other values that cannot materialize as a required felt are
+/// incompatible.
 bool templateParamValuesUnify(
     mlir::Attribute actualValue, mlir::Attribute inferredValue,
     std::optional<mlir::Type> requiredType

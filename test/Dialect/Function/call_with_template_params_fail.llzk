@@ -21,6 +21,27 @@ module attributes {llzk.lang} {
     function.def @constrain(%self: !struct.type<@MissingTemplateParams>) { function.return }
   }
 }
+
+// -----
+
+module attributes {llzk.lang} {
+  poly.template @RepeatedParam {
+    poly.param @N
+
+    function.def @accept(
+        %lhs: !array.type<@N x index>, %rhs: !array.type<@N x index>
+    ) {
+      function.return
+    }
+  }
+
+  function.def @caller(%lhs: !array.type<5 x index>, %rhs: !array.type<7 x index>) {
+    // expected-error@+1 {{'function.call' op cannot infer a unique template instantiation value for parameter "@N" from function type signature}}
+    function.call @RepeatedParam::@accept<[5]>(%lhs, %rhs) :
+        (!array.type<5 x index>, !array.type<7 x index>) -> ()
+    function.return
+  }
+}
 // -----
 module attributes {llzk.lang} {
   poly.template @GlobalFunc {
