@@ -308,6 +308,196 @@ module attributes {llzk.lang} {
 // CHECK-NEXT:  }
 // -----
 module attributes {llzk.lang} {
+  // A scalar read result is an SSA snapshot, not an alias of the mutable array slot.
+  function.def @read_snapshot_then_conditional_write(
+      %arr: !array.type<2 x !felt.type>, %cond: i1
+  ) -> !felt.type {
+    %i0 = arith.constant 0 : index
+    %one = felt.const 1
+    %before = array.read %arr[%i0] :
+        !array.type<2 x !felt.type>, !felt.type
+    scf.if %cond {
+      array.write %arr[%i0] = %one :
+          !array.type<2 x !felt.type>, !felt.type
+      scf.yield
+    } else {
+      scf.yield
+    }
+    function.return %before : !felt.type
+  }
+}
+// CHECK-LABEL: module attributes {llzk.lang} {
+// CHECK-NEXT:    function.def @read_snapshot_then_conditional_write(%[[VAL_0:[0-9a-zA-Z_\.]+]]: <2 x !felt.type>, %[[VAL_1:[0-9a-zA-Z_\.]+]]: i1) -> !felt.type {
+// CHECK-NEXT:      %[[VAL_2:[0-9a-zA-Z_\.]+]] = arith.constant 0 : index
+// CHECK-NEXT:      %[[VAL_3:[0-9a-zA-Z_\.]+]] = felt.const  1
+// CHECK-NEXT:      %[[VAL_4:[0-9a-zA-Z_\.]+]] = array.read %[[VAL_0]]{{\[}}%[[VAL_2]]] : <2 x !felt.type>, !felt.type
+// CHECK-NEXT:      scf.if %[[VAL_1]] {
+// CHECK-NEXT:        array.write %[[VAL_0]]{{\[}}%[[VAL_2]]] = %[[VAL_3]] : <2 x !felt.type>, !felt.type
+// CHECK-NEXT:      } else {
+// CHECK-NEXT:      }
+// CHECK-NEXT:      function.return %[[VAL_4]] : !felt.type
+// CHECK-NEXT:    }
+// CHECK-NEXT:  }
+// -----
+module attributes {llzk.lang} {
+  // An inserted array copies scalar elements before the source is mutated.
+  function.def @array_insert_copies_scalar_values() -> !felt.type {
+    %one = felt.const 1
+    %two = felt.const 2
+    %row = array.new : !array.type<2 x !felt.type>
+    %matrix = array.new : !array.type<1,2 x !felt.type>
+    %i0 = arith.constant 0 : index
+    array.write %row[%i0] = %one :
+        !array.type<2 x !felt.type>, !felt.type
+    array.insert %matrix[%i0] = %row :
+        !array.type<1,2 x !felt.type>, !array.type<2 x !felt.type>
+    array.write %row[%i0] = %two :
+        !array.type<2 x !felt.type>, !felt.type
+    %observed = array.read %matrix[%i0, %i0] :
+        !array.type<1,2 x !felt.type>, !felt.type
+    function.return %observed : !felt.type
+  }
+}
+// CHECK-LABEL: module attributes {llzk.lang} {
+// CHECK-NEXT:    function.def @array_insert_copies_scalar_values() -> !felt.type {
+// CHECK-NEXT:      %[[VAL_0:[0-9a-zA-Z_\.]+]] = felt.const  1
+// CHECK-NEXT:      %[[VAL_1:[0-9a-zA-Z_\.]+]] = felt.const  2
+// CHECK-NEXT:      %[[VAL_2:[0-9a-zA-Z_\.]+]] = array.new  : <2 x !felt.type>
+// CHECK-NEXT:      %[[VAL_3:[0-9a-zA-Z_\.]+]] = array.new  : <1,2 x !felt.type>
+// CHECK-NEXT:      %[[VAL_4:[0-9a-zA-Z_\.]+]] = arith.constant 0 : index
+// CHECK-NEXT:      array.write %[[VAL_2]]{{\[}}%[[VAL_4]]] = %[[VAL_0]] : <2 x !felt.type>, !felt.type
+// CHECK-NEXT:      array.insert %[[VAL_3]]{{\[}}%[[VAL_4]]] = %[[VAL_2]] : <1,2 x !felt.type>, <2 x !felt.type>
+// CHECK-NEXT:      array.write %[[VAL_2]]{{\[}}%[[VAL_4]]] = %[[VAL_1]] : <2 x !felt.type>, !felt.type
+// CHECK-NEXT:      function.return %[[VAL_0]] : !felt.type
+// CHECK-NEXT:    }
+// CHECK-NEXT:  }
+// -----
+module attributes {llzk.lang} {
+  // Array-copy state remains detached when source mutation happens in a CFG region.
+  function.def @array_insert_copy_survives_cfg_source_mutation(
+      %cond: i1
+  ) -> !felt.type {
+    %one = felt.const 1
+    %two = felt.const 2
+    %row = array.new : !array.type<2 x !felt.type>
+    %matrix = array.new : !array.type<1,2 x !felt.type>
+    %i0 = arith.constant 0 : index
+    array.write %row[%i0] = %one :
+        !array.type<2 x !felt.type>, !felt.type
+    array.insert %matrix[%i0] = %row :
+        !array.type<1,2 x !felt.type>, !array.type<2 x !felt.type>
+    scf.if %cond {
+      array.write %row[%i0] = %two :
+          !array.type<2 x !felt.type>, !felt.type
+      scf.yield
+    } else {
+      array.write %row[%i0] = %two :
+          !array.type<2 x !felt.type>, !felt.type
+      scf.yield
+    }
+    %observed = array.read %matrix[%i0, %i0] :
+        !array.type<1,2 x !felt.type>, !felt.type
+    function.return %observed : !felt.type
+  }
+}
+// CHECK-LABEL: module attributes {llzk.lang} {
+// CHECK-NEXT:    function.def @array_insert_copy_survives_cfg_source_mutation(%[[VAL_0:[0-9a-zA-Z_\.]+]]: i1) -> !felt.type {
+// CHECK-NEXT:      %[[VAL_1:[0-9a-zA-Z_\.]+]] = felt.const  1
+// CHECK-NEXT:      %[[VAL_2:[0-9a-zA-Z_\.]+]] = felt.const  2
+// CHECK-NEXT:      %[[VAL_3:[0-9a-zA-Z_\.]+]] = array.new  : <2 x !felt.type>
+// CHECK-NEXT:      %[[VAL_4:[0-9a-zA-Z_\.]+]] = array.new  : <1,2 x !felt.type>
+// CHECK-NEXT:      %[[VAL_5:[0-9a-zA-Z_\.]+]] = arith.constant 0 : index
+// CHECK-NEXT:      array.write %[[VAL_3]]{{\[}}%[[VAL_5]]] = %[[VAL_1]] : <2 x !felt.type>, !felt.type
+// CHECK-NEXT:      array.insert %[[VAL_4]]{{\[}}%[[VAL_5]]] = %[[VAL_3]] : <1,2 x !felt.type>, <2 x !felt.type>
+// CHECK-NEXT:      scf.if %[[VAL_0]] {
+// CHECK-NEXT:        array.write %[[VAL_3]]{{\[}}%[[VAL_5]]] = %[[VAL_2]] : <2 x !felt.type>, !felt.type
+// CHECK-NEXT:      } else {
+// CHECK-NEXT:        array.write %[[VAL_3]]{{\[}}%[[VAL_5]]] = %[[VAL_2]] : <2 x !felt.type>, !felt.type
+// CHECK-NEXT:      }
+// CHECK-NEXT:      function.return %[[VAL_1]] : !felt.type
+// CHECK-NEXT:    }
+// CHECK-NEXT:  }
+// -----
+module attributes {llzk.lang} {
+  // An extracted array is a fresh container and keeps its copied elements.
+  function.def @array_extract_copy_survives_source_mutation() -> !felt.type {
+    %one = felt.const 1
+    %two = felt.const 2
+    %matrix = array.new : !array.type<1,2 x !felt.type>
+    %i0 = arith.constant 0 : index
+    array.write %matrix[%i0, %i0] = %one :
+        !array.type<1,2 x !felt.type>, !felt.type
+    %row = array.extract %matrix[%i0] : !array.type<1,2 x !felt.type>
+    array.write %matrix[%i0, %i0] = %two :
+        !array.type<1,2 x !felt.type>, !felt.type
+    %observed = array.read %row[%i0] :
+        !array.type<2 x !felt.type>, !felt.type
+    function.return %observed : !felt.type
+  }
+}
+// CHECK-LABEL: module attributes {llzk.lang} {
+// CHECK-NEXT:    function.def @array_extract_copy_survives_source_mutation() -> !felt.type {
+// CHECK-NEXT:      %[[VAL_0:[0-9a-zA-Z_\.]+]] = felt.const  1
+// CHECK-NEXT:      %[[VAL_1:[0-9a-zA-Z_\.]+]] = felt.const  2
+// CHECK-NEXT:      %[[VAL_2:[0-9a-zA-Z_\.]+]] = array.new  : <1,2 x !felt.type>
+// CHECK-NEXT:      %[[VAL_3:[0-9a-zA-Z_\.]+]] = arith.constant 0 : index
+// CHECK-NEXT:      array.write %[[VAL_2]]{{\[}}%[[VAL_3]], %[[VAL_3]]] = %[[VAL_0]] : <1,2 x !felt.type>, !felt.type
+// CHECK-NEXT:      %[[VAL_4:[0-9a-zA-Z_\.]+]] = array.extract %[[VAL_2]]{{\[}}%[[VAL_3]]] : <1,2 x !felt.type>
+// CHECK-NEXT:      array.write %[[VAL_2]]{{\[}}%[[VAL_3]], %[[VAL_3]]] = %[[VAL_1]] : <1,2 x !felt.type>, !felt.type
+// CHECK-NEXT:      function.return %[[VAL_0]] : !felt.type
+// CHECK-NEXT:    }
+// CHECK-NEXT:  }
+// -----
+module attributes {llzk.lang} {
+  struct.def @ArrayReferenceElement {
+    struct.member @value : !felt.type
+
+    // Struct elements remain reference-semantic when stored in arrays.
+    function.def @compute() -> !felt.type {
+      %self = struct.new : !struct.type<@ArrayReferenceElement>
+      %one = felt.const 1
+      %two = felt.const 2
+      %i0 = arith.constant 0 : index
+      struct.writem %self[@value] = %one :
+          !struct.type<@ArrayReferenceElement>, !felt.type
+      %arr = array.new %self, %self :
+          !array.type<2 x !struct.type<@ArrayReferenceElement>>
+      %selected = array.read %arr[%i0] :
+          !array.type<2 x !struct.type<@ArrayReferenceElement>>,
+          !struct.type<@ArrayReferenceElement>
+      struct.writem %self[@value] = %two :
+          !struct.type<@ArrayReferenceElement>, !felt.type
+      %observed = struct.readm %selected[@value] :
+          !struct.type<@ArrayReferenceElement>, !felt.type
+      function.return %observed : !felt.type
+    }
+    function.def @constrain(
+        %self: !struct.type<@ArrayReferenceElement>
+    ) attributes {function.allow_constraint} { function.return }
+  }
+}
+// CHECK-LABEL: module attributes {llzk.lang} {
+// CHECK-NEXT:    struct.def @ArrayReferenceElement {
+// CHECK-NEXT:      struct.member @value : !felt.type
+// CHECK-NEXT:      function.def @compute() -> !felt.type attributes {function.allow_witness} {
+// CHECK-NEXT:        %[[VAL_0:[0-9a-zA-Z_\.]+]] = struct.new : <@ArrayReferenceElement>
+// CHECK-NEXT:        %[[VAL_1:[0-9a-zA-Z_\.]+]] = felt.const  1
+// CHECK-NEXT:        %[[VAL_2:[0-9a-zA-Z_\.]+]] = felt.const  2
+// CHECK-NEXT:        %[[VAL_3:[0-9a-zA-Z_\.]+]] = arith.constant 0 : index
+// CHECK-NEXT:        struct.writem %[[VAL_0]][@value] = %[[VAL_1]] : <@ArrayReferenceElement>, !felt.type
+// CHECK-NEXT:        %[[VAL_4:[0-9a-zA-Z_\.]+]] = array.new %[[VAL_0]], %[[VAL_0]] : <2 x !struct.type<@ArrayReferenceElement>>
+// CHECK-NEXT:        %[[VAL_5:[0-9a-zA-Z_\.]+]] = array.read %[[VAL_4]]{{\[}}%[[VAL_3]]] : <2 x !struct.type<@ArrayReferenceElement>>, !struct.type<@ArrayReferenceElement>
+// CHECK-NEXT:        struct.writem %[[VAL_0]][@value] = %[[VAL_2]] : <@ArrayReferenceElement>, !felt.type
+// CHECK-NEXT:        %[[VAL_6:[0-9a-zA-Z_\.]+]] = struct.readm %[[VAL_5]][@value] : <@ArrayReferenceElement>, !felt.type
+// CHECK-NEXT:        function.return %[[VAL_6]] : !felt.type
+// CHECK-NEXT:      }
+// CHECK-NEXT:      function.def @constrain(%[[VAL_7:[0-9a-zA-Z_\.]+]]: !struct.type<@ArrayReferenceElement>) attributes {function.allow_constraint} {
+// CHECK-NEXT:        function.return
+// CHECK-NEXT:      }
+// CHECK-NEXT:    }
+// CHECK-NEXT:  }
+// -----
+module attributes {llzk.lang} {
   // A live read through an untracked region result may still alias the source array.
   function.def @scf_result_array_alias_preserves_prior_write(
       %idx: index, %cond: i1

@@ -215,6 +215,21 @@ public:
     return result;
   }
 
+  /// @brief Clone the mutable container state of an array value.
+  ///
+  /// Array insert/extract operations copy array elements. Scalar and nested-array
+  /// nodes therefore need independent state, while a struct-typed element is a
+  /// reference-semantic object and must remain shared with its source aliases.
+  ReferenceNodePtr cloneArrayValueNode() const {
+    ReferenceNode copy(identifier, storedValue);
+    auto result = std::make_shared<ReferenceNode>(std::move(copy));
+    result->dynamicChildCount = dynamicChildCount;
+    for (const auto &[id, child] : children) {
+      result->children[id] = child->isStructReference() ? child : child->cloneArrayValueNode();
+    }
+    return result;
+  }
+
   template <typename IdType>
   std::shared_ptr<ReferenceNode>
   createChild(IdType id, Value storedVal, const std::shared_ptr<ReferenceNode> &valTree = nullptr) {
@@ -285,10 +300,18 @@ public:
   void setCurrentValue(Value v, const std::shared_ptr<ReferenceNode> &valTree = nullptr) {
     storedValue = v;
     if (valTree != nullptr) {
-      // Overwrite our current set of children with new children, since we overwrote
-      // the stored value.
-      children = valTree->children;
-      dynamicChildCount = valTree->dynamicChildCount;
+      // Overwrite our current children because the stored value changed. Array
+      // values are copies, but struct values retain reference identity.
+      if (isa<array::ArrayType>(v.getType())) {
+        children.clear();
+        dynamicChildCount = valTree->dynamicChildCount;
+        for (const auto &[id, child] : valTree->children) {
+          children[id] = child->isStructReference() ? child : child->cloneArrayValueNode();
+        }
+      } else {
+        children = valTree->children;
+        dynamicChildCount = valTree->dynamicChildCount;
+      }
     }
   }
 
@@ -394,6 +417,9 @@ public:
   friend ReferenceNodePtr greatestCommonSubtree(
       const ReferenceNodePtr &lhs, const ReferenceNodePtr &rhs, ReferenceNodeIntersectionMemo &memo
   ) {
+    if (lhs == nullptr || rhs == nullptr) {
+      return nullptr;
+    }
     auto &rhsNodes = memo[lhs.get()];
     if (auto it = rhsNodes.find(rhs.get()); it != rhsNodes.end()) {
       return it->second;
@@ -419,6 +445,10 @@ public:
   }
 
 private:
+  bool isStructReference() const {
+    return storedValue != nullptr && isa<component::StructType>(storedValue.getType());
+  }
+
   /// @brief Recursively clear candidates once per shared subtree node.
   void clearLastWritesInSubtreeImpl(ReferenceNodeClearMemo &memo) {
     if (!memo.clearedSubtrees.insert(this).second) {
@@ -526,7 +556,9 @@ ValueMap intersectValueMap(const ValueMap &lhs, const ValueMap &rhs) {
   for (const auto &[id, lhsValTree] : lhs) {
     if (auto it = rhs.find(id); it != rhs.end()) {
       const auto &rhsValTree = it->second;
-      res[id] = greatestCommonSubtree(lhsValTree, rhsValTree, memo);
+      if (auto common = greatestCommonSubtree(lhsValTree, rhsValTree, memo)) {
+        res.try_emplace(id, std::move(common));
+      }
     }
   }
   return res;
@@ -559,7 +591,9 @@ ValueMap cloneValueMap(const ValueMap &orig) {
   ValueMap res;
   ReferenceNodeCloneMemo memo;
   for (const auto &[id, valueGraph] : orig) {
-    res[id] = valueGraph->clone(memo);
+    if (valueGraph != nullptr) {
+      res[id] = valueGraph->clone(memo);
+    }
   }
   return res;
 }
@@ -820,6 +854,20 @@ class PassImpl : public llzk::impl::RedundantReadAndWriteEliminationPassBase<Pas
       return nullptr;
     };
 
+    // A scalar read produces an immutable SSA snapshot. Array results copy
+    // their mutable container state, while struct results preserve object
+    // identity so member writes remain visible through every alias.
+    auto makeReadSnapshot = [](Value resVal, const ReferenceNodePtr &valueTree) {
+      if (valueTree != nullptr && isa<component::StructType>(resVal.getType())) {
+        return valueTree;
+      }
+      auto snapshot = ReferenceNode::create(resVal, resVal);
+      if (valueTree != nullptr && isa<array::ArrayType>(resVal.getType())) {
+        snapshot->setCurrentValue(resVal, valueTree);
+      }
+      return snapshot;
+    };
+
     auto doStatefulRead =
         [&]<typename KeyT>(Value resVal, DenseMap<KeyT, Value> &knownValues, const KeyT &key) {
       if (auto it = knownValues.find(key); it != knownValues.end()) {
@@ -884,7 +932,7 @@ class PassImpl : public llzk::impl::RedundantReadAndWriteEliminationPassBase<Pas
           // not retain facts that a later write through the result could stale.
           state.values.clear();
         }
-        state.values[resVal] = ReferenceNode::create(resVal, resVal);
+        state.values[resVal] = makeReadSnapshot(resVal, nullptr);
         readVals.push_back(resVal);
         return;
       }
@@ -911,7 +959,7 @@ class PassImpl : public llzk::impl::RedundantReadAndWriteEliminationPassBase<Pas
         // Only a surviving read is a runtime observation, so clear only the
         // may-alias paths it can see.
         rootValTree->clearLastWritesObservedBy(indices);
-        state.values[resVal] = currValTree;
+        state.values[resVal] = makeReadSnapshot(resVal, currValTree);
         LLVM_DEBUG(
             llvm::dbgs() << readarr.getOperationName() << ": " << resVal << " => " << *currValTree
                          << '\n'
@@ -935,6 +983,12 @@ class PassImpl : public llzk::impl::RedundantReadAndWriteEliminationPassBase<Pas
       }
       Value newVal = translate(writearr.getRvalue());
       std::shared_ptr<ReferenceNode> valTree = tryGetValTree(newVal);
+      if (valTree != nullptr && isa<array::ArrayType>(newVal.getType())) {
+        // array.insert reads every source element before writing the
+        // destination. Do not classify a source write as removable before
+        // that copy has observed it.
+        valTree->clearLastWritesInSubtree();
+      }
 
       for (Value origIdx : writearr.getIndices()) {
         Value idxVal = translate(origIdx);
@@ -1029,7 +1083,7 @@ class PassImpl : public llzk::impl::RedundantReadAndWriteEliminationPassBase<Pas
       std::shared_ptr<ReferenceNode> access = getMemberAccessNode(readm);
       Value resVal = readm.getVal();
       if (access == nullptr) {
-        state.values[resVal] = ReferenceNode::create(resVal, resVal);
+        state.values[resVal] = makeReadSnapshot(resVal, nullptr);
         readVals.push_back(resVal);
         return;
       }
@@ -1043,7 +1097,7 @@ class PassImpl : public llzk::impl::RedundantReadAndWriteEliminationPassBase<Pas
         );
         replacementMap[resVal] = access->getStoredValue();
       } else {
-        state.values[resVal] = access;
+        state.values[resVal] = makeReadSnapshot(resVal, access);
         LLVM_DEBUG(llvm::dbgs() << readm.getOperationName() << ": " << *access << '\n');
       }
       readVals.push_back(resVal);
@@ -1058,6 +1112,10 @@ class PassImpl : public llzk::impl::RedundantReadAndWriteEliminationPassBase<Pas
       bool invalidatedMayAliasRead = member->invalidateNonIntegerOffsetChildren();
       Value writeVal = translate(writem.getVal());
       auto valTree = tryGetValTree(writeVal);
+      if (valTree != nullptr && isa<array::ArrayType>(writeVal.getType())) {
+        // Assigning an array-typed member copies its source elements.
+        valTree->clearLastWritesInSubtree();
+      }
 
       auto access = member->getOrCreateChild(zeroTableOffset);
       if (invalidatedMayAliasRead) {
@@ -1097,6 +1155,10 @@ class PassImpl : public llzk::impl::RedundantReadAndWriteEliminationPassBase<Pas
       for (auto elem : newArray.getElements()) {
         Value elemVal = translate(elem);
         auto valTree = tryGetValTree(elemVal);
+        if (valTree != nullptr && isa<array::ArrayType>(elemVal.getType())) {
+          // Array initializers copy nested array values.
+          valTree->clearLastWritesInSubtree();
+        }
         auto elemChild = arrayVal->createChild(idx, elemVal, valTree);
         LLVM_DEBUG(
             llvm::dbgs() << newArray.getOperationName() << ": element " << idx << " initialized to "
