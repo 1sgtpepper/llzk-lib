@@ -742,8 +742,50 @@ LogicalResult CallOp::verifyTemplateParamsMatchInferred(
     if (it != unifications.end() && failed(verifyTemplateParamCompatibility(it->second, paramOp))) {
       return failure();
     }
-    if (it != unifications.end() &&
-        !templateParamValuesUnify(attr, it->second, paramOp.getTypeOpt())) {
+    bool valuesUnify =
+        it == unifications.end() ||
+        templateParamValuesUnify(attr, it->second, paramOp.getTypeOpt());
+    std::optional<Type> requiredType = paramOp.getTypeOpt();
+    if (it != unifications.end() && requiredType && llvm::isa<FeltType>(*requiredType)) {
+      // The context-free unifier must defer symbols. Here, the verifier can use a symbol's
+      // resolved field or value to reject evidence that conflicts with the inferred witness.
+      if (auto sym = llvm::dyn_cast<SymbolRefAttr>(attr);
+          sym && !llvm::isa<SymbolRefAttr>(it->second)) {
+        bool resolvedLocal = false;
+        if (sym.getNestedReferences().empty()) {
+          SymbolTableCollection tables;
+          FailureOr<TemplateOp> parentTemplate = getConstResolutionTemplate(tables, *this);
+          if (failed(parentTemplate)) {
+            return failure();
+          }
+          if (TemplateOp p = *parentTemplate) {
+            auto binding =
+                p.getConstNamed<TemplateSymbolBindingOpInterface>(sym.getRootReference());
+            if (binding) {
+              resolvedLocal = true;
+              if (std::optional<Type> bindingType = binding.getTypeOpt()) {
+                valuesUnify =
+                    succeeded(materializeTemplateParamValue(it->second, bindingType));
+              }
+            }
+          }
+        }
+        if (!resolvedLocal) {
+          SymbolTableCollection tables;
+          if (auto global = lookupTopLevelSymbol<global::GlobalDefOp>(tables, sym, *this, false);
+              succeeded(global)) {
+            global::GlobalDefOp globalOp = global->get();
+            if (Attribute value = globalOp.getInitialValueAttr()) {
+              valuesUnify = templateParamValuesUnify(value, it->second, globalOp.getType());
+            } else {
+              valuesUnify =
+                  succeeded(materializeTemplateParamValue(it->second, globalOp.getType()));
+            }
+          }
+        }
+      }
+    }
+    if (!valuesUnify) {
       // Tested in call_with_template_params_fail.llzk
       return this->emitOpError().append(
           "template instantiation value '", attr, "' for parameter \"@", paramOp.getName(),
