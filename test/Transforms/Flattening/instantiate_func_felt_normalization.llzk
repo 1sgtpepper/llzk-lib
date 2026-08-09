@@ -42,6 +42,97 @@ module attributes {llzk.lang} {
 
 // -----
 
+// Equivalent felt spellings reuse one partial function specialization before the remaining
+// parameter is completed, then all three routes call the same fully specialized function.
+module attributes {llzk.lang} {
+  poly.template @CanonicalPartialFunction {
+    poly.param @F : !felt.type<"bn128">
+    poly.param @M : index
+
+    function.def @value() -> !felt.type<"bn128"> {
+      %value = poly.read_const @F : !felt.type<"bn128">
+      function.return %value : !felt.type<"bn128">
+    }
+  }
+
+  poly.template @FunctionBridge {
+    poly.param @M : index
+
+    function.def @value() -> !felt.type<"bn128"> {
+      %fieldless = function.call
+          @CanonicalPartialFunction::@value<[#felt<const 35>, @M]>() :
+          () -> !felt.type<"bn128">
+      %integer = function.call @CanonicalPartialFunction::@value<[35, @M]>() :
+          () -> !felt.type<"bn128">
+      %fielded = function.call @CanonicalPartialFunction::@value<[
+          #felt<const 35 : !felt.type<"bn128">>, @M
+      ]>() : () -> !felt.type<"bn128">
+      function.return %fielded : !felt.type<"bn128">
+    }
+  }
+
+  function.def @main() -> !felt.type<"bn128"> {
+    %value = function.call @FunctionBridge::@value<[7]>() : () -> !felt.type<"bn128">
+    function.return %value : !felt.type<"bn128">
+  }
+}
+
+// -----
+
+// Equivalent felt spellings reuse one partial struct specialization before the enclosing
+// parameter is completed, then all three members use the same fully specialized struct.
+module attributes {
+  llzk.lang,
+  llzk.main = !struct.type<@StructBridge::@Wrapper<[7]>>
+} {
+  poly.template @CanonicalPartialStruct {
+    poly.param @F : !felt.type<"bn128">
+    poly.param @M : index
+
+    struct.def @Value {
+      struct.member @result : !felt.type<"bn128">
+
+      function.def @compute() -> !struct.type<@CanonicalPartialStruct::@Value<[@F, @M]>> {
+        %value = poly.read_const @F : !felt.type<"bn128">
+        %self = struct.new : !struct.type<@CanonicalPartialStruct::@Value<[@F, @M]>>
+        struct.writem %self[@result] = %value :
+            !struct.type<@CanonicalPartialStruct::@Value<[@F, @M]>>, !felt.type<"bn128">
+        function.return %self : !struct.type<@CanonicalPartialStruct::@Value<[@F, @M]>>
+      }
+
+      function.def @constrain(
+          %self: !struct.type<@CanonicalPartialStruct::@Value<[@F, @M]>>
+      ) {
+        function.return
+      }
+    }
+  }
+
+  poly.template @StructBridge {
+    poly.param @M : index
+
+    struct.def @Wrapper {
+      struct.member @fieldless :
+          !struct.type<@CanonicalPartialStruct::@Value<[#felt<const 35>, @M]>>
+      struct.member @integer : !struct.type<@CanonicalPartialStruct::@Value<[35, @M]>>
+      struct.member @fielded : !struct.type<@CanonicalPartialStruct::@Value<[
+          #felt<const 35 : !felt.type<"bn128">>, @M
+      ]>>
+
+      function.def @compute() -> !struct.type<@StructBridge::@Wrapper<[@M]>> {
+        %self = struct.new : !struct.type<@StructBridge::@Wrapper<[@M]>>
+        function.return %self : !struct.type<@StructBridge::@Wrapper<[@M]>>
+      }
+
+      function.def @constrain(%self: !struct.type<@StructBridge::@Wrapper<[@M]>>) {
+        function.return
+      }
+    }
+  }
+}
+
+// -----
+
 module attributes {
   llzk.lang,
   llzk.main = !struct.type<@Main>
