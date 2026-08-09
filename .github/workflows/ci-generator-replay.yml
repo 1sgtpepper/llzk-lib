@@ -254,7 +254,6 @@ jobs:
             mkdir -p "$chunk_dir" "$output_path"
             local llzk_opt="$tested_path/build/bin/llzk-opt"
             test -x "$llzk_opt"
-            cp "$(readlink -f "$llzk_opt")" "$output_path/llzk-opt"
             "$llzk_opt" --version > "$output_path/llzk-opt.version"
             python3 - "$tested_path/$test_file" "$chunk_dir" <<'PY'
           from pathlib import Path
