@@ -15,7 +15,6 @@
 
 #include "llzk/Dialect/Function/IR/Ops.h"
 
-#include "llzk/Dialect/Felt/IR/Attrs.h"
 #include "llzk/Dialect/Felt/IR/Types.h"
 #include "llzk/Dialect/Function/IR/Dialect.h"
 #include "llzk/Dialect/Global/IR/Ops.h"

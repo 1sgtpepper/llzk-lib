@@ -12,7 +12,6 @@
 #include "llzk/Analysis/AnalysisUtil.h"
 #include "llzk/Analysis/ConstraintDependencyGraph.h"
 #include "llzk/Analysis/SourceRef.h"
-#include "llzk/Dialect/Felt/IR/Attrs.h"
 #include "llzk/Dialect/Felt/IR/Types.h"
 #include "llzk/Dialect/Global/IR/Ops.h"
 #include "llzk/Dialect/LLZK/IR/Ops.h"
