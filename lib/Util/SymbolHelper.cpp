@@ -505,8 +505,8 @@ bool feltRestrictionsConflict(std::optional<Type> lhs, std::optional<Type> rhs) 
   if (!lhs || !rhs) {
     return false;
   }
-  auto lhsFelt = llvm::dyn_cast<FeltType>(*lhs);
-  auto rhsFelt = llvm::dyn_cast<FeltType>(*rhs);
+  auto lhsFelt = llvm::dyn_cast<felt::FeltType>(*lhs);
+  auto rhsFelt = llvm::dyn_cast<felt::FeltType>(*rhs);
   return lhsFelt && rhsFelt && lhsFelt.hasField() && rhsFelt.hasField() && lhsFelt != rhsFelt;
 }
 
@@ -518,7 +518,7 @@ FailureOr<bool> resolvedTemplateParamValuesUnify(
 ) {
   bool contextFreeResult =
       templateParamValuesUnify(explicitValue, inferredValue, requiredParamType);
-  if (!requiredParamType || !llvm::isa<FeltType>(*requiredParamType)) {
+  if (!requiredParamType || !llvm::isa<felt::FeltType>(*requiredParamType)) {
     return contextFreeResult;
   }
 
@@ -547,7 +547,7 @@ FailureOr<bool> resolvedTemplateParamValuesUnify(
     inferredEvidence = *resolved;
   }
 
-  // Resolution failure and untyped local bindings retain the generic unifier's deferral rule.
+  // Unresolved references retain the generic unifier's deferral rule.
   if ((explicitSymbol && !explicitEvidence) || (inferredSymbol && !inferredEvidence)) {
     return contextFreeResult;
   }
