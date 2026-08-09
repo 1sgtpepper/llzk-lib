@@ -35,7 +35,6 @@ module attributes {llzk.lang} {
 // CHECK-NEXT:      function.return
 // CHECK-NEXT:    }
 // CHECK-NEXT:  }
-
 // CHECK-LABEL: struct.def @Component {
 // CHECK-NEXT:    struct.member @sub1 : !struct.type<@Subcomponent>
 // CHECK-NEXT:    struct.member @sub2 : !struct.type<@Subcomponent>
@@ -123,8 +122,8 @@ module attributes {llzk.lang} {
       %idx1 = arith.constant 1 : index
       %idx4 = arith.constant 4 : index
       array.insert %mat[%idx1] = %inputArr : !array.type<7,3 x !felt.type>, !array.type<3 x !felt.type>
-      %arr1 = array.extract %mat[%idx1] : !array.type<7,3 x !felt.type> // redundant, replace with %inputArr
-      array.insert %mat[%idx4] = %arr1 : !array.type<7,3 x !felt.type>, !array.type<3 x !felt.type> // replace %arr1 with %inputArr
+      %arr1 = array.extract %mat[%idx1] : !array.type<7,3 x !felt.type> // retained aggregate snapshot
+      array.insert %mat[%idx4] = %arr1 : !array.type<7,3 x !felt.type>, !array.type<3 x !felt.type> // copy the snapshot
       array.insert %mat[%idx1] = %arr1 : !array.type<7,3 x !felt.type>, !array.type<3 x !felt.type> // redundant
       function.return %self : !struct.type<@Component>
     }
@@ -152,7 +151,8 @@ module attributes {llzk.lang} {
 // CHECK-NEXT:      %[[VAL_3:.*]] = arith.constant 1 : index
 // CHECK-NEXT:      %[[VAL_4:.*]] = arith.constant 4 : index
 // CHECK-NEXT:      array.insert %[[VAL_2]]{{\[}}%[[VAL_3]]] = %[[VAL_0]] : <7,3 x !felt.type>, <3 x !felt.type>
-// CHECK-NEXT:      array.insert %[[VAL_2]]{{\[}}%[[VAL_4]]] = %[[VAL_0]] : <7,3 x !felt.type>, <3 x !felt.type>
+// CHECK-NEXT:      %[[ARR1:.*]] = array.extract %[[VAL_2]]{{\[}}%[[VAL_3]]] : <7,3 x !felt.type>
+// CHECK-NEXT:      array.insert %[[VAL_2]]{{\[}}%[[VAL_4]]] = %[[ARR1]] : <7,3 x !felt.type>, <3 x !felt.type>
 // CHECK-NEXT:      function.return %[[VAL_1]] : !struct.type<@Component>
 // CHECK-NEXT:    }
 // CHECK-NEXT:    function.def @constrain(%[[VAL_5:.*]]: !struct.type<@Component>, %[[VAL_6:.*]]: !array.type<3 x !felt.type>) attributes {function.allow_constraint} {
@@ -304,7 +304,7 @@ module attributes {llzk.lang} {
       scf.if %cond {
         array.insert %mat[%idx1] = %inputArr : !array.type<7,3 x !felt.type>, !array.type<3 x !felt.type>
       } else {
-        %arr1 = array.extract %mat[%idx1] : !array.type<7,3 x !felt.type> // This load is necessary, as the value is unknown in this branch
+        %arr1 = array.extract %mat[%idx1] : !array.type<7,3 x !felt.type> // necessary aggregate snapshot
         array.insert %mat[%idx4] = %arr1 : !array.type<7,3 x !felt.type>, !array.type<3 x !felt.type>
         array.insert %mat[%idx1] = %arr1 : !array.type<7,3 x !felt.type>, !array.type<3 x !felt.type> // this store is still unnecessary
       }

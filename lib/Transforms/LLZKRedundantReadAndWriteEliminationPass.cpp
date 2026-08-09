@@ -381,6 +381,19 @@ public:
   /// @brief Return an SSA value only when it is identity-equivalent to this node.
   Value getReplacementValue() const { return replacementValue; }
 
+  /// @brief Return the value that identifies this node's known contents.
+  Value getKnownContentValue() const { return storedValue; }
+
+  /// @brief Return whether two nodes contain the same known value state.
+  ///
+  /// This deliberately ignores path identifiers and replacement identity. It is
+  /// used to recognize a redundant write of an array value copy without treating
+  /// that copy as an SSA alias that can replace a later aggregate read.
+  bool hasSameKnownValue(const ReferenceNodePtr &other) const {
+    DenseMap<const ReferenceNode *, DenseSet<const ReferenceNode *>> memo;
+    return hasSameKnownValueImpl(other.get(), memo);
+  }
+
   bool hasStoredValue() const { return storedValue != nullptr; }
 
   void print(raw_ostream &os, int indent = 0) const {
@@ -444,6 +457,27 @@ public:
   }
 
 private:
+  bool hasSameKnownValueImpl(
+      const ReferenceNode *other,
+      DenseMap<const ReferenceNode *, DenseSet<const ReferenceNode *>> &memo
+  ) const {
+    if (other == nullptr || storedValue != other->storedValue ||
+        dynamicChildCount != other->dynamicChildCount ||
+        children.size() != other->children.size()) {
+      return false;
+    }
+    if (!memo[this].insert(other).second) {
+      return true;
+    }
+    for (const auto &[id, child] : children) {
+      auto it = other->children.find(id);
+      if (it == other->children.end() || !child->hasSameKnownValueImpl(it->second.get(), memo)) {
+        return false;
+      }
+    }
+    return true;
+  }
+
   /// @brief Clone the mutable container state of an array value.
   ///
   /// Array insert/extract operations copy array elements. Scalar and nested-array
@@ -881,7 +915,13 @@ class PassImpl : public llzk::impl::RedundantReadAndWriteEliminationPassBase<Pas
     auto makeReadSnapshot = [](Value resVal, const ReferenceNodePtr &valueTree) {
       auto snapshot = ReferenceNode::create(resVal, resVal);
       if (valueTree != nullptr) {
-        snapshot->setCurrentValue(resVal, valueTree);
+        Value snapshotValue = resVal;
+        if (isa<array::ArrayType>(resVal.getType())) {
+          // Preserve the copied contents' provenance for later equality checks,
+          // while setCurrentValue keeps the aggregate replacement identity empty.
+          snapshotValue = valueTree->getKnownContentValue();
+        }
+        snapshot->setCurrentValue(snapshotValue, valueTree);
       }
       return snapshot;
     };
@@ -1032,7 +1072,8 @@ class PassImpl : public llzk::impl::RedundantReadAndWriteEliminationPassBase<Pas
         currValTree->invalidateChildren();
       }
 
-      if (currValTree->getReplacementValue() == newVal) {
+      if (currValTree->getReplacementValue() == newVal ||
+          (valTree != nullptr && currValTree->hasSameKnownValue(valTree))) {
         LLVM_DEBUG(
             llvm::dbgs() << writearr.getOperationName() << ": subsequent " << writearr
                          << " is redundant\n"
