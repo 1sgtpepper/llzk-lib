@@ -77,6 +77,23 @@ module attributes {llzk.lang} {
   }
 }
 
+// CHECK-LABEL: module attributes {llzk.lang} {
+// CHECK-NEXT:    function.def @"CanonicalPartialFunction_f<35:5:bn128>_7_value"() -> !felt.type<"bn128"> {
+// CHECK-NEXT:      %[[VAL_0:[0-9a-zA-Z_\.]+]] = felt.const  35 : <"bn128">
+// CHECK-NEXT:      function.return %[[VAL_0]] : !felt.type<"bn128">
+// CHECK-NEXT:    }
+// CHECK-NEXT:    function.def @FunctionBridge_7_value() -> !felt.type<"bn128"> {
+// CHECK-NEXT:      %[[VAL_1:[0-9a-zA-Z_\.]+]] = function.call @"CanonicalPartialFunction_f<35:5:bn128>_7_value"() : () -> !felt.type<"bn128">
+// CHECK-NEXT:      %[[VAL_2:[0-9a-zA-Z_\.]+]] = function.call @"CanonicalPartialFunction_f<35:5:bn128>_7_value"() : () -> !felt.type<"bn128">
+// CHECK-NEXT:      %[[VAL_3:[0-9a-zA-Z_\.]+]] = function.call @"CanonicalPartialFunction_f<35:5:bn128>_7_value"() : () -> !felt.type<"bn128">
+// CHECK-NEXT:      function.return %[[VAL_3]] : !felt.type<"bn128">
+// CHECK-NEXT:    }
+// CHECK-NEXT:    function.def @main() -> !felt.type<"bn128"> {
+// CHECK-NEXT:      %[[VAL_4:[0-9a-zA-Z_\.]+]] = function.call @FunctionBridge_7_value() : () -> !felt.type<"bn128">
+// CHECK-NEXT:      function.return %[[VAL_4]] : !felt.type<"bn128">
+// CHECK-NEXT:    }
+// CHECK-NEXT:  }
+
 // -----
 
 // Equivalent felt spellings reuse one partial struct specialization before the enclosing
@@ -130,6 +147,48 @@ module attributes {
     }
   }
 }
+
+// CHECK-LABEL: module attributes {llzk.lang, llzk.main = !struct.type<@StructBridge_7_Wrapper>} {
+// CHECK-NEXT:    struct.def @"CanonicalPartialStruct_f<35:5:bn128>_7_Value" {
+// CHECK-NEXT:      struct.member @result : !felt.type<"bn128">
+// CHECK-NEXT:      function.def @compute() -> !struct.type<@"CanonicalPartialStruct_f<35:5:bn128>_7_Value"> attributes {function.allow_witness} {
+// CHECK-NEXT:        %[[VAL_0:[0-9a-zA-Z_\.]+]] = felt.const  35 : <"bn128">
+// CHECK-NEXT:        %[[VAL_1:[0-9a-zA-Z_\.]+]] = struct.new : <@"CanonicalPartialStruct_f<35:5:bn128>_7_Value">
+// CHECK-NEXT:        struct.writem %[[VAL_1]][@result] = %[[VAL_0]] : <@"CanonicalPartialStruct_f<35:5:bn128>_7_Value">, !felt.type<"bn128">
+// CHECK-NEXT:        function.return %[[VAL_1]] : !struct.type<@"CanonicalPartialStruct_f<35:5:bn128>_7_Value">
+// CHECK-NEXT:      }
+// CHECK-NEXT:      function.def @constrain(%[[VAL_2:[0-9a-zA-Z_\.]+]]: !struct.type<@"CanonicalPartialStruct_f<35:5:bn128>_7_Value">) attributes {function.allow_constraint} {
+// CHECK-NEXT:        function.return
+// CHECK-NEXT:      }
+// CHECK-NEXT:    }
+// CHECK-NEXT:    poly.template @"CanonicalPartialStruct_f<35:5:bn128>_\1A" {
+// CHECK-NEXT:      poly.param @M : index
+// CHECK-NEXT:      struct.def @Value {
+// CHECK-NEXT:        struct.member @result : !felt.type<"bn128">
+// CHECK-NEXT:        function.def @compute() -> !struct.type<@"CanonicalPartialStruct_f<35:5:bn128>_\1A"::@Value<[@M]>> attributes {function.allow_witness} {
+// CHECK-NEXT:          %[[VAL_3:[0-9a-zA-Z_\.]+]] = felt.const  35 : <"bn128">
+// CHECK-NEXT:          %[[VAL_4:[0-9a-zA-Z_\.]+]] = struct.new : <@"CanonicalPartialStruct_f<35:5:bn128>_\1A"::@Value<[@M]>>
+// CHECK-NEXT:          struct.writem %[[VAL_4]][@result] = %[[VAL_3]] : <@"CanonicalPartialStruct_f<35:5:bn128>_\1A"::@Value<[@M]>>, !felt.type<"bn128">
+// CHECK-NEXT:          function.return %[[VAL_4]] : !struct.type<@"CanonicalPartialStruct_f<35:5:bn128>_\1A"::@Value<[@M]>>
+// CHECK-NEXT:        }
+// CHECK-NEXT:        function.def @constrain(%[[VAL_5:[0-9a-zA-Z_\.]+]]: !struct.type<@"CanonicalPartialStruct_f<35:5:bn128>_\1A"::@Value<[@M]>>) attributes {function.allow_constraint} {
+// CHECK-NEXT:          function.return
+// CHECK-NEXT:        }
+// CHECK-NEXT:      }
+// CHECK-NEXT:    } {poly.name_pattern = ["CanonicalPartialStruct_f<35:5:bn128>_", ""]}
+// CHECK-NEXT:    struct.def @StructBridge_7_Wrapper {
+// CHECK-NEXT:      struct.member @fieldless : !struct.type<@"CanonicalPartialStruct_f<35:5:bn128>_7_Value">
+// CHECK-NEXT:      struct.member @integer : !struct.type<@"CanonicalPartialStruct_f<35:5:bn128>_7_Value">
+// CHECK-NEXT:      struct.member @fielded : !struct.type<@"CanonicalPartialStruct_f<35:5:bn128>_7_Value">
+// CHECK-NEXT:      function.def @compute() -> !struct.type<@StructBridge_7_Wrapper> attributes {function.allow_witness} {
+// CHECK-NEXT:        %[[VAL_6:[0-9a-zA-Z_\.]+]] = struct.new : <@StructBridge_7_Wrapper>
+// CHECK-NEXT:        function.return %[[VAL_6]] : !struct.type<@StructBridge_7_Wrapper>
+// CHECK-NEXT:      }
+// CHECK-NEXT:      function.def @constrain(%[[VAL_7:[0-9a-zA-Z_\.]+]]: !struct.type<@StructBridge_7_Wrapper>) attributes {function.allow_constraint} {
+// CHECK-NEXT:        function.return
+// CHECK-NEXT:      }
+// CHECK-NEXT:    }
+// CHECK-NEXT:  }
 
 // -----
 
