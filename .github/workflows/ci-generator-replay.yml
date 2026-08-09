@@ -273,6 +273,16 @@ jobs:
             } > "$output_path/comparison.txt"
           }
 
+          # This dispatch is intentionally narrowed to the changed PR #675
+          # test so its exact-head FileCheck evidence is available promptly.
+          replay_split_transform \
+            pr675 \
+            8104c23d1224647e717ecadd91651f1b4e354e01 \
+            test/Transforms/RedundantAndUnusedElim/array_read_write_observation.llzk \
+            -split-input-file \
+            -llzk-duplicate-read-write-elim
+          exit 0
+
           replay_simple_transform \
             pr670 \
             42ee9ba1f97bf26ce51182c2e54cff72c3686755 \
