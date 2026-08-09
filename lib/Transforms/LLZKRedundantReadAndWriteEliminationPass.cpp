@@ -179,9 +179,11 @@ struct ReferenceNodeClearMemo {
 /// writes clear all children for a dynamic index and only dynamic siblings for a
 /// constant index.
 ///
-/// The stored value and child graph are persistent known-value state. `lastWrite`
-/// is transient, block-local overwrite-candidate state and is therefore cleared
-/// at observations and boundaries rather than copied into semantic clones.
+/// The stored value, replacement identity, and child graph are persistent known-value
+/// state. Replacement identity is separate because a copied array has known children
+/// but must not be substituted with the mutable source SSA value. `lastWrite` is
+/// transient, block-local overwrite-candidate state and is therefore cleared at
+/// observations and boundaries rather than copied into semantic clones.
 class ReferenceNode {
 public:
   template <typename IdType> static std::shared_ptr<ReferenceNode> create(IdType id, Value v) {
@@ -375,8 +377,6 @@ public:
   }
 
   bool isLeaf() const { return children.empty(); }
-
-  Value getStoredValue() const { return storedValue; }
 
   /// @brief Return an SSA value only when it is identity-equivalent to this node.
   Value getReplacementValue() const { return replacementValue; }
