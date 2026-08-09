@@ -31,8 +31,171 @@ module attributes {llzk.lang} {
 // CHECK-NEXT:  }
 // -----
 module attributes {llzk.lang} {
-  // A non-entering while loop cannot invalidate a pre-loop write.
-  function.def @zero_trip_while_preserves_pre_loop_write(
+  // A copied row must be rematerialized from its destination, not its source SSA.
+  function.def @array_insert_extract_after_source_mutation() -> !felt.type {
+    %one = felt.const 1
+    %two = felt.const 2
+    %row = array.new : !array.type<2 x !felt.type>
+    %matrix = array.new : !array.type<1,2 x !felt.type>
+    %i0 = arith.constant 0 : index
+    array.write %row[%i0] = %one : !array.type<2 x !felt.type>, !felt.type
+    array.insert %matrix[%i0] = %row :
+        !array.type<1,2 x !felt.type>, !array.type<2 x !felt.type>
+    array.write %row[%i0] = %two : !array.type<2 x !felt.type>, !felt.type
+    %copy = array.extract %matrix[%i0] : !array.type<1,2 x !felt.type>
+    %observed = array.read %copy[%i0] : !array.type<2 x !felt.type>, !felt.type
+    function.return %observed : !felt.type
+  }
+}
+// -----
+module attributes {llzk.lang} {
+  struct.def @ArrayMemberCopyElement {
+    struct.member @row : !array.type<2 x !felt.type>
+    struct.member @result : !felt.type
+
+    // An array-valued member read must rematerialize the copied member value.
+    function.def @compute() -> !struct.type<@ArrayMemberCopyElement> {
+      %self = struct.new : !struct.type<@ArrayMemberCopyElement>
+      %one = felt.const 1
+      %two = felt.const 2
+      %row = array.new : !array.type<2 x !felt.type>
+      %i0 = arith.constant 0 : index
+      array.write %row[%i0] = %one : !array.type<2 x !felt.type>, !felt.type
+      struct.writem %self[@row] = %row :
+          !struct.type<@ArrayMemberCopyElement>, !array.type<2 x !felt.type>
+      array.write %row[%i0] = %two : !array.type<2 x !felt.type>, !felt.type
+      %copy = struct.readm %self[@row] :
+          !struct.type<@ArrayMemberCopyElement>, !array.type<2 x !felt.type>
+      %observed = array.read %copy[%i0] : !array.type<2 x !felt.type>, !felt.type
+      struct.writem %self[@result] = %observed :
+          !struct.type<@ArrayMemberCopyElement>, !felt.type
+      function.return %self : !struct.type<@ArrayMemberCopyElement>
+    }
+    function.def @constrain(
+        %self: !struct.type<@ArrayMemberCopyElement>
+    ) attributes {function.allow_constraint} { function.return }
+  }
+}
+// -----
+module attributes {llzk.lang} {
+  // An unknown inserted row must detach stale facts from the destination row.
+  function.def @unknown_array_insert_overwrites_known_row(%cond: i1) -> !felt.type {
+    %one = felt.const 1
+    %old_row = array.new : !array.type<2 x !felt.type>
+    %matrix = array.new : !array.type<1,2 x !felt.type>
+    %i0 = arith.constant 0 : index
+    array.write %old_row[%i0] = %one : !array.type<2 x !felt.type>, !felt.type
+    array.insert %matrix[%i0] = %old_row :
+        !array.type<1,2 x !felt.type>, !array.type<2 x !felt.type>
+    %unknown_row = scf.if %cond -> (!array.type<2 x !felt.type>) {
+      scf.yield %old_row : !array.type<2 x !felt.type>
+    } else {
+      scf.yield %old_row : !array.type<2 x !felt.type>
+    }
+    array.insert %matrix[%i0] = %unknown_row :
+        !array.type<1,2 x !felt.type>, !array.type<2 x !felt.type>
+    %observed = array.read %matrix[%i0, %i0] :
+        !array.type<1,2 x !felt.type>, !felt.type
+    function.return %observed : !felt.type
+  }
+}
+// -----
+module attributes {llzk.lang} {
+  struct.def @UnknownArrayMemberElement {
+    struct.member @row : !array.type<2 x !felt.type>
+    struct.member @result : !felt.type
+
+    // An unknown array member assignment must detach stale member elements.
+    function.def @compute(
+        %cond: i1
+    ) -> !struct.type<@UnknownArrayMemberElement> {
+      %self = struct.new : !struct.type<@UnknownArrayMemberElement>
+      %one = felt.const 1
+      %old_row = array.new : !array.type<2 x !felt.type>
+      %i0 = arith.constant 0 : index
+      array.write %old_row[%i0] = %one : !array.type<2 x !felt.type>, !felt.type
+      struct.writem %self[@row] = %old_row :
+          !struct.type<@UnknownArrayMemberElement>, !array.type<2 x !felt.type>
+      %unknown_row = scf.if %cond -> (!array.type<2 x !felt.type>) {
+        scf.yield %old_row : !array.type<2 x !felt.type>
+      } else {
+        scf.yield %old_row : !array.type<2 x !felt.type>
+      }
+      struct.writem %self[@row] = %unknown_row :
+          !struct.type<@UnknownArrayMemberElement>, !array.type<2 x !felt.type>
+      %copy = struct.readm %self[@row] :
+          !struct.type<@UnknownArrayMemberElement>, !array.type<2 x !felt.type>
+      %observed = array.read %copy[%i0] : !array.type<2 x !felt.type>, !felt.type
+      struct.writem %self[@result] = %observed :
+          !struct.type<@UnknownArrayMemberElement>, !felt.type
+      function.return %self : !struct.type<@UnknownArrayMemberElement>
+    }
+    function.def @constrain(
+        %self: !struct.type<@UnknownArrayMemberElement>, %cond: i1
+    ) attributes {function.allow_constraint} { function.return }
+  }
+}
+// -----
+module attributes {llzk.lang} {
+  struct.def @UnknownStructRootElement {
+    struct.member @value : !felt.type
+    struct.member @result : !felt.type
+
+    // An unknown struct read must protect a possibly observed source write.
+    function.def @unknown_read_observes_source_write(
+        %cond: i1
+    ) -> !struct.type<@UnknownStructRootElement> {
+      %self = struct.new : !struct.type<@UnknownStructRootElement>
+      %one = felt.const 1
+      %two = felt.const 2
+      %alias = scf.if %cond -> (!struct.type<@UnknownStructRootElement>) {
+        scf.yield %self : !struct.type<@UnknownStructRootElement>
+      } else {
+        scf.yield %self : !struct.type<@UnknownStructRootElement>
+      }
+      struct.writem %self[@value] = %one :
+          !struct.type<@UnknownStructRootElement>, !felt.type
+      %observed = struct.readm %alias[@value] :
+          !struct.type<@UnknownStructRootElement>, !felt.type
+      struct.writem %self[@value] = %two :
+          !struct.type<@UnknownStructRootElement>, !felt.type
+      struct.writem %self[@result] = %observed :
+          !struct.type<@UnknownStructRootElement>, !felt.type
+      function.return %self : !struct.type<@UnknownStructRootElement>
+    }
+
+    // An unknown struct write must invalidate facts for every possible source alias.
+    function.def @unknown_write_invalidates_source(
+        %cond: i1
+    ) -> !struct.type<@UnknownStructRootElement> {
+      %self = struct.new : !struct.type<@UnknownStructRootElement>
+      %one = felt.const 1
+      %two = felt.const 2
+      %alias = scf.if %cond -> (!struct.type<@UnknownStructRootElement>) {
+        scf.yield %self : !struct.type<@UnknownStructRootElement>
+      } else {
+        scf.yield %self : !struct.type<@UnknownStructRootElement>
+      }
+      struct.writem %self[@value] = %one :
+          !struct.type<@UnknownStructRootElement>, !felt.type
+      struct.writem %alias[@value] = %two :
+          !struct.type<@UnknownStructRootElement>, !felt.type
+      %observed = struct.readm %self[@value] :
+          !struct.type<@UnknownStructRootElement>, !felt.type
+      struct.writem %self[@result] = %observed :
+          !struct.type<@UnknownStructRootElement>, !felt.type
+      function.return %self : !struct.type<@UnknownStructRootElement>
+    }
+
+    function.def @constrain(
+        %self: !struct.type<@UnknownStructRootElement>, %cond: i1
+    ) attributes {function.allow_constraint} { function.return }
+  }
+}
+// -----
+module attributes {llzk.lang} {
+  // A non-entering while loop must not remove a pre-loop write observed later.
+  function.def @zero_trip_while_preserves_pre_loop_observation(
       %idx: index
   ) -> !felt.type {
     %zero = felt.const 0
@@ -75,8 +238,8 @@ module attributes {llzk.lang} {
 // CHECK-NEXT:  }
 // -----
 module attributes {llzk.lang} {
-  // A zero-trip loop cannot invalidate a pre-loop write because its body may not execute.
-  function.def @zero_trip_loop_preserves_pre_loop_write(
+  // A zero-trip loop must not remove a pre-loop write observed after the loop.
+  function.def @zero_trip_loop_preserves_pre_loop_observation(
       %trip_count: index, %idx: index
   ) -> !felt.type {
     %zero = felt.const 0

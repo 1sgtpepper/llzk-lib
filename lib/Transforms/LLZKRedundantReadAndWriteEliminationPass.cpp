@@ -204,6 +204,7 @@ public:
       return it->second;
     }
     ReferenceNode copy(identifier, storedValue);
+    copy.replacementValue = replacementValue;
     auto result = std::make_shared<ReferenceNode>(std::move(copy));
     memo[this] = result;
     if (withChildren) {
@@ -282,13 +283,22 @@ public:
     clearLastWritesObservedByImpl(indices, memo);
   }
 
+  /// @brief Set the current value and, when known, copy its aggregate children.
+  ///
+  /// A null value graph means that the value's contents are unknown. Callers
+  /// replacing an existing aggregate must detach its old children first.
   void setCurrentValue(Value v, const std::shared_ptr<ReferenceNode> &valTree = nullptr) {
     storedValue = v;
+    replacementValue = v;
+    if (v != nullptr && isa<array::ArrayType>(v.getType())) {
+      // Array values are copied, so the source SSA is not a safe replacement.
+      replacementValue = nullptr;
+    }
     if (valTree != nullptr) {
+      invalidateChildren();
       // Overwrite our current children because the stored value changed. Array
       // values are copies, but struct values retain reference identity.
       if (isa<array::ArrayType>(v.getType())) {
-        children.clear();
         dynamicChildCount = valTree->dynamicChildCount;
         for (const auto &[id, child] : valTree->children) {
           children[id] = child->isStructReference() ? child : child->cloneArrayValueNode();
@@ -368,6 +378,9 @@ public:
 
   Value getStoredValue() const { return storedValue; }
 
+  /// @brief Return an SSA value only when it is identity-equivalent to this node.
+  Value getReplacementValue() const { return replacementValue; }
+
   bool hasStoredValue() const { return storedValue != nullptr; }
 
   void print(raw_ostream &os, int indent = 0) const {
@@ -396,7 +409,8 @@ public:
   /// transient block-local overwrite candidates.
   friend bool
   topLevelEq(const std::shared_ptr<ReferenceNode> &lhs, const std::shared_ptr<ReferenceNode> &rhs) {
-    return lhs->identifier == rhs->identifier && lhs->storedValue == rhs->storedValue;
+    return lhs->identifier == rhs->identifier && lhs->storedValue == rhs->storedValue &&
+           lhs->replacementValue == rhs->replacementValue;
   }
 
   friend ReferenceNodePtr greatestCommonSubtree(
@@ -437,6 +451,7 @@ private:
   /// reference-semantic object and must remain shared with its source aliases.
   ReferenceNodePtr cloneArrayValueNode() const {
     ReferenceNode copy(identifier, storedValue);
+    copy.replacementValue = replacementValue;
     auto result = std::make_shared<ReferenceNode>(std::move(copy));
     result->dynamicChildCount = dynamicChildCount;
     for (const auto &[id, child] : children) {
@@ -499,6 +514,8 @@ private:
 
   ReferenceID identifier;
   mlir::Value storedValue;
+  // Only identity-equivalent values may replace a later SSA result.
+  mlir::Value replacementValue;
   // Transient candidate state; semantic clones deliberately leave this null.
   Operation *lastWrite;
   DenseMap<ReferenceID, std::shared_ptr<ReferenceNode>> children;
@@ -508,8 +525,12 @@ private:
 
   template <typename IdType>
   ReferenceNode(IdType id, Value initialVal)
-      : identifier(std::move(id)), storedValue(initialVal), lastWrite(nullptr), children(),
-        dynamicChildCount(0) {}
+      : identifier(std::move(id)), storedValue(initialVal), replacementValue(initialVal),
+        lastWrite(nullptr), children(), dynamicChildCount(0) {
+    if (initialVal != nullptr && isa<array::ArrayType>(initialVal.getType())) {
+      replacementValue = nullptr;
+    }
+  }
 };
 
 using ValueMap = DenseMap<mlir::Value, ReferenceNodePtr>;
@@ -945,13 +966,14 @@ class PassImpl : public llzk::impl::RedundantReadAndWriteEliminationPassBase<Pas
         currValTree->setCurrentValue(resVal);
       }
 
-      if (currValTree->getStoredValue() != resVal) {
+      Value replacementValue = currValTree->getReplacementValue();
+      if (replacementValue != nullptr && replacementValue != resVal) {
         // The read will be replaced, so it is not a runtime observation.
         LLVM_DEBUG(
             llvm::dbgs() << readarr.getOperationName() << ": replace " << resVal << " with "
-                         << currValTree->getStoredValue() << '\n'
+                         << replacementValue << '\n'
         );
-        replacementMap[resVal] = currValTree->getStoredValue();
+        replacementMap[resVal] = replacementValue;
       } else {
         // Only a surviving read is a runtime observation, so clear only the
         // may-alias paths it can see.
@@ -1000,7 +1022,14 @@ class PassImpl : public llzk::impl::RedundantReadAndWriteEliminationPassBase<Pas
         currValTree = currValTree->getOrCreateChild(idxVal);
       }
 
-      if (currValTree->getStoredValue() == newVal) {
+      if (valTree == nullptr &&
+          isa<array::ArrayType, component::StructType>(newVal.getType())) {
+        // An untracked aggregate assignment replaces the destination value;
+        // stale descendants must not survive the unknown write.
+        currValTree->invalidateChildren();
+      }
+
+      if (currValTree->getReplacementValue() == newVal) {
         LLVM_DEBUG(
             llvm::dbgs() << writearr.getOperationName() << ": subsequent " << writearr
                          << " is redundant\n"
@@ -1080,6 +1109,13 @@ class PassImpl : public llzk::impl::RedundantReadAndWriteEliminationPassBase<Pas
       std::shared_ptr<ReferenceNode> access = getMemberAccessNode(readm);
       Value resVal = readm.getVal();
       if (access == nullptr) {
+        // An unknown component may alias any tracked struct. A live read must
+        // protect reference writes it could observe; aggregate results also
+        // invalidate facts that a later write through the result could stale.
+        writeCandidates.clearReferenceCandidates();
+        if (isa<array::ArrayType, component::StructType>(resVal.getType())) {
+          state.values.clear();
+        }
         state.values[resVal] = makeReadSnapshot(resVal, nullptr);
         readVals.push_back(resVal);
         return;
@@ -1087,12 +1123,13 @@ class PassImpl : public llzk::impl::RedundantReadAndWriteEliminationPassBase<Pas
       if (!access->hasStoredValue()) {
         access->setCurrentValue(resVal);
       }
-      if (access->getStoredValue() != resVal) {
+      Value replacementValue = access->getReplacementValue();
+      if (replacementValue != nullptr && replacementValue != resVal) {
         LLVM_DEBUG(
             llvm::dbgs() << readm.getOperationName() << ": adding replacement map entry { "
-                         << resVal << " => " << access->getStoredValue() << " }\n"
+                         << resVal << " => " << replacementValue << " }\n"
         );
-        replacementMap[resVal] = access->getStoredValue();
+        replacementMap[resVal] = replacementValue;
       } else {
         state.values[resVal] = makeReadSnapshot(resVal, access);
         LLVM_DEBUG(llvm::dbgs() << readm.getOperationName() << ": " << *access << '\n');
@@ -1102,6 +1139,9 @@ class PassImpl : public llzk::impl::RedundantReadAndWriteEliminationPassBase<Pas
       std::shared_ptr<ReferenceNode> member =
           getMemberNode(writem.getComponent(), writem.getMemberNameAttr());
       if (member == nullptr) {
+        // An unknown component write may modify any tracked struct value.
+        writeCandidates.clearReferenceCandidates();
+        state.values.clear();
         return;
       }
       // Symbolic and affine offsets may resolve to the current row. Constant
@@ -1118,7 +1158,13 @@ class PassImpl : public llzk::impl::RedundantReadAndWriteEliminationPassBase<Pas
       if (invalidatedMayAliasRead) {
         access->clearLastWrite();
       }
-      if (access->getStoredValue() == writeVal) {
+      if (valTree == nullptr &&
+          isa<array::ArrayType, component::StructType>(writeVal.getType())) {
+        // An untracked aggregate assignment replaces the member value;
+        // stale descendants must not survive the unknown write.
+        access->invalidateChildren();
+      }
+      if (access->getReplacementValue() == writeVal) {
         LLVM_DEBUG(
             llvm::dbgs() << writem.getOperationName() << ": recording redundant write " << writem
                          << '\n'
