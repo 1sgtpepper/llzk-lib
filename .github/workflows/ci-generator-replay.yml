@@ -242,7 +242,7 @@ jobs:
 
             (
               cd "$tested_path"
-              nix --print-build-logs build --no-check '.#debugGCC'
+              nix --print-build-logs build '.#debugGCC' --no-check
             )
 
             mkdir -p "$chunk_dir" "$output_path"
