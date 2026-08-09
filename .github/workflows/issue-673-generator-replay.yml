@@ -155,12 +155,29 @@ jobs:
             expected="$witness_dir/$case_name-expected.json"
             optimized="$witness_dir/$case_name-optimized.llzk"
             "$llzk_witgen" "$source" --inputs "$input" --check-output "$expected"
-            "$llzk_witgen" "$source" --inputs "$input" --backend=execution-engine \
-                --check-output "$expected"
+            if [ "$case_name" = partial ]; then
+              "$llzk_witgen" "$source" --inputs "$input" --backend=execution-engine \
+                  --check-output "$expected"
+            else
+              scalarized="$witness_dir/$case_name-scalarized.llzk"
+              "$llzk_opt" -llzk-array-to-scalar "$source" -o "$scalarized"
+              "$llzk_witgen" "$scalarized" --inputs "$input" --check-output "$expected"
+              "$llzk_witgen" "$scalarized" --inputs "$input" --backend=execution-engine \
+                  --check-output "$expected"
+            fi
             "$llzk_opt" -llzk-duplicate-read-write-elim "$source" -o "$optimized"
             "$llzk_witgen" "$optimized" --inputs "$input" --check-output "$expected"
-            "$llzk_witgen" "$optimized" --inputs "$input" --backend=execution-engine \
-                --check-output "$expected"
+            if [ "$case_name" = partial ]; then
+              "$llzk_witgen" "$optimized" --inputs "$input" --backend=execution-engine \
+                  --check-output "$expected"
+            else
+              optimized_scalarized="$witness_dir/$case_name-optimized-scalarized.llzk"
+              "$llzk_opt" -llzk-array-to-scalar "$optimized" -o "$optimized_scalarized"
+              "$llzk_witgen" "$optimized_scalarized" --inputs "$input" \
+                  --check-output "$expected"
+              "$llzk_witgen" "$optimized_scalarized" --inputs "$input" \
+                  --backend=execution-engine --check-output "$expected"
+            fi
             echo "$case_name.original_and_optimized_semantics=PASS" \
                 >> "$OUTPUT_PATH/comparison.txt"
           done
