@@ -817,7 +817,7 @@ module attributes {llzk.lang} {
 // CHECK-NEXT:  }
 // -----
 module attributes {llzk.lang} {
-  // Detaching a dynamic aggregate alias must clear candidates shared with its source.
+  // An array copy must clear source candidates before a dynamic-index write detaches it.
   function.def @dynamic_alias_detached_by_constant_write_preserves_source_candidate(
       %idx: index
   ) -> !felt.type {
@@ -856,7 +856,7 @@ module attributes {llzk.lang} {
 // CHECK-NEXT:  }
 // -----
 module attributes {llzk.lang} {
-  // Detaching a constant aggregate alias must clear candidates shared with its source.
+  // An array copy must clear source candidates before a constant-index write detaches it.
   function.def @constant_alias_detached_by_dynamic_write_preserves_source_candidate(
       %idx: index
   ) -> !felt.type {

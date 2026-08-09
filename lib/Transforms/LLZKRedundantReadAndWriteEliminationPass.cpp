@@ -265,8 +265,8 @@ public:
 
   /// @brief Clear pending overwrite candidates in this node and its descendants.
   ///
-  /// Aggregate assignment shares descendant nodes, so this must run before a
-  /// subtree is detached from an alias path.
+  /// Struct-reference assignment can share descendant nodes, so this must run
+  /// before a subtree is detached from an alias path.
   void clearLastWritesInSubtree() {
     ReferenceNodeClearMemo memo;
     clearLastWritesInSubtreeImpl(memo);
