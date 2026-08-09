@@ -381,19 +381,6 @@ public:
   /// @brief Return an SSA value only when it is identity-equivalent to this node.
   Value getReplacementValue() const { return replacementValue; }
 
-  /// @brief Return the value that identifies this node's known contents.
-  Value getKnownContentValue() const { return storedValue; }
-
-  /// @brief Return whether two nodes contain the same known value state.
-  ///
-  /// This deliberately ignores path identifiers and replacement identity. It is
-  /// used to recognize a redundant write of an array value copy without treating
-  /// that copy as an SSA alias that can replace a later aggregate read.
-  bool hasSameKnownValue(const ReferenceNodePtr &other) const {
-    DenseMap<const ReferenceNode *, DenseSet<const ReferenceNode *>> memo;
-    return hasSameKnownValueImpl(other.get(), memo);
-  }
-
   bool hasStoredValue() const { return storedValue != nullptr; }
 
   void print(raw_ostream &os, int indent = 0) const {
@@ -457,28 +444,6 @@ public:
   }
 
 private:
-  /// @brief Compare known contents recursively while tolerating shared DAG nodes.
-  bool hasSameKnownValueImpl(
-      const ReferenceNode *other,
-      DenseMap<const ReferenceNode *, DenseSet<const ReferenceNode *>> &memo
-  ) const {
-    if (other == nullptr || storedValue != other->storedValue ||
-        dynamicChildCount != other->dynamicChildCount ||
-        children.size() != other->children.size()) {
-      return false;
-    }
-    if (!memo[this].insert(other).second) {
-      return true;
-    }
-    for (const auto &[id, child] : children) {
-      auto it = other->children.find(id);
-      if (it == other->children.end() || !child->hasSameKnownValueImpl(it->second.get(), memo)) {
-        return false;
-      }
-    }
-    return true;
-  }
-
   /// @brief Clone the mutable container state of an array value.
   ///
   /// Array insert/extract operations copy array elements. Scalar and nested-array
@@ -917,13 +882,7 @@ class PassImpl : public llzk::impl::RedundantReadAndWriteEliminationPassBase<Pas
     auto makeReadSnapshot = [](Value resVal, const ReferenceNodePtr &valueTree) {
       auto snapshot = ReferenceNode::create(resVal, resVal);
       if (valueTree != nullptr) {
-        Value snapshotValue = resVal;
-        if (isa<array::ArrayType>(resVal.getType())) {
-          // Preserve the copied contents' provenance for later equality checks,
-          // while setCurrentValue keeps the aggregate replacement identity empty.
-          snapshotValue = valueTree->getKnownContentValue();
-        }
-        snapshot->setCurrentValue(snapshotValue, valueTree);
+        snapshot->setCurrentValue(resVal, valueTree);
       }
       return snapshot;
     };
@@ -951,25 +910,6 @@ class PassImpl : public llzk::impl::RedundantReadAndWriteEliminationPassBase<Pas
       }
       return componentNode->getOrCreateChild(member);
     };
-    auto getMemberAccessNode = [&](MemberReadOp readm) {
-      std::shared_ptr<ReferenceNode> access =
-          getMemberNode(readm.getComponent(), readm.getMemberNameAttr());
-      if (access == nullptr) {
-        return access;
-      }
-      access = access->getOrCreateChild(readm.getTableOffset().value_or(zeroTableOffset));
-      if (!readm.getMapOperands().empty()) {
-        access = access->getOrCreateChild(readm.getMapOpGroupSizesAttr());
-        access = access->getOrCreateChild(readm.getNumDimsPerMapAttr());
-      }
-      for (auto mapOperands : readm.getMapOperands()) {
-        for (Value operand : mapOperands) {
-          access = access->getOrCreateChild(translate(operand));
-        }
-      }
-      return access;
-    };
-
     // Read an element or subarray from an array. A surviving result may
     // expose aggregate descendants, so it observes the selected subtree.
     auto doArrayReadLike = [&]<HasInterface<ArrayAccessOpInterface> OpClass>(OpClass readarr) {
@@ -1074,8 +1014,7 @@ class PassImpl : public llzk::impl::RedundantReadAndWriteEliminationPassBase<Pas
         currValTree->invalidateChildren();
       }
 
-      if (currValTree->getReplacementValue() == newVal ||
-          (valTree != nullptr && currValTree->hasSameKnownValue(valTree))) {
+      if (currValTree->getReplacementValue() == newVal) {
         LLVM_DEBUG(
             llvm::dbgs() << writearr.getOperationName() << ": subsequent " << writearr
                          << " is redundant\n"
@@ -1152,9 +1091,17 @@ class PassImpl : public llzk::impl::RedundantReadAndWriteEliminationPassBase<Pas
       // adding this to readVals
       readVals.push_back(newStruct);
     } else if (auto readm = dyn_cast<MemberReadOp>(op)) {
-      std::shared_ptr<ReferenceNode> access = getMemberAccessNode(readm);
       Value resVal = readm.getVal();
-      if (access == nullptr) {
+      if (resVal.use_empty()) {
+        // A directly dead read neither observes a pending write nor supplies
+        // facts to a later operation.
+        readVals.push_back(resVal);
+        return;
+      }
+
+      std::shared_ptr<ReferenceNode> member =
+          getMemberNode(readm.getComponent(), readm.getMemberNameAttr());
+      if (member == nullptr) {
         // An unknown component may alias any tracked struct. A live read must
         // protect reference writes it could observe; aggregate results also
         // invalidate facts that a later write through the result could stale.
@@ -1166,6 +1113,20 @@ class PassImpl : public llzk::impl::RedundantReadAndWriteEliminationPassBase<Pas
         readVals.push_back(resVal);
         return;
       }
+
+      Attribute tableOffset = readm.getTableOffset().value_or(zeroTableOffset);
+      std::shared_ptr<ReferenceNode> tableAccess = member->getOrCreateChild(tableOffset);
+      std::shared_ptr<ReferenceNode> access = tableAccess;
+      if (!readm.getMapOperands().empty()) {
+        access = access->getOrCreateChild(readm.getMapOpGroupSizesAttr());
+        access = access->getOrCreateChild(readm.getNumDimsPerMapAttr());
+      }
+      for (auto mapOperands : readm.getMapOperands()) {
+        for (Value operand : mapOperands) {
+          access = access->getOrCreateChild(translate(operand));
+        }
+      }
+
       if (!access->hasStoredValue()) {
         access->setCurrentValue(resVal);
       }
@@ -1177,6 +1138,14 @@ class PassImpl : public llzk::impl::RedundantReadAndWriteEliminationPassBase<Pas
         );
         replacementMap[resVal] = replacementValue;
       } else {
+        // A surviving read fences the write that produced every value it may
+        // observe. Integer table offsets select one subtree; an affine or
+        // symbolic offset may resolve to any tracked offset of this member.
+        if (isa<IntegerAttr>(tableOffset)) {
+          tableAccess->clearLastWritesInSubtree();
+        } else {
+          member->clearLastWritesInSubtree();
+        }
         state.values[resVal] = makeReadSnapshot(resVal, access);
         LLVM_DEBUG(llvm::dbgs() << readm.getOperationName() << ": " << *access << '\n');
       }
@@ -1247,10 +1216,6 @@ class PassImpl : public llzk::impl::RedundantReadAndWriteEliminationPassBase<Pas
       for (auto elem : newArray.getElements()) {
         Value elemVal = translate(elem);
         auto valTree = tryGetValTree(elemVal);
-        if (valTree != nullptr && isa<array::ArrayType>(elemVal.getType())) {
-          // Array initializers copy nested array values.
-          valTree->clearLastWritesInSubtree();
-        }
         auto elemChild = arrayVal->createChild(idx, elemVal, valTree);
         LLVM_DEBUG(
             llvm::dbgs() << newArray.getOperationName() << ": element " << idx << " initialized to "

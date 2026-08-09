@@ -1,0 +1,118 @@
+// RUN: split-file %s %t
+// RUN: llzk-witgen %t/member.llzk --inputs %t/member-input.json --check-output %t/member-expected.json | FileCheck %s --check-prefix=SUCCESS
+// RUN: llzk-witgen %t/member.llzk --inputs %t/member-input.json --backend=execution-engine --check-output %t/member-expected.json | FileCheck %s --check-prefix=SUCCESS
+// RUN: llzk-opt -llzk-duplicate-read-write-elim %t/member.llzk -o %t/member-optimized.llzk
+// RUN: llzk-witgen %t/member-optimized.llzk --inputs %t/member-input.json --check-output %t/member-expected.json | FileCheck %s --check-prefix=SUCCESS
+// RUN: llzk-witgen %t/member-optimized.llzk --inputs %t/member-input.json --backend=execution-engine --check-output %t/member-expected.json | FileCheck %s --check-prefix=SUCCESS
+// RUN: llzk-witgen %t/partial.llzk --inputs %t/partial-input.json --check-output %t/partial-expected.json | FileCheck %s --check-prefix=SUCCESS
+// RUN: llzk-witgen %t/partial.llzk --inputs %t/partial-input.json --backend=execution-engine --check-output %t/partial-expected.json | FileCheck %s --check-prefix=SUCCESS
+// RUN: llzk-opt -llzk-duplicate-read-write-elim %t/partial.llzk -o %t/partial-optimized.llzk
+// RUN: llzk-witgen %t/partial-optimized.llzk --inputs %t/partial-input.json --check-output %t/partial-expected.json | FileCheck %s --check-prefix=SUCCESS
+// RUN: llzk-witgen %t/partial-optimized.llzk --inputs %t/partial-input.json --backend=execution-engine --check-output %t/partial-expected.json | FileCheck %s --check-prefix=SUCCESS
+
+// SUCCESS: output matched expected JSON
+
+//--- member.llzk
+
+module attributes {llzk.lang, llzk.main = !struct.type<@Main>} {
+  struct.def @Main {
+    struct.member @row : !array.type<2 x !felt.type<"babybear">>
+    struct.member @result : !felt.type<"babybear"> {llzk.pub}
+
+    function.def @compute(
+        %selector: !felt.type<"babybear"> {function.arg_name = "selector"}
+    ) -> !struct.type<@Main> {
+      %self = struct.new : !struct.type<@Main>
+      %one = felt.const 1 <"babybear">
+      %two = felt.const 2 <"babybear">
+      %i0 = arith.constant 0 : index
+      %i1 = arith.constant 1 : index
+      %cond = bool.cmp eq(%selector, %one) :
+          !felt.type<"babybear">, !felt.type<"babybear">
+      %idx = scf.if %cond -> index {
+        scf.yield %i1 : index
+      } else {
+        scf.yield %i0 : index
+      }
+      %row1 = array.new %one, %one : !array.type<2 x !felt.type<"babybear">>
+      %row2 = array.new %two, %two : !array.type<2 x !felt.type<"babybear">>
+      struct.writem %self[@row] = %row1 :
+          !struct.type<@Main>, !array.type<2 x !felt.type<"babybear">>
+      %copy = struct.readm %self[@row] :
+          !struct.type<@Main>, !array.type<2 x !felt.type<"babybear">>
+      struct.writem %self[@row] = %row2 :
+          !struct.type<@Main>, !array.type<2 x !felt.type<"babybear">>
+      %observed = array.read %copy[%idx] :
+          !array.type<2 x !felt.type<"babybear">>, !felt.type<"babybear">
+      struct.writem %self[@result] = %observed :
+          !struct.type<@Main>, !felt.type<"babybear">
+      function.return %self : !struct.type<@Main>
+    }
+
+    function.def @constrain(
+        %self: !struct.type<@Main>, %selector: !felt.type<"babybear">
+    ) { function.return }
+  }
+}
+
+//--- member-input.json
+{"selector": 1}
+
+//--- member-expected.json
+{"result": "1"}
+
+//--- partial.llzk
+
+module attributes {llzk.lang, llzk.main = !struct.type<@Main>} {
+  struct.def @Main {
+    struct.member @result : !felt.type<"babybear"> {llzk.pub}
+
+    function.def @compute(
+        %source: !array.type<2 x !felt.type<"babybear">> {function.arg_name = "source"},
+        %selector: !felt.type<"babybear"> {function.arg_name = "selector"}
+    ) -> !struct.type<@Main> {
+      %self = struct.new : !struct.type<@Main>
+      %one = felt.const 1 <"babybear">
+      %two = felt.const 2 <"babybear">
+      %i0 = arith.constant 0 : index
+      %i1 = arith.constant 1 : index
+      %cond = bool.cmp eq(%selector, %one) :
+          !felt.type<"babybear">, !felt.type<"babybear">
+      %idx = scf.if %cond -> index {
+        scf.yield %i1 : index
+      } else {
+        scf.yield %i0 : index
+      }
+      %matrix = array.new : !array.type<1,2 x !felt.type<"babybear">>
+      array.write %source[%i0] = %one :
+          !array.type<2 x !felt.type<"babybear">>, !felt.type<"babybear">
+      array.insert %matrix[%i0] = %source :
+          !array.type<1,2 x !felt.type<"babybear">>,
+          !array.type<2 x !felt.type<"babybear">>
+      array.write %source[%idx] = %two :
+          !array.type<2 x !felt.type<"babybear">>, !felt.type<"babybear">
+      array.write %source[%i0] = %one :
+          !array.type<2 x !felt.type<"babybear">>, !felt.type<"babybear">
+      array.insert %matrix[%i0] = %source :
+          !array.type<1,2 x !felt.type<"babybear">>,
+          !array.type<2 x !felt.type<"babybear">>
+      %observed = array.read %matrix[%i0, %idx] :
+          !array.type<1,2 x !felt.type<"babybear">>, !felt.type<"babybear">
+      struct.writem %self[@result] = %observed :
+          !struct.type<@Main>, !felt.type<"babybear">
+      function.return %self : !struct.type<@Main>
+    }
+
+    function.def @constrain(
+        %self: !struct.type<@Main>,
+        %source: !array.type<2 x !felt.type<"babybear">>,
+        %selector: !felt.type<"babybear">
+    ) { function.return }
+  }
+}
+
+//--- partial-input.json
+{"source": [9, 8], "selector": 1}
+
+//--- partial-expected.json
+{"result": "2"}

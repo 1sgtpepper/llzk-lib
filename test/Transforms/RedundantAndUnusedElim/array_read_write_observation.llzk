@@ -152,6 +152,122 @@ module attributes {llzk.lang} {
 // CHECK-NEXT:  }
 // -----
 module attributes {llzk.lang} {
+  struct.def @LiveArrayMemberReadFence {
+    struct.member @row : !array.type<2 x !felt.type>
+    struct.member @result : !felt.type
+
+    // The surviving member read copies the first assignment before the overwrite.
+    function.def @compute(
+        %idx: index
+    ) -> !struct.type<@LiveArrayMemberReadFence> {
+      %self = struct.new : !struct.type<@LiveArrayMemberReadFence>
+      %one = felt.const 1
+      %two = felt.const 2
+      %row1 = array.new %one, %one : !array.type<2 x !felt.type>
+      %row2 = array.new %two, %two : !array.type<2 x !felt.type>
+      struct.writem %self[@row] = %row1 :
+          !struct.type<@LiveArrayMemberReadFence>, !array.type<2 x !felt.type>
+      %copy = struct.readm %self[@row] :
+          !struct.type<@LiveArrayMemberReadFence>, !array.type<2 x !felt.type>
+      struct.writem %self[@row] = %row2 :
+          !struct.type<@LiveArrayMemberReadFence>, !array.type<2 x !felt.type>
+      %observed = array.read %copy[%idx] :
+          !array.type<2 x !felt.type>, !felt.type
+      struct.writem %self[@result] = %observed :
+          !struct.type<@LiveArrayMemberReadFence>, !felt.type
+      function.return %self : !struct.type<@LiveArrayMemberReadFence>
+    }
+
+    function.def @constrain(
+        %self: !struct.type<@LiveArrayMemberReadFence>, %idx: index
+    ) { function.return }
+  }
+}
+// -----
+module attributes {llzk.lang} {
+  struct.def @DisjointArrayMemberRead {
+    struct.member @row : !array.type<2 x !felt.type> {column}
+    struct.member @result : !felt.type
+
+    // A previous-row read cannot observe the overwritten current-row assignment.
+    function.def @compute(
+        %idx: index
+    ) -> !struct.type<@DisjointArrayMemberRead> {
+      %self = struct.new : !struct.type<@DisjointArrayMemberRead>
+      %one = felt.const 1
+      %two = felt.const 2
+      %row1 = array.new %one, %one : !array.type<2 x !felt.type>
+      %row2 = array.new %two, %two : !array.type<2 x !felt.type>
+      struct.writem %self[@row] = %row1 :
+          !struct.type<@DisjointArrayMemberRead>, !array.type<2 x !felt.type>
+      %copy = struct.readm %self[@row] :
+          !struct.type<@DisjointArrayMemberRead>, !array.type<2 x !felt.type> {
+            tableOffset = -1 : index
+          }
+      struct.writem %self[@row] = %row2 :
+          !struct.type<@DisjointArrayMemberRead>, !array.type<2 x !felt.type>
+      %observed = array.read %copy[%idx] :
+          !array.type<2 x !felt.type>, !felt.type
+      struct.writem %self[@result] = %observed :
+          !struct.type<@DisjointArrayMemberRead>, !felt.type
+      function.return %self : !struct.type<@DisjointArrayMemberRead>
+    }
+
+    function.def @constrain(
+        %self: !struct.type<@DisjointArrayMemberRead>, %idx: index
+    ) { function.return }
+  }
+}
+// -----
+module attributes {llzk.lang} {
+  struct.def @DeadArrayMemberRead {
+    struct.member @row : !array.type<2 x !felt.type>
+
+    // A directly dead member read does not observe the overwritten assignment.
+    function.def @compute() -> !struct.type<@DeadArrayMemberRead> {
+      %self = struct.new : !struct.type<@DeadArrayMemberRead>
+      %one = felt.const 1
+      %two = felt.const 2
+      %row1 = array.new %one, %one : !array.type<2 x !felt.type>
+      %row2 = array.new %two, %two : !array.type<2 x !felt.type>
+      struct.writem %self[@row] = %row1 :
+          !struct.type<@DeadArrayMemberRead>, !array.type<2 x !felt.type>
+      %dead = struct.readm %self[@row] :
+          !struct.type<@DeadArrayMemberRead>, !array.type<2 x !felt.type>
+      struct.writem %self[@row] = %row2 :
+          !struct.type<@DeadArrayMemberRead>, !array.type<2 x !felt.type>
+      function.return %self : !struct.type<@DeadArrayMemberRead>
+    }
+
+    function.def @constrain(
+        %self: !struct.type<@DeadArrayMemberRead>
+    ) { function.return }
+  }
+}
+// -----
+module attributes {llzk.lang} {
+  // Equal retained facts do not prove equal values after an unknown-index mutation.
+  function.def @partial_array_facts_do_not_prove_full_copy_equality(
+      %source: !array.type<2 x !felt.type>, %idx: index
+  ) -> !felt.type {
+    %one = felt.const 1
+    %two = felt.const 2
+    %matrix = array.new : !array.type<1,2 x !felt.type>
+    %i0 = arith.constant 0 : index
+    array.write %source[%i0] = %one : !array.type<2 x !felt.type>, !felt.type
+    array.insert %matrix[%i0] = %source :
+        !array.type<1,2 x !felt.type>, !array.type<2 x !felt.type>
+    array.write %source[%idx] = %two : !array.type<2 x !felt.type>, !felt.type
+    array.write %source[%i0] = %one : !array.type<2 x !felt.type>, !felt.type
+    array.insert %matrix[%i0] = %source :
+        !array.type<1,2 x !felt.type>, !array.type<2 x !felt.type>
+    %observed = array.read %matrix[%i0, %idx] :
+        !array.type<1,2 x !felt.type>, !felt.type
+    function.return %observed : !felt.type
+  }
+}
+// -----
+module attributes {llzk.lang} {
   // An unknown inserted row must detach stale facts from the destination row.
   function.def @unknown_array_insert_overwrites_known_row(%cond: i1) -> !felt.type {
     %one = felt.const 1
