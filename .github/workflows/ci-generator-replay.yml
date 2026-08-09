@@ -60,7 +60,7 @@ jobs:
             local test_file="$3"
             shift 3
             if [[ "$head" == "36156d1b37f229b6ae791eda6cfcb96a7575c752" ]]; then
-              head="edcc88b20f993813273a21b959369fe9f17909be"
+              head="a6d6529ad6c52293cc1f86ab301d4bbf4476945b"
             fi
             local tested_path="$RUNNER_TEMP/llzk-$name"
             local output_path="$OUTPUT_PATH/$name"
@@ -224,7 +224,7 @@ jobs:
             local head="$1"
             local test_file="$2"
             if [[ "$head" == "efb42f37f1ea04315815d07315e07aa597625816" ]]; then
-              head="edcc88b20f993813273a21b959369fe9f17909be"
+              head="a6d6529ad6c52293cc1f86ab301d4bbf4476945b"
             fi
             local tested_path="$RUNNER_TEMP/llzk-pr672"
             local output_path="$OUTPUT_PATH/pr672"
