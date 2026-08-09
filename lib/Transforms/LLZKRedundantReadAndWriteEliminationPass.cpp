@@ -1026,8 +1026,7 @@ class PassImpl : public llzk::impl::RedundantReadAndWriteEliminationPassBase<Pas
         currValTree = currValTree->getOrCreateChild(idxVal);
       }
 
-      if (valTree == nullptr &&
-          isa<array::ArrayType, component::StructType>(newVal.getType())) {
+      if (valTree == nullptr && isa<array::ArrayType, component::StructType>(newVal.getType())) {
         // An untracked aggregate assignment replaces the destination value;
         // stale descendants must not survive the unknown write.
         currValTree->invalidateChildren();
@@ -1166,8 +1165,7 @@ class PassImpl : public llzk::impl::RedundantReadAndWriteEliminationPassBase<Pas
       if (invalidatedMayAliasRead) {
         access->clearLastWrite();
       }
-      if (valTree == nullptr &&
-          isa<array::ArrayType, component::StructType>(writeVal.getType())) {
+      if (valTree == nullptr && isa<array::ArrayType, component::StructType>(writeVal.getType())) {
         // An untracked aggregate assignment replaces the member value;
         // stale descendants must not survive the unknown write.
         access->invalidateChildren();
