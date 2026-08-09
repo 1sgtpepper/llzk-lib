@@ -214,7 +214,8 @@ def process_attribute_definition(line, attribute_namer, output):
     m = ATTR_DEF_RE.match(line)
     if m:
         attribute_name = attribute_namer.generate_name(m.group(1))
-        line = '// CHECK: #[[' + attribute_name + ':[0-9a-zA-Z_\\.]+]] =' + line[len(m.group(0)):] + '\n'
+        definition = process_attribute_references(line[len(m.group(0)):], attribute_namer)
+        line = '// CHECK: #[[' + attribute_name + ':[0-9a-zA-Z_\\.]+]] =' + definition + '\n'
         output.write(line)
     return bool(m)
 
