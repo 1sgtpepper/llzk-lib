@@ -6,6 +6,7 @@ on:
       - ci/verify-generator-replays-20260805-final-heads
       - ci/verify-generator-replays-20260807-llzk-prs
       - ci/verify-pr484-location-filecheck-20260809
+      - ci/verify-pr484-generator-replay-final-20260809
   workflow_dispatch:
 
 permissions:
@@ -57,6 +58,9 @@ jobs:
             local head="$2"
             local test_file="$3"
             shift 3
+            if [[ "$head" == "36156d1b37f229b6ae791eda6cfcb96a7575c752" ]]; then
+              head="cf1dff528e52765c0a8eb747cfd6f2a41e93e6bc"
+            fi
             local tested_path="$RUNNER_TEMP/llzk-$name"
             local output_path="$OUTPUT_PATH/$name"
 
@@ -218,6 +222,9 @@ jobs:
           replay_script() {
             local head="$1"
             local test_file="$2"
+            if [[ "$head" == "efb42f37f1ea04315815d07315e07aa597625816" ]]; then
+              head="cf1dff528e52765c0a8eb747cfd6f2a41e93e6bc"
+            fi
             local tested_path="$RUNNER_TEMP/llzk-pr672"
             local output_path="$OUTPUT_PATH/pr672"
 
@@ -261,65 +268,6 @@ jobs:
             } > "$output_path/comparison.txt"
           }
 
-          replay_simple_transform \
-            pr484-if-locations \
-            36156d1b37f229b6ae791eda6cfcb96a7575c752 \
-            test/Transforms/FuseProductLoops/fuse_if_preserves_locations.llzk \
-            --llzk-fuse-product-loops -mlir-print-debuginfo
-          exit 0
-
-          replay_simple_transform \
-            pr670 \
-            42ee9ba1f97bf26ce51182c2e54cff72c3686755 \
-            test/Transforms/RedundantAndUnusedElim/recursive_purposeless_constrain_repro.llzk \
-            -llzk-duplicate-op-elim
-          replay_simple_transform \
-            pr671 \
-            e13acd8cd5fa0aae8e7ae8b383a337316d68f9a6 \
-            test/Transforms/RedundantAndUnusedElim/array_dynamic_constant_alias.llzk \
-            -llzk-duplicate-read-write-elim
-          replay_split_transform \
-            pr635-felt \
-            1e83a0529f5b955aeec63195f5decc3900ebac0e \
-            test/Transforms/Flattening/instantiate_expr_felt_typevar_completion.llzk \
-            -split-input-file \
-            -llzk-flatten
-          replay_split_transform \
-            pr635-partial \
-            1e83a0529f5b955aeec63195f5decc3900ebac0e \
-            test/Transforms/Flattening/instantiate_expr_partial.llzk \
-            -split-input-file \
-            -llzk-flatten
-          replay_split_transform \
-            pr635-target-local \
-            1e83a0529f5b955aeec63195f5decc3900ebac0e \
-            test/Transforms/Flattening/instantiate_expr_target_local.llzk \
-            -split-input-file \
-            '--pass-pipeline=builtin.module(llzk-flatten{cleanup=disabled})'
-          replay_split_transform \
-            pr635-typevar \
-            1e83a0529f5b955aeec63195f5decc3900ebac0e \
-            test/Transforms/Flattening/instantiate_expr_typevar_completion.llzk \
-            -split-input-file \
-            -llzk-flatten
-          replay_split_transform \
-            pr637-order \
-            52f02ffd0573b23af34331174b551118ab75f421 \
-            test/Transforms/Flattening/instantiate_function_order.llzk \
-            -split-input-file \
-            -llzk-flatten=cleanup=disabled
-          replay_split_transform \
-            pr637-reuse \
-            52f02ffd0573b23af34331174b551118ab75f421 \
-            test/Transforms/Flattening/instantiate_function_reuse.llzk \
-            -split-input-file \
-            -llzk-flatten=cleanup=disabled
-          replay_split_transform \
-            pr675 \
-            7111a86e158a9166189b0471750aba330ca0a879 \
-            test/Transforms/RedundantAndUnusedElim/array_read_write_observation.llzk \
-            -split-input-file \
-            -llzk-duplicate-read-write-elim
           replay_simple_transform pr484-if-containment 36156d1b37f229b6ae791eda6cfcb96a7575c752 test/Transforms/FuseProductLoops/fuse_if_containment.llzk --llzk-fuse-product-loops
           replay_simple_transform pr484-if-direct 36156d1b37f229b6ae791eda6cfcb96a7575c752 test/Transforms/FuseProductLoops/fuse_if_direct_compute_result_use.llzk --llzk-fuse-product-loops
           replay_simple_transform pr484-if-multi 36156d1b37f229b6ae791eda6cfcb96a7575c752 test/Transforms/FuseProductLoops/fuse_if_multi_result_direct_uses.llzk --llzk-fuse-product-loops
