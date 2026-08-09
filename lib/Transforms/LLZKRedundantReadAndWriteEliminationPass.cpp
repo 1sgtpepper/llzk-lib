@@ -446,7 +446,7 @@ public:
 private:
   /// @brief Clone the mutable container state of an array value.
   ///
-  /// Array insert/extract operations copy array elements. Scalar and nested-array
+  /// Array insert/extract operations copy array elements. Scalar and subarray
   /// nodes therefore need independent state, while a struct-typed element is a
   /// reference-semantic object and must remain shared with its source aliases.
   ReferenceNodePtr cloneArrayValueNode() const {
@@ -910,6 +910,7 @@ class PassImpl : public llzk::impl::RedundantReadAndWriteEliminationPassBase<Pas
       }
       return componentNode->getOrCreateChild(member);
     };
+
     // Read an element or subarray from an array. A surviving result may
     // expose aggregate descendants, so it observes the selected subtree.
     auto doArrayReadLike = [&]<HasInterface<ArrayAccessOpInterface> OpClass>(OpClass readarr) {

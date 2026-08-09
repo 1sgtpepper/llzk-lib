@@ -12,7 +12,7 @@ module attributes {llzk.lang} {
       array.insert %mat[%idx1] = %inputArr : !array.type<7,3 x !felt.type>, !array.type<3 x !felt.type>
       %arr1 = array.extract %mat[%idx1] : !array.type<7,3 x !felt.type> // retained aggregate snapshot
       array.insert %mat[%idx4] = %arr1 : !array.type<7,3 x !felt.type>, !array.type<3 x !felt.type> // copy the snapshot
-      array.insert %mat[%idx1] = %arr1 : !array.type<7,3 x !felt.type>, !array.type<3 x !felt.type> // redundant
+      array.insert %mat[%idx1] = %arr1 : !array.type<7,3 x !felt.type>, !array.type<3 x !felt.type> // retained: known facts are not complete contents
       function.return %self : !struct.type<@Component>
     }
     function.def @constrain(%self: !struct.type<@Component>, %inputArr : !array.type<3 x !felt.type>) {
@@ -41,6 +41,7 @@ module attributes {llzk.lang} {
 // CHECK-NEXT:      array.insert %[[VAL_2]]{{\[}}%[[VAL_3]]] = %[[VAL_0]] : <7,3 x !felt.type>, <3 x !felt.type>
 // CHECK-NEXT:      %[[ARR1:.*]] = array.extract %[[VAL_2]]{{\[}}%[[VAL_3]]] : <7,3 x !felt.type>
 // CHECK-NEXT:      array.insert %[[VAL_2]]{{\[}}%[[VAL_4]]] = %[[ARR1]] : <7,3 x !felt.type>, <3 x !felt.type>
+// CHECK-NEXT:      array.insert %[[VAL_2]]{{\[}}%[[VAL_3]]] = %[[ARR1]] : <7,3 x !felt.type>, <3 x !felt.type>
 // CHECK-NEXT:      function.return %[[VAL_1]] : !struct.type<@Component>
 // CHECK-NEXT:    }
 // CHECK-NEXT:    function.def @constrain(%[[VAL_5:.*]]: !struct.type<@Component>, %[[VAL_6:.*]]: !array.type<3 x !felt.type>) attributes {function.allow_constraint} {
@@ -74,7 +75,7 @@ module attributes {llzk.lang} {
       } else {
         %arr1 = array.extract %mat[%idx1] : !array.type<7,3 x !felt.type> // necessary aggregate snapshot
         array.insert %mat[%idx4] = %arr1 : !array.type<7,3 x !felt.type>, !array.type<3 x !felt.type>
-        array.insert %mat[%idx1] = %arr1 : !array.type<7,3 x !felt.type>, !array.type<3 x !felt.type> // redundant copy
+        array.insert %mat[%idx1] = %arr1 : !array.type<7,3 x !felt.type>, !array.type<3 x !felt.type> // retained: known facts are not complete contents
       }
 
       function.return %self : !struct.type<@Component>
@@ -97,6 +98,7 @@ module attributes {llzk.lang} {
 // CHECK-NEXT:      } else {
 // CHECK-NEXT:        %[[VAL_6:.*]] = array.extract %[[VAL_3]]{{\[}}%[[VAL_4]]] : <7,3 x !felt.type>
 // CHECK-NEXT:        array.insert %[[VAL_3]]{{\[}}%[[VAL_5]]] = %[[VAL_6]] : <7,3 x !felt.type>, <3 x !felt.type>
+// CHECK-NEXT:        array.insert %[[VAL_3]]{{\[}}%[[VAL_4]]] = %[[VAL_6]] : <7,3 x !felt.type>, <3 x !felt.type>
 // CHECK-NEXT:      }
 // CHECK-NEXT:      function.return %[[VAL_2]] : !struct.type<@Component>
 // CHECK-NEXT:    }

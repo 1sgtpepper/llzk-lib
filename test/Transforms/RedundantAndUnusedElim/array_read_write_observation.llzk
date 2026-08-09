@@ -183,6 +183,28 @@ module attributes {llzk.lang} {
     ) { function.return }
   }
 }
+// CHECK-LABEL: module attributes {llzk.lang} {
+// CHECK-NEXT:    struct.def @LiveArrayMemberReadFence {
+// CHECK-NEXT:      struct.member @row : !array.type<2 x !felt.type>
+// CHECK-NEXT:      struct.member @result : !felt.type
+// CHECK-NEXT:      function.def @compute(%[[VAL_0:[0-9a-zA-Z_\.]+]]: index) -> !struct.type<@LiveArrayMemberReadFence> attributes {function.allow_witness} {
+// CHECK-NEXT:        %[[VAL_1:[0-9a-zA-Z_\.]+]] = struct.new : <@LiveArrayMemberReadFence>
+// CHECK-NEXT:        %[[VAL_2:[0-9a-zA-Z_\.]+]] = felt.const  1
+// CHECK-NEXT:        %[[VAL_3:[0-9a-zA-Z_\.]+]] = felt.const  2
+// CHECK-NEXT:        %[[VAL_4:[0-9a-zA-Z_\.]+]] = array.new %[[VAL_2]], %[[VAL_2]] : <2 x !felt.type>
+// CHECK-NEXT:        %[[VAL_5:[0-9a-zA-Z_\.]+]] = array.new %[[VAL_3]], %[[VAL_3]] : <2 x !felt.type>
+// CHECK-NEXT:        struct.writem %[[VAL_1]][@row] = %[[VAL_4]] : <@LiveArrayMemberReadFence>, !array.type<2 x !felt.type>
+// CHECK-NEXT:        %[[VAL_6:[0-9a-zA-Z_\.]+]] = struct.readm %[[VAL_1]][@row] : <@LiveArrayMemberReadFence>, !array.type<2 x !felt.type>
+// CHECK-NEXT:        struct.writem %[[VAL_1]][@row] = %[[VAL_5]] : <@LiveArrayMemberReadFence>, !array.type<2 x !felt.type>
+// CHECK-NEXT:        %[[VAL_7:[0-9a-zA-Z_\.]+]] = array.read %[[VAL_6]]{{\[}}%[[VAL_0]]] : <2 x !felt.type>, !felt.type
+// CHECK-NEXT:        struct.writem %[[VAL_1]][@result] = %[[VAL_7]] : <@LiveArrayMemberReadFence>, !felt.type
+// CHECK-NEXT:        function.return %[[VAL_1]] : !struct.type<@LiveArrayMemberReadFence>
+// CHECK-NEXT:      }
+// CHECK-NEXT:      function.def @constrain(%[[VAL_8:[0-9a-zA-Z_\.]+]]: !struct.type<@LiveArrayMemberReadFence>, %[[VAL_9:[0-9a-zA-Z_\.]+]]: index) attributes {function.allow_constraint} {
+// CHECK-NEXT:        function.return
+// CHECK-NEXT:      }
+// CHECK-NEXT:    }
+// CHECK-NEXT:  }
 // -----
 module attributes {llzk.lang} {
   struct.def @DisjointArrayMemberRead {
@@ -218,6 +240,26 @@ module attributes {llzk.lang} {
     ) { function.return }
   }
 }
+// CHECK-LABEL: module attributes {llzk.lang} {
+// CHECK-NEXT:    struct.def @DisjointArrayMemberRead {
+// CHECK-NEXT:      struct.member @row : !array.type<2 x !felt.type> {column}
+// CHECK-NEXT:      struct.member @result : !felt.type
+// CHECK-NEXT:      function.def @compute(%[[VAL_0:[0-9a-zA-Z_\.]+]]: index) -> !struct.type<@DisjointArrayMemberRead> attributes {function.allow_witness} {
+// CHECK-NEXT:        %[[VAL_1:[0-9a-zA-Z_\.]+]] = struct.new : <@DisjointArrayMemberRead>
+// CHECK-NEXT:        %[[VAL_2:[0-9a-zA-Z_\.]+]] = felt.const  1
+// CHECK-NEXT:        %[[VAL_3:[0-9a-zA-Z_\.]+]] = felt.const  2
+// CHECK-NEXT:        %[[VAL_4:[0-9a-zA-Z_\.]+]] = array.new %[[VAL_3]], %[[VAL_3]] : <2 x !felt.type>
+// CHECK-NEXT:        %[[VAL_5:[0-9a-zA-Z_\.]+]] = struct.readm %[[VAL_1]][@row] : <@DisjointArrayMemberRead>, !array.type<2 x !felt.type> {tableOffset = -1 : index}
+// CHECK-NEXT:        struct.writem %[[VAL_1]][@row] = %[[VAL_4]] : <@DisjointArrayMemberRead>, !array.type<2 x !felt.type>
+// CHECK-NEXT:        %[[VAL_6:[0-9a-zA-Z_\.]+]] = array.read %[[VAL_5]]{{\[}}%[[VAL_0]]] : <2 x !felt.type>, !felt.type
+// CHECK-NEXT:        struct.writem %[[VAL_1]][@result] = %[[VAL_6]] : <@DisjointArrayMemberRead>, !felt.type
+// CHECK-NEXT:        function.return %[[VAL_1]] : !struct.type<@DisjointArrayMemberRead>
+// CHECK-NEXT:      }
+// CHECK-NEXT:      function.def @constrain(%[[VAL_7:[0-9a-zA-Z_\.]+]]: !struct.type<@DisjointArrayMemberRead>, %[[VAL_8:[0-9a-zA-Z_\.]+]]: index) attributes {function.allow_constraint} {
+// CHECK-NEXT:        function.return
+// CHECK-NEXT:      }
+// CHECK-NEXT:    }
+// CHECK-NEXT:  }
 // -----
 module attributes {llzk.lang} {
   struct.def @DeadArrayMemberRead {
@@ -244,6 +286,22 @@ module attributes {llzk.lang} {
     ) { function.return }
   }
 }
+// CHECK-LABEL: module attributes {llzk.lang} {
+// CHECK-NEXT:    struct.def @DeadArrayMemberRead {
+// CHECK-NEXT:      struct.member @row : !array.type<2 x !felt.type>
+// CHECK-NEXT:      function.def @compute() -> !struct.type<@DeadArrayMemberRead> attributes {function.allow_witness} {
+// CHECK-NEXT:        %[[VAL_0:[0-9a-zA-Z_\.]+]] = struct.new : <@DeadArrayMemberRead>
+// CHECK-NEXT:        %[[VAL_1:[0-9a-zA-Z_\.]+]] = felt.const  1
+// CHECK-NEXT:        %[[VAL_2:[0-9a-zA-Z_\.]+]] = felt.const  2
+// CHECK-NEXT:        %[[VAL_3:[0-9a-zA-Z_\.]+]] = array.new %[[VAL_2]], %[[VAL_2]] : <2 x !felt.type>
+// CHECK-NEXT:        struct.writem %[[VAL_0]][@row] = %[[VAL_3]] : <@DeadArrayMemberRead>, !array.type<2 x !felt.type>
+// CHECK-NEXT:        function.return %[[VAL_0]] : !struct.type<@DeadArrayMemberRead>
+// CHECK-NEXT:      }
+// CHECK-NEXT:      function.def @constrain(%[[VAL_4:[0-9a-zA-Z_\.]+]]: !struct.type<@DeadArrayMemberRead>) attributes {function.allow_constraint} {
+// CHECK-NEXT:        function.return
+// CHECK-NEXT:      }
+// CHECK-NEXT:    }
+// CHECK-NEXT:  }
 // -----
 module attributes {llzk.lang} {
   // Equal retained facts do not prove equal values after an unknown-index mutation.
@@ -266,6 +324,20 @@ module attributes {llzk.lang} {
     function.return %observed : !felt.type
   }
 }
+// CHECK-LABEL: module attributes {llzk.lang} {
+// CHECK-NEXT:    function.def @partial_array_facts_do_not_prove_full_copy_equality(%[[VAL_0:[0-9a-zA-Z_\.]+]]: !array.type<2 x !felt.type>, %[[VAL_1:[0-9a-zA-Z_\.]+]]: index) -> !felt.type {
+// CHECK-NEXT:      %[[VAL_2:[0-9a-zA-Z_\.]+]] = felt.const  1
+// CHECK-NEXT:      %[[VAL_3:[0-9a-zA-Z_\.]+]] = felt.const  2
+// CHECK-NEXT:      %[[VAL_4:[0-9a-zA-Z_\.]+]] = array.new  : <1,2 x !felt.type>
+// CHECK-NEXT:      %[[VAL_5:[0-9a-zA-Z_\.]+]] = arith.constant 0 : index
+// CHECK-NEXT:      array.write %[[VAL_0]]{{\[}}%[[VAL_5]]] = %[[VAL_2]] : <2 x !felt.type>, !felt.type
+// CHECK-NEXT:      array.write %[[VAL_0]]{{\[}}%[[VAL_1]]] = %[[VAL_3]] : <2 x !felt.type>, !felt.type
+// CHECK-NEXT:      array.write %[[VAL_0]]{{\[}}%[[VAL_5]]] = %[[VAL_2]] : <2 x !felt.type>, !felt.type
+// CHECK-NEXT:      array.insert %[[VAL_4]]{{\[}}%[[VAL_5]]] = %[[VAL_0]] : <1,2 x !felt.type>, <2 x !felt.type>
+// CHECK-NEXT:      %[[VAL_6:[0-9a-zA-Z_\.]+]] = array.read %[[VAL_4]]{{\[}}%[[VAL_5]], %[[VAL_1]]] : <1,2 x !felt.type>, !felt.type
+// CHECK-NEXT:      function.return %[[VAL_6]] : !felt.type
+// CHECK-NEXT:    }
+// CHECK-NEXT:  }
 // -----
 module attributes {llzk.lang} {
   // An unknown inserted row must detach stale facts from the destination row.
