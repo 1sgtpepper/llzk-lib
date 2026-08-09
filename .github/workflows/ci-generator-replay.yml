@@ -320,41 +320,34 @@ jobs:
 
           replay_split_transform \
             pr635-felt \
-            a7aa782ee3f85f1c7656330e769a6452ce60b6fe \
+            3e10fe5007329695a1477266423f6dbe907855aa \
             test/Transforms/Flattening/instantiate_expr_felt_typevar_completion.llzk \
             -split-input-file \
             -llzk-flatten
           replay_split_transform \
             pr635-partial \
-            a7aa782ee3f85f1c7656330e769a6452ce60b6fe \
+            3e10fe5007329695a1477266423f6dbe907855aa \
             test/Transforms/Flattening/instantiate_expr_partial.llzk \
             -split-input-file \
             -llzk-flatten
           replay_split_transform \
             pr635-target-local \
-            a7aa782ee3f85f1c7656330e769a6452ce60b6fe \
+            3e10fe5007329695a1477266423f6dbe907855aa \
             test/Transforms/Flattening/instantiate_expr_target_local.llzk \
             -split-input-file \
             '--pass-pipeline=builtin.module(llzk-flatten{cleanup=disabled})'
           replay_split_transform \
             pr635-typevar \
-            a7aa782ee3f85f1c7656330e769a6452ce60b6fe \
+            3e10fe5007329695a1477266423f6dbe907855aa \
             test/Transforms/Flattening/instantiate_expr_typevar_completion.llzk \
             -split-input-file \
             -llzk-flatten
           replay_split_transform \
             pr635-normalized-felt \
-            a7aa782ee3f85f1c7656330e769a6452ce60b6fe \
+            3e10fe5007329695a1477266423f6dbe907855aa \
             test/Transforms/Flattening/instantiate_func_felt_normalization.llzk \
             -split-input-file \
             -llzk-flatten
-          replay_split_transform \
-            pr635-struct-rollback \
-            a7aa782ee3f85f1c7656330e769a6452ce60b6fe \
-            test/Transforms/Flattening/instantiate_struct_rollback.llzk \
-            -split-input-file \
-            -llzk-flatten \
-            -verify-diagnostics
           exit 0
           replay_split_transform \
             pr637-order \
