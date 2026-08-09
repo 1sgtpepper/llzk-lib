@@ -436,9 +436,8 @@ static LogicalResult fuseMatchingIfPairs(Region &body, MLIRContext *context) {
   return success();
 }
 
-/// Determine which ops need to sink past `constraintLoop`, or return failure() if some of these
-/// ops can't be sunk. Conservatively tries to sink all compute ops, but we could do a more precise
-/// analysis here
+/// Collect compute-sourced operations between sibling loops that must move past `constraintLoop`.
+/// Reject the region if a previously fused operation would cross the boundary.
 static FailureOr<SmallVector<Operation *>>
 canPrepareForFusion(scf::ForOp witnessLoop, scf::ForOp constraintLoop) {
   if (witnessLoop->getBlock() != constraintLoop->getBlock()) {
