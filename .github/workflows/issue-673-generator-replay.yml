@@ -113,7 +113,7 @@ jobs:
               checks_file="$test_output/$name.generated-checks.txt"
               committed_checks_file="$committed_dir/$name.committed-checks.txt"
               if [[ "$test_name" == "redundant_op_pass" ]]; then
-                "$llzk_opt" -I test/Inputs -split-input-file -llzk-inline-includes \
+                "$llzk_opt" -I test -split-input-file -llzk-inline-includes \
                     -llzk-duplicate-read-write-elim -llzk-duplicate-op-elim "$input" \
                     > "$output_file" 2>&1
               else
