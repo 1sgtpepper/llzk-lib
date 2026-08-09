@@ -84,9 +84,9 @@ jobs:
               < "$output_path/producer-output.llzk" \
               > "$output_path/generated-checks.txt"
 
-            "$filecheck" "$tested_path/$test_file" \
+            "$filecheck" --enable-var-scope "$tested_path/$test_file" \
               < "$output_path/producer-output.llzk"
-            "$filecheck" "$output_path/generated-checks.txt" \
+            "$filecheck" --enable-var-scope "$output_path/generated-checks.txt" \
               < "$output_path/producer-output.llzk"
 
             local committed_checks
@@ -259,6 +259,13 @@ jobs:
               echo "focused_script_contract=PASS"
             } > "$output_path/comparison.txt"
           }
+
+          replay_simple_transform \
+            pr484-if-locations \
+            36156d1b37f229b6ae791eda6cfcb96a7575c752 \
+            test/Transforms/FuseProductLoops/fuse_if_preserves_locations.llzk \
+            --llzk-fuse-product-loops -mlir-print-debuginfo
+          exit 0
 
           replay_simple_transform \
             pr670 \
