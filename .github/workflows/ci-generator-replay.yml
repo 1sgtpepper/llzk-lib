@@ -321,7 +321,7 @@ jobs:
             -llzk-flatten=cleanup=disabled
           replay_split_transform \
             pr675 \
-            84423c8260b5f3f1f1b77b28335dacf046fd2c82 \
+            8104c23d1224647e717ecadd91651f1b4e354e01 \
             test/Transforms/RedundantAndUnusedElim/array_read_write_observation.llzk \
             -split-input-file \
             -llzk-duplicate-read-write-elim
