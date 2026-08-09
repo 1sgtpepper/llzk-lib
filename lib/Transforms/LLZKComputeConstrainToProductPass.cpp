@@ -58,7 +58,7 @@ FuncDefOp ProductAligner::alignFuncs(StructDefOp root, FuncDefOp compute, FuncDe
 
   constrain.walk([](Operation *op) { setProductSource(op, FUNC_NAME_CONSTRAIN); });
 
-  // Create an empty @product func...
+  // Create an empty @product function.
   FuncDefOp productFunc = funcBuilder.create<FuncDefOp>(
       funcBuilder.getFusedLoc({compute.getLoc(), constrain.getLoc()}), FUNC_NAME_PRODUCT,
       compute.getFunctionType()
@@ -71,16 +71,16 @@ FuncDefOp ProductAligner::alignFuncs(StructDefOp root, FuncDefOp compute, FuncDe
       compute.hasAllowNonNativeFieldOpsAttr() || constrain.hasAllowNonNativeFieldOpsAttr()
   );
 
-  // ...with the right arguments
+  // Add the product function's arguments.
   llvm::SmallVector<Value> args {productFunc.getArguments()};
 
-  // Add calls to @compute and @constrain...
+  // Add calls to @compute and @constrain.
   CallOp computeCall = funcBuilder.create<CallOp>(funcBuilder.getUnknownLoc(), compute, args);
   args.insert(args.begin(), computeCall->getResult(0));
   CallOp constrainCall = funcBuilder.create<CallOp>(funcBuilder.getUnknownLoc(), constrain, args);
   funcBuilder.create<ReturnOp>(funcBuilder.getUnknownLoc(), computeCall->getResult(0));
 
-  // ..and inline them
+  // Inline both calls.
   InlinerInterface inliner(productFunc.getContext());
   if (failed(inlineCall(inliner, computeCall, compute, &compute.getBody(), true))) {
     root->emitError().append("failed to inline ", FUNC_NAME_COMPUTE).report();
@@ -93,7 +93,7 @@ FuncDefOp ProductAligner::alignFuncs(StructDefOp root, FuncDefOp compute, FuncDe
   computeCall->erase();
   constrainCall->erase();
 
-  // Mark the compute/constrain for deletion
+  // Mark the source functions for deletion.
   alignedStructs.push_back(root);
 
   // Make sure we can align sub-calls to @compute and @constrain
@@ -176,7 +176,7 @@ LogicalResult ProductAligner::alignCalls(FuncDefOp product) {
       return failure();
     }
 
-    // ...and replace the two calls with a single call to @A::@product
+    // Replace the two calls with a single call to @A::@product.
     OpBuilder callBuilder(compute);
     CallOp newCall = callBuilder.create<CallOp>(
         callBuilder.getFusedLoc({compute.getLoc(), constrain.getLoc()}), newProduct,
