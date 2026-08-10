@@ -98,31 +98,6 @@ static void reportDelayedDiagnostics(CallOp caller, SmallVector<Diagnostic> &&di
   }
 }
 
-/// Canonicalize a concrete felt binding to its declared field so equivalent spellings share one
-/// specialization identity. Conflicting explicit fields fail; other parameter kinds are unchanged.
-static FailureOr<Attribute>
-normalizeConcreteTemplateParam(Attribute value, std::optional<Type> restriction) {
-  if (!restriction) {
-    return value;
-  }
-  FeltType requiredFelt = llvm::dyn_cast<FeltType>(*restriction);
-  if (!requiredFelt) {
-    return value;
-  }
-  if (FeltConstAttr feltValue = llvm::dyn_cast<FeltConstAttr>(value)) {
-    FeltType valueType = feltValue.getType();
-    if (valueType.hasField() && requiredFelt.hasField() && valueType != requiredFelt) {
-      return failure();
-    }
-    FeltType normalizedType = requiredFelt.hasField() ? requiredFelt : valueType;
-    return FeltConstAttr::get(value.getContext(), feltValue.getValue(), normalizedType);
-  }
-  if (IntegerAttr integerValue = llvm::dyn_cast<IntegerAttr>(value)) {
-    return FeltConstAttr::get(value.getContext(), integerValue.getValue(), requiredFelt);
-  }
-  return failure();
-}
-
 class ConversionTracker {
   /// Published result of one successful partial-function conversion.
   ///
@@ -425,7 +400,7 @@ public:
     }
 
     FailureOr<Attribute> materialized =
-        normalizeConcreteTemplateParam(a, std::optional<Type>(feltType));
+        materializeTemplateParamValue(a, std::optional<Type>(feltType));
     if (failed(materialized)) {
       return op->emitOpError().append(
           "felt constant ", a, " is incompatible with converted result type ", feltType
@@ -904,7 +879,7 @@ class StructCloner {
            llvm::zip_equal(paramNames, paramOps, typeAtCallerParams)) {
         if (isConcreteAttr<false>(next)) {
           FailureOr<Attribute> normalized =
-              normalizeConcreteTemplateParam(next, paramOp.getTypeOpt());
+              materializeTemplateParamValue(next, paramOp.getTypeOpt());
           if (failed(normalized)) {
             origStruct.emitOpError().append(
                 "cannot materialize instantiation value '", next, "' for parameter \"@",
@@ -1540,13 +1515,15 @@ static LogicalResult applyBodyConversions(
     return failure();
   }
   LLVM_DEBUG(llvm::dbgs() << "[InstantiateFuncAtCallOp]   instantiated clone: " << newFunc << '\n');
-  ::reportDelayedDiagnostics(op, std::move(delayedDiagnostics));
-
   SymbolTableCollection tables;
   WalkResult res = newFunc.walk([&tables](CallOp nestedCall) {
     return WalkResult(nestedCall.verifySymbolUses(tables));
   });
-  return failure(res.wasInterrupted());
+  if (res.wasInterrupted()) {
+    return failure();
+  }
+  ::reportDelayedDiagnostics(op, std::move(delayedDiagnostics));
+  return success();
 }
 
 class InstantiateFuncAtCallOp final : public OpRewritePattern<CallOp> {
@@ -1713,7 +1690,7 @@ private:
         return failIncompatibleInferredParam(op, rewriter, paramName, paramOp);
       }
       FailureOr<Attribute> normalized =
-          normalizeConcreteTemplateParam(concreteValue, paramOp.getTypeOpt());
+          materializeTemplateParamValue(concreteValue, paramOp.getTypeOpt());
       if (failed(normalized)) {
         return op.emitOpError().append(
             "instantiation value '", concreteValue, "' is not compatible with parameter \"@",
