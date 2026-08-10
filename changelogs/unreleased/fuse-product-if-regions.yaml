@@ -2,7 +2,8 @@ added:
   - Fusion for matching compute/constrain `scf.if` operations in product programs
 
 changed:
-  - Preserve compatible attributes on fused `scf.if` and `scf.yield` operations; skip conflicting pairs
+  - Rename `llzk-fuse-product-loops` to `llzk-fuse-product-control-flow` now that the pass fuses loops and conditionals
+  - Preserve matching non-`product_source` attributes and combine source locations on fused `scf.if` and `scf.yield` operations; leave attribute conflicts unfused
 
 fixed:
   - Preserve emitted attribute-definition order and references between named attributes in generated FileCheck output
