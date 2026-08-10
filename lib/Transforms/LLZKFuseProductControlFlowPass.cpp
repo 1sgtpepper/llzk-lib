@@ -32,11 +32,10 @@
 #include <llvm/ADT/DenseMap.h>
 #include <llvm/ADT/STLExtras.h>
 #include <llvm/ADT/SmallVector.h>
-#include <llvm/Support/Debug.h>
 #include <llvm/Support/SMTAPI.h>
 
-#include <memory>
 #include <optional>
+#include <string>
 
 // Include the generated base pass class definitions.
 namespace llzk {
@@ -87,27 +86,19 @@ static llvm::SMTExprRef tripCount(scf::ForOp op, llvm::SMTSolver *solver) {
   );
 }
 
+/// Return whether two marked loops share a region, have opposite product roles, and have provably
+/// equal trip counts.
 static inline bool canLoopsBeFused(scf::ForOp a, scf::ForOp b) {
-  // A priori, two loops can be fused if:
-  // 1. They live in the same parent region,
-  // 2. One is compute-sourced and the other is constrain-sourced, and
-  // 3. They have the same trip count
-
-  // Check 1.
   if (a->getParentRegion() != b->getParentRegion()) {
     return false;
   }
 
-  // Check 2.
   if (!areOppositeProductSources(a, b)) {
     return false;
   }
 
-  // Check 3.
-  // Easy case: both have a constant trip-count. If the trip counts are not "constant up to a struct
-  // param", we definitely can't tell if they're equal. If the trip counts are only "constant up to
-  // a struct param" but not actually constant, we can ask a solver if the equations are guaranteed
-  // to be the same
+  // Compare literal trip counts directly; use the solver only when every bound is a constant or
+  // struct parameter and equality can therefore be proved symbolically.
   auto tripCountA = constantTripCount(a.getLowerBound(), a.getUpperBound(), a.getStep());
   auto tripCountB = constantTripCount(b.getLowerBound(), b.getUpperBound(), b.getStep());
   if (tripCountA.has_value() && tripCountB.has_value() && *tripCountA == *tripCountB) {
@@ -409,9 +400,7 @@ canPrepareForFusion(scf::ForOp witnessLoop, scf::ForOp constraintLoop) {
   SmallVector<Operation *> opsToSink;
   for (auto *op = witnessLoop->getNextNode(); op != constraintLoop; op = op->getNextNode()) {
     if (hasProductSource(op, "fused")) {
-      // "fused" means "compute" + "constrain". Conservatively, a "compute" op we want to sink can't
-      // be sunk if it also has "constrain" since we need to preserve the relative orders within
-      // compute/constrain
+      // A fused op contains constrain work and cannot move with compute-only operations.
       return failure();
     }
     if (hasProductSource(op, FUNC_NAME_COMPUTE)) {
@@ -458,8 +447,7 @@ static void fuseMatchingLoopPairs(Region &body, MLIRContext *context) {
     return WalkResult::skip();
   });
 
-  // A pair of loops will be fused iff (1) they can be fused according to the rules above, and (2)
-  // neither can be fused with anything else (so there's no ambiguity)
+  // Select only pairs that match uniquely in both directions.
   auto fusionCandidates = *alignmentHelpers::getMatchingPairs<scf::ForOp>(
       witnessLoops, constraintLoops, canLoopsBeFused, /*allowPartial=*/true
   );
