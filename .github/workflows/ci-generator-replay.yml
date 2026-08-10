@@ -1,4 +1,4 @@
-name: LLZK PR 484 output capture
+name: LLZK PR 484 exact-head replay
 
 on:
   push:
@@ -10,11 +10,12 @@ permissions:
   contents: read
 
 jobs:
-  capture:
+  replay:
     runs-on: ubuntu-24.04
     env:
-      TARGET_HEAD: 40dd084b612517146fafbd8146168ecdae0858f9
-      OUTPUT_PATH: /home/runner/work/_temp/llzk-pr484-output
+      BASE_HEAD: e1996219abd1772d5a96ff3d95833697a3363231
+      TARGET_HEAD: 906ce7de3547c0f513b05330c1a272f6dea430ba
+      OUTPUT_PATH: /home/runner/work/_temp/llzk-pr484-replay
 
     steps:
       - name: Check out validation workflow
@@ -40,13 +41,15 @@ jobs:
           name: veridise-public
           skipPush: true
 
-      - name: Capture complete generated output
+      - name: Replay complete generated output
         shell: bash
         run: |
           set -euo pipefail
           tested_path="$RUNNER_TEMP/llzk-pr484"
           mkdir -p "$OUTPUT_PATH"
 
+          git fetch --no-tags --filter=blob:none \
+            https://github.com/project-llzk/llzk-lib.git "$BASE_HEAD"
           git fetch --no-tags --filter=blob:none \
             https://github.com/1sgtpepper/llzk-lib.git "$TARGET_HEAD"
           git worktree add --detach "$tested_path" "$TARGET_HEAD"
@@ -63,65 +66,90 @@ jobs:
           test -x "$llzk_opt"
           test -n "$filecheck"
           "$llzk_opt" --version > "$OUTPUT_PATH/llzk-opt.version"
+          printf '%s\n' "$BASE_HEAD" > "$OUTPUT_PATH/base-head.txt"
           printf '%s\n' "$TARGET_HEAD" > "$OUTPUT_PATH/target-head.txt"
 
-          capture_transform() {
-            name="$1"
-            test_file="$2"
-            shift 2
+          mapfile -t test_files < <(
+            git -C "$tested_path" diff --name-only "$BASE_HEAD" "$TARGET_HEAD" -- \
+              'test/Transforms/FuseProductLoops/*.llzk'
+          )
+          test "${#test_files[@]}" -eq 41
+
+          for test_file in "${test_files[@]}"; do
+            name=$(basename "$test_file" .llzk)
             output_path="$OUTPUT_PATH/$name"
             mkdir -p "$output_path"
-            cp "$tested_path/$test_file" "$output_path/source.llzk"
-            "$llzk_opt" "$@" "$tested_path/$test_file" \
+            cp "$tested_path/$test_file" "$output_path/committed-test.llzk"
+
+            run_line=$(sed -n '1p' "$tested_path/$test_file")
+            pipeline=${run_line#*llzk-opt }
+            pipeline=${pipeline%% %s*}
+            pipeline=${pipeline//\"/}
+            read -r -a producer_args <<< "$pipeline"
+
+            "$llzk_opt" "${producer_args[@]}" "$tested_path/$test_file" \
               > "$output_path/producer-output.llzk" 2>&1
             python3 "$tested_path/scripts/generate-test-checks.py" \
               < "$output_path/producer-output.llzk" \
               > "$output_path/generated-checks.txt"
-            "$filecheck" "$output_path/generated-checks.txt" \
+
+            "$filecheck" --enable-var-scope "$tested_path/$test_file" \
               < "$output_path/producer-output.llzk"
+            "$filecheck" --enable-var-scope "$output_path/generated-checks.txt" \
+              < "$output_path/producer-output.llzk"
+
+            committed_checks=$(grep -c '^// CHECK' "$tested_path/$test_file")
+            generated_checks=$(grep -c '^// CHECK' "$output_path/generated-checks.txt")
+            test "$committed_checks" -eq "$generated_checks"
+
             {
               echo "head=$TARGET_HEAD"
               echo "test=$test_file"
-              echo "producer_command=result/bin/llzk-opt $* $test_file"
+              echo "producer_command=result/bin/llzk-opt $pipeline $test_file"
+              echo "committed_check_lines=$committed_checks"
+              echo "fresh_generated_check_lines=$generated_checks"
+              echo "committed_checks_against_exact_head_output=PASS"
               echo "fresh_generated_checks_against_exact_head_output=PASS"
+              echo "complete_check_line_count=PASS"
             } > "$output_path/comparison.txt"
-          }
+          done
 
-          capture_transform \
-            no-fuse-if-position \
-            test/Transforms/FuseProductLoops/no_fuse_if_position.llzk \
-            --llzk-fuse-product-loops
-          capture_transform \
-            no-fuse-if-allocation \
-            test/Transforms/FuseProductLoops/no_fuse_if_internal_allocation_in_product.llzk \
-            --llzk-fuse-product-loops
-          capture_transform \
-            fuse-outer-inner \
-            test/Transforms/FuseProductLoops/fuse_outer_inner.llzk \
-            --llzk-compute-constrain-to-product=root-struct=A \
-            --llzk-fuse-product-loops
-          capture_transform \
-            no-fuse-inner \
-            test/Transforms/FuseProductLoops/no_fuse_inner.llzk \
-            --llzk-compute-constrain-to-product=root-struct=A \
-            --llzk-fuse-product-loops
-          capture_transform \
-            no-fuse-region-mismatch \
-            test/Transforms/FuseProductLoops/no_fuse_region_mismatch.llzk \
-            --llzk-compute-constrain-to-product=root-struct=A \
-            --llzk-fuse-product-loops
-          capture_transform \
-            no-fuse-single \
-            test/Transforms/FuseProductLoops/no_fuse_single.llzk \
-            --llzk-compute-constrain-to-product=root-struct=A \
-            --llzk-fuse-product-loops
+          generator_path="$OUTPUT_PATH/generator-contract"
+          mkdir -p "$generator_path"
+          generator_test=test/Transforms/generate-test-checks-inline-attributes.llzk
+          awk '
+            /^\/\/--- inline-attributes\.llzk$/ { in_chunk = 1; next }
+            /^\/\/--- / && in_chunk { exit }
+            in_chunk { print }
+          ' "$tested_path/$generator_test" > "$generator_path/inline-attributes.llzk"
+          python3 "$tested_path/scripts/generate-test-checks.py" \
+            "$generator_path/inline-attributes.llzk" \
+            > "$generator_path/generated-checks.txt"
+          "$filecheck" "$tested_path/$generator_test" --check-prefix=SCRIPT \
+            < "$generator_path/generated-checks.txt"
+          {
+            echo "head=$TARGET_HEAD"
+            echo "test=$generator_test"
+            echo "fresh_generator_stdout=PASS"
+            echo "focused_script_contract=PASS"
+          } > "$generator_path/comparison.txt"
 
-      - name: Upload generated output
+          {
+            echo "base=$BASE_HEAD"
+            echo "head=$TARGET_HEAD"
+            echo "transform_fixture_count=${#test_files[@]}"
+            echo "transform_committed_checks=PASS"
+            echo "transform_fresh_generated_checks=PASS"
+            echo "transform_complete_check_line_counts=PASS"
+            echo "generator_contract=PASS"
+          } > "$OUTPUT_PATH/summary.txt"
+
+      - name: Upload replay evidence
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: pr484-fusion-guard-output-${{ github.sha }}
-          path: /home/runner/work/_temp/llzk-pr484-output
+          name: pr484-exact-head-replay-${{ github.sha }}
+          path: /home/runner/work/_temp/llzk-pr484-replay
           if-no-files-found: error
           retention-days: 7
           compression-level: 0
