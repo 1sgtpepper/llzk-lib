@@ -332,7 +332,7 @@ def CallOp : FunctionDialectOp<
 
     When the return StructType of a `compute()` function uses AffineMapAttr to
     express struct parameter(s) that depend on a loop variable, the optional
-    instantiation parameter list of this operation must be used to instatiate
+    instantiation parameter list of this operation must be used to instantiate
     all AffineMap used as parameters to the StructType.
 
     Examples:
@@ -349,6 +349,10 @@ def CallOp : FunctionDialectOp<
     those that cannot be inferred from the function signature. The wildcard allows for
     inference of the type within the function body itself during the flattening pass
     but may fail if the type cannot be inferred from the function body.
+
+    Every explicit argument must satisfy its `poly.param` type restriction. If the
+    function signature independently infers a value for the same parameter, all known
+    fields and concrete values must agree with the explicit argument.
   }];
 
   // See `VerifySizesForMultiAffineOps` for more explanation of these arguments.
@@ -460,7 +464,7 @@ def CallOp : FunctionDialectOp<
     /// or else IR verification will fail.
     ::mlir::FunctionType getTypeSignature();
 
-    /// Attempt type unfication between the inferred FunctionType from this CallOp (as LHS) and
+    /// Attempt type unification between the inferred FunctionType from this CallOp (as LHS) and
     /// the given FunctionType (as RHS). If successful, return a UnificationMap containing the
     /// unifications that were made. Otherwise, return failure.
     ::mlir::FailureOr<UnificationMap> unifyTypeSignature(::mlir::FunctionType other);

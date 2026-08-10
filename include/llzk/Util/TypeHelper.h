@@ -275,24 +275,28 @@ bool typesUnify(
 /// unification.
 bool isTemplateParamTypeCompatible(mlir::Type actualType, mlir::Type requiredType);
 
-/// An absent actual restriction is compatible with an unfielded required felt type, but it cannot
+/// An absent actual restriction is compatible with a fieldless required felt type, but it cannot
 /// satisfy a fielded required felt type because it does not establish the field needed by that
 /// restriction. It also cannot satisfy a type-only TypeVarType restriction because an unrestricted
 /// binding does not establish that the eventual argument is a type. For other required types,
 /// preserve the existing unrestricted-binding behavior.
 bool isTemplateParamTypeCompatible(std::optional<mlir::Type> actualType, mlir::Type requiredType);
 
-/// Check a concrete template argument against an optional restriction and return its normalized
-/// representation. Fieldless felt values acquire a required field, while affine-map values remain
-/// deferred only for integer-like restrictions where affine instantiation can materialize them.
+/// Check a template argument against an optional restriction and return the representation used by
+/// instantiation. With no restriction, return the argument unchanged. A type-variable restriction
+/// accepts only a `TypeAttr`; a felt restriction accepts a compatible felt constant or integer,
+/// preserving an explicit field when the restriction is fieldless and otherwise applying the
+/// required field; and an integer-like restriction accepts a valid integer or a single-result
+/// affine map that remains deferred for affine instantiation. Reject every other
+/// attribute/restriction pairing.
 mlir::FailureOr<mlir::Attribute>
 materializeTemplateParamValue(mlir::Attribute actualValue, std::optional<mlir::Type> requiredType);
 
 /// Return `true` iff two template argument values are compatible with the same required
 /// restriction. Felt constants and integer attributes are compared by value after applying the
 /// required felt field, independent of APInt storage width. Deferred symbol references use the
-/// generic template-parameter unifier; other values that cannot materialize as a required felt are
-/// incompatible.
+/// generic template-parameter unifier; other values that cannot materialize as the required felt
+/// are incompatible. Non-felt and absent restrictions use the generic unifier unchanged.
 bool templateParamValuesUnify(
     mlir::Attribute actualValue, mlir::Attribute inferredValue,
     std::optional<mlir::Type> requiredType
