@@ -53,7 +53,7 @@ module attributes {llzk.lang, llzk.main = !struct.type<@Outer::@Wrapper<[7]>>} {
 // CHECK-NEXT:      struct.member @values : !array.type<12 x !felt.type>
 // CHECK-NEXT:      function.def @compute() -> !struct.type<@Inner_5_7_Value> attributes {function.allow_witness} {
 // CHECK-NEXT:        %[[VAL_0:[0-9a-zA-Z_\.]+]] = struct.new : <@Inner_5_7_Value>
-// CHECK-NEXT:        %[[VAL_1:[0-9a-zA-Z_\.]+]] = array.new : <12 x !felt.type>
+// CHECK-NEXT:        %[[VAL_1:[0-9a-zA-Z_\.]+]] = array.new  : <12 x !felt.type>
 // CHECK-NEXT:        struct.writem %[[VAL_0]][@values] = %[[VAL_1]] : <@Inner_5_7_Value>, !array.type<12 x !felt.type>
 // CHECK-NEXT:        function.return %[[VAL_0]] : !struct.type<@Inner_5_7_Value>
 // CHECK-NEXT:      }
@@ -333,10 +333,10 @@ module attributes {llzk.lang} {
 // CHECK-NEXT:      struct.def @Wrapper {
 // CHECK-NEXT:        struct.member @value : !struct.type<@"Inner_35_i_\1A"::@Value<[@M]>>
 // CHECK-NEXT:        function.def @compute() -> !struct.type<@Outer::@Wrapper<[@M]>> attributes {function.allow_witness} {
-// CHECK-NEXT:          %[[VAL_6:[0-9a-zA-Z_\.]+]] = struct.new : <@Outer::@Wrapper<[@M]>>
-// CHECK-NEXT:          function.return %[[VAL_6]] : !struct.type<@Outer::@Wrapper<[@M]>>
+// CHECK-NEXT:          %[[VAL_5:[0-9a-zA-Z_\.]+]] = struct.new : <@Outer::@Wrapper<[@M]>>
+// CHECK-NEXT:          function.return %[[VAL_5]] : !struct.type<@Outer::@Wrapper<[@M]>>
 // CHECK-NEXT:        }
-// CHECK-NEXT:        function.def @constrain(%[[VAL_7:[0-9a-zA-Z_\.]+]]: !struct.type<@Outer::@Wrapper<[@M]>>) attributes {function.allow_constraint} {
+// CHECK-NEXT:        function.def @constrain(%[[VAL_6:[0-9a-zA-Z_\.]+]]: !struct.type<@Outer::@Wrapper<[@M]>>) attributes {function.allow_constraint} {
 // CHECK-NEXT:          function.return
 // CHECK-NEXT:        }
 // CHECK-NEXT:      }
