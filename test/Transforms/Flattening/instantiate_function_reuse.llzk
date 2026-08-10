@@ -73,6 +73,56 @@ module attributes {llzk.lang} {
 
 // -----
 
+// Deferred expression preservation, canonical felt materialization, and source-based reuse meet
+// here. Equivalent felt spellings must converge on the same uniquified specialization without
+// retargeting to the user function that occupies its preferred generated name.
+module attributes {llzk.lang} {
+  poly.template @Seam {
+    poly.param @F : !felt.type<"bn128">
+    poly.param @M : !felt.type<"bn128">
+    poly.expr @Sum {
+      %f = poly.read_const @F : !felt.type<"bn128">
+      %m = poly.read_const @M : !felt.type<"bn128">
+      %sum = felt.add %f, %m : !felt.type<"bn128">, !felt.type<"bn128">
+      poly.yield %sum : !felt.type<"bn128">
+    }
+    function.def @value() -> !felt.type<"bn128"> {
+      %sum = poly.read_const @Sum : !felt.type<"bn128">
+      function.return %sum : !felt.type<"bn128">
+    }
+  }
+
+  function.def @"Seam_f<35:5:bn128>_f<7:5:bn128>_value"() -> !felt.type<"bn128"> {
+    %wrong = felt.const 99 : !felt.type<"bn128">
+    function.return %wrong : !felt.type<"bn128">
+  }
+
+  poly.template @Bridge {
+    poly.param @M : !felt.type<"bn128">
+    function.def @value() -> !felt.type<"bn128"> {
+      %fieldless = function.call @Seam::@value<[#felt<const 35>, @M]>() :
+          () -> !felt.type<"bn128">
+      %integer = function.call @Seam::@value<[35, @M]>() : () -> !felt.type<"bn128">
+      %fielded = function.call @Seam::@value<[
+          #felt<const 35 : !felt.type<"bn128">>, @M
+      ]>() : () -> !felt.type<"bn128">
+      function.return %fielded : !felt.type<"bn128">
+    }
+  }
+
+  function.def @main() -> !felt.type<"bn128"> {
+    %fieldless = function.call @Bridge::@value<[#felt<const 7>]>() :
+        () -> !felt.type<"bn128">
+    %fielded = function.call @Bridge::@value<[
+        #felt<const 7 : !felt.type<"bn128">>
+    ]>() : () -> !felt.type<"bn128">
+    %other = function.call @Bridge::@value<[8]>() : () -> !felt.type<"bn128">
+    function.return %fielded : !felt.type<"bn128">
+  }
+}
+
+// -----
+
 // Distinct source paths may render the same preferred specialization name. Each sibling module
 // must retain its own clone, while repeated calls within that source reuse it.
 module attributes {llzk.lang} {
