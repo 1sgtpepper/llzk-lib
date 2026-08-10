@@ -116,9 +116,10 @@ def FuseProductLoopsPass : LLZKPass<"llzk-fuse-product-loops"> {
       "Fuse matching compute/constrain control flow in a @product function";
   let description = [{
     Fuses unambiguous compute/constrain sibling `scf.for` loops with matching trip counts and
-    same-block sibling `scf.if` ops with the same SSA condition value, the same else-region
-    presence, and a resultless constrain `scf.if`. `scf.if` fusion requires exact SSA value identity
-    for the condition; it does not perform general signal-equivalence analysis.
+    same-block sibling `scf.if` ops where the compute op precedes the constrain op, both use the
+    same SSA condition value and have the same else-region presence, and the constrain op is
+    resultless. `scf.if` fusion requires exact SSA value identity for the condition; it does not
+    perform general signal-equivalence analysis.
 
     For `scf.if`, fusion is skipped if the moved constrain branch reads or writes storage, calls
     functions (including compute functions), may trap, or has unknown effects. Constraint movement

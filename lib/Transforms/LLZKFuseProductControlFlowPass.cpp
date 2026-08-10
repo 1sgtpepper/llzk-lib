@@ -15,10 +15,8 @@
 #include "llzk/Dialect/Constrain/IR/Ops.h"
 #include "llzk/Dialect/Felt/IR/Ops.h"
 #include "llzk/Dialect/Function/IR/Ops.h"
-#include "llzk/Dialect/Global/IR/Ops.h"
 #include "llzk/Dialect/LLZK/IR/Ops.h"
 #include "llzk/Dialect/Polymorphic/IR/Ops.h"
-#include "llzk/Dialect/RAM/IR/Ops.h"
 #include "llzk/Dialect/Struct/IR/Ops.h"
 #include "llzk/Transforms/LLZKTransformationPasses.h"
 #include "llzk/Util/AlignmentHelper.h"
@@ -231,15 +229,9 @@ static bool collectConstrainValueMappings(
       continue;
     }
 
-    if (isa<MemberReadOp, llzk::global::GlobalReadOp, llzk::global::GlobalWriteOp,
-            llzk::ram::LoadOp, llzk::ram::StoreOp>(op)) {
-      // Moving the constrain branch across storage access changes the state it observes. Replacing
-      // a member read with a branch-local value would also remove that member signal from emitted
-      // constraints.
-      return false;
-    }
-
-    // No other operation between the sibling ifs is currently proven safe to cross.
+    // Only the direct member writes above are currently proven safe to cross. In particular,
+    // moving before a member read can change the state observed by the constrain branch, while
+    // replacing that read would remove the member signal from emitted constraints.
     return false;
   }
 
