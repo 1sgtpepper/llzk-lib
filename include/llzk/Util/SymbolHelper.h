@@ -226,9 +226,9 @@ mlir::LogicalResult verifyParamsOfType(
     std::optional<mlir::Type> requiredParamType = std::nullopt
 );
 
-/// Compare explicit and inferred template values after resolving any local template bindings or
-/// qualified globals. This preserves generic symbol deferral only when resolution provides no
-/// concrete value and no conflicting field restrictions.
+/// Compare explicit and inferred template values. For felt restrictions, resolve local template
+/// bindings and qualified globals to reconcile known field or value evidence. Other restrictions
+/// retain the context-free unifier's behavior, including generic symbol deferral.
 mlir::FailureOr<bool> resolvedTemplateParamValuesUnify(
     mlir::SymbolTableCollection &tables, mlir::Operation *origin, mlir::Attribute explicitValue,
     mlir::Attribute inferredValue, std::optional<mlir::Type> requiredParamType
