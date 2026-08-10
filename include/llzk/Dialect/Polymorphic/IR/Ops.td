@@ -272,9 +272,9 @@ def LLZK_UnifiableCastOp : PolymorphicDialectOp<"unifiable_cast", [Pure]> {
     This cast can be introduced instead of the default cast operation to satisfy MLIR's assumptions
     on type equality.
 
-    When the input and result types are identical, this operation folds to its input. Merely
-    unifiable but unequal types do not fold because the replacement value would have the wrong
-    result type.
+    During constant folding, this operation returns its input constant only when the input and
+    result types are identical. Non-constant inputs do not fold. Merely unifiable but unequal
+    types do not fold because the input has a different type from the result.
 
     Example:
     ```llzk
