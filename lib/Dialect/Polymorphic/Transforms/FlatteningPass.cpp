@@ -1653,7 +1653,8 @@ public:
         layout.remainingNames.empty()
             ? instantiateFully(
                   op, rewriter, symTables, callTgt, parentTemplate, parentModule,
-                  layout.templateNameWithAttrs, layout.concreteParamKey, paramNameToConcrete, tracker_
+                  layout.templateNameWithAttrs, layout.concreteParamKey, paramNameToConcrete,
+                  tracker_
               )
             : instantiatePartially(
                   op, rewriter, symTables, callTgt, parentTemplate, parentModule, layout,
