@@ -1,20 +1,20 @@
-name: LLZK generator replay
+name: LLZK PR 484 output capture
 
 on:
   push:
     branches:
-      - ci/verify-generator-replays-20260805-final-heads
-      - ci/verify-generator-replays-20260807-llzk-prs
+      - ci/verify-pr484-fusion-guards
   workflow_dispatch:
 
 permissions:
   contents: read
 
 jobs:
-  verify:
+  capture:
     runs-on: ubuntu-24.04
     env:
-      OUTPUT_PATH: /tmp/llzk-generator-output
+      TARGET_HEAD: a5a1d040f7de052996a98b05aeb43bc8191d5e10
+      OUTPUT_PATH: /tmp/llzk-pr484-output
 
     steps:
       - name: Check out validation workflow
@@ -40,385 +40,87 @@ jobs:
           name: veridise-public
           skipPush: true
 
-      - name: Replay exact-head generator evidence
+      - name: Capture complete generated output
         shell: bash
         run: |
           set -euo pipefail
-          rm -rf "$OUTPUT_PATH"
+          tested_path="$RUNNER_TEMP/llzk-pr484"
           mkdir -p "$OUTPUT_PATH"
 
-          find_filecheck() {
-            find /nix/store -type f -path '*/bin/FileCheck' -executable -print -quit
-          }
+          git fetch --no-tags --filter=blob:none \
+            https://github.com/1sgtpepper/llzk-lib.git "$TARGET_HEAD"
+          git worktree add --detach "$tested_path" "$TARGET_HEAD"
+          test "$(git -C "$tested_path" rev-parse HEAD)" = "$TARGET_HEAD"
 
-          replay_simple_transform() {
-            local name="$1"
-            local head="$2"
-            local test_file="$3"
-            shift 3
-            local tested_path="$RUNNER_TEMP/llzk-$name"
-            local output_path="$OUTPUT_PATH/$name"
+          (
+            cd "$tested_path"
+            nix --print-build-logs build '.#debugGCC'
+          )
 
-            git fetch --no-tags --filter=blob:none https://github.com/1sgtpepper/llzk-lib.git "$head"
-            git worktree add --detach "$tested_path" "$head"
-            test "$(git -C "$tested_path" rev-parse HEAD)" = "$head"
+          llzk_opt="$tested_path/result/bin/llzk-opt"
+          filecheck=$(find /nix/store -type f -path '*/bin/FileCheck' -executable -print -quit)
+          test -x "$llzk_opt"
+          test -n "$filecheck"
+          "$llzk_opt" --version > "$OUTPUT_PATH/llzk-opt.version"
+          printf '%s\n' "$TARGET_HEAD" > "$OUTPUT_PATH/target-head.txt"
 
-            (
-              cd "$tested_path"
-              nix --print-build-logs build '.#debugGCC'
-            )
-
+          capture_transform() {
+            name="$1"
+            test_file="$2"
+            shift 2
+            output_path="$OUTPUT_PATH/$name"
             mkdir -p "$output_path"
-            local llzk_opt="$tested_path/result/bin/llzk-opt"
-            local filecheck
-            filecheck="$(find_filecheck)"
-            test -x "$llzk_opt"
-            test -n "$filecheck"
-
-            "$llzk_opt" --version > "$output_path/llzk-opt.version"
-            cp "$tested_path/$test_file" "$output_path/committed-test.llzk"
+            cp "$tested_path/$test_file" "$output_path/source.llzk"
             "$llzk_opt" "$@" "$tested_path/$test_file" \
               > "$output_path/producer-output.llzk" 2>&1
             python3 "$tested_path/scripts/generate-test-checks.py" \
               < "$output_path/producer-output.llzk" \
               > "$output_path/generated-checks.txt"
-
-            "$filecheck" "$tested_path/$test_file" \
-              < "$output_path/producer-output.llzk"
             "$filecheck" "$output_path/generated-checks.txt" \
               < "$output_path/producer-output.llzk"
-
-            local committed_checks
-            local generated_checks
-            committed_checks=$(grep -Ec '^// CHECK(:|-LABEL:|-NEXT:)' "$tested_path/$test_file" || true)
-            generated_checks=$(grep -Ec '^// CHECK(:|-LABEL:|-NEXT:)' "$output_path/generated-checks.txt" || true)
-            test "$committed_checks" -eq "$generated_checks"
-
             {
-              echo "head=$head"
+              echo "head=$TARGET_HEAD"
               echo "test=$test_file"
               echo "producer_command=result/bin/llzk-opt $* $test_file"
-              echo "committed_check_lines=$committed_checks"
-              echo "fresh_generated_check_lines=$generated_checks"
-              echo "committed_checks_against_exact_head_output=PASS"
               echo "fresh_generated_checks_against_exact_head_output=PASS"
-              echo "complete_check_line_count=PASS"
             } > "$output_path/comparison.txt"
           }
 
-          replay_split_transform() {
-            local name="$1"
-            local head="$2"
-            local test_file="$3"
-            shift 3
-            local tested_path="$RUNNER_TEMP/llzk-$name"
-            local chunk_dir="$RUNNER_TEMP/llzk-$name-chunks"
-            local output_path="$OUTPUT_PATH/$name"
+          capture_transform \
+            no-fuse-if-position \
+            test/Transforms/FuseProductLoops/no_fuse_if_position.llzk \
+            --llzk-fuse-product-loops
+          capture_transform \
+            no-fuse-if-allocation \
+            test/Transforms/FuseProductLoops/no_fuse_if_internal_allocation_in_product.llzk \
+            --llzk-fuse-product-loops
+          capture_transform \
+            fuse-outer-inner \
+            test/Transforms/FuseProductLoops/fuse_outer_inner.llzk \
+            --llzk-compute-constrain-to-product=root-struct=A \
+            --llzk-fuse-product-loops
+          capture_transform \
+            no-fuse-inner \
+            test/Transforms/FuseProductLoops/no_fuse_inner.llzk \
+            --llzk-compute-constrain-to-product=root-struct=A \
+            --llzk-fuse-product-loops
+          capture_transform \
+            no-fuse-region-mismatch \
+            test/Transforms/FuseProductLoops/no_fuse_region_mismatch.llzk \
+            --llzk-compute-constrain-to-product=root-struct=A \
+            --llzk-fuse-product-loops
+          capture_transform \
+            no-fuse-single \
+            test/Transforms/FuseProductLoops/no_fuse_single.llzk \
+            --llzk-compute-constrain-to-product=root-struct=A \
+            --llzk-fuse-product-loops
 
-            git fetch --no-tags --filter=blob:none https://github.com/1sgtpepper/llzk-lib.git "$head"
-            git worktree add --detach "$tested_path" "$head"
-            test "$(git -C "$tested_path" rev-parse HEAD)" = "$head"
-
-            (
-              cd "$tested_path"
-              nix --print-build-logs build '.#debugGCC'
-            )
-
-            mkdir -p "$chunk_dir" "$output_path"
-            local llzk_opt="$tested_path/result/bin/llzk-opt"
-            local filecheck
-            filecheck="$(find_filecheck)"
-            test -x "$llzk_opt"
-            test -n "$filecheck"
-
-            "$llzk_opt" --version > "$output_path/llzk-opt.version"
-            python3 - "$tested_path/$test_file" "$chunk_dir" <<'PY'
-          from pathlib import Path
-          import sys
-
-          source = Path(sys.argv[1]).read_text()
-          output = Path(sys.argv[2])
-          chunks = source.split("// -----")
-          for index, chunk in enumerate(chunks):
-              lines = chunk.splitlines()
-              (output / f"committed-{index:02d}.llzk").write_text(
-                  "\n".join(lines).strip() + "\n"
-              )
-          clean_lines = [
-              line
-              for line in source.splitlines()
-              if not line.startswith("// CHECK")
-              and not line.startswith("// NOTE: Assertions have been autogenerated")
-          ]
-          (output / "clean.llzk").write_text("\n".join(clean_lines).strip() + "\n")
-          PY
-
-            "$llzk_opt" "$@" "$chunk_dir/clean.llzk" \
-              > "$output_path/producer-output.llzk" 2>&1
-            python3 - "$output_path/producer-output.llzk" "$chunk_dir" <<'PY'
-          from pathlib import Path
-          import sys
-
-          source = Path(sys.argv[1]).read_text()
-          output = Path(sys.argv[2])
-          for index, chunk in enumerate(source.split("// -----")):
-              (output / f"output-{index:02d}.llzk").write_text(
-                  "\n".join(chunk.splitlines()).strip() + "\n"
-              )
-          PY
-
-            local chunk_count=0
-            local source_count
-            local committed_checks=0
-            local generated_checks=0
-            source_count=$(find "$chunk_dir" -maxdepth 1 -name 'committed-*.llzk' | wc -l)
-            for output_file in "$chunk_dir"/output-*.llzk; do
-              local chunk_name
-              local committed_file
-              local checks_file
-              local committed_chunk_checks
-              local generated_chunk_checks
-              chunk_name="$(basename "$output_file" .llzk | sed 's/^output-//')"
-              committed_file="$chunk_dir/committed-$chunk_name.llzk"
-              checks_file="$output_path/generated-checks-$chunk_name.txt"
-              test -f "$committed_file"
-              cp "$committed_file" "$output_path/committed-test-$chunk_name.llzk"
-              python3 "$tested_path/scripts/generate-test-checks.py" \
-                < "$output_file" \
-                > "$checks_file"
-              "$filecheck" "$committed_file" < "$output_file"
-              "$filecheck" "$checks_file" < "$output_file"
-              committed_chunk_checks=$(grep -Ec '^// CHECK(:|-LABEL:|-NEXT:)' "$committed_file" || true)
-              generated_chunk_checks=$(grep -Ec '^// CHECK(:|-LABEL:|-NEXT:)' "$checks_file" || true)
-              committed_checks=$((committed_checks + committed_chunk_checks))
-              generated_checks=$((generated_checks + generated_chunk_checks))
-              chunk_count=$((chunk_count + 1))
-            done
-
-            test "$chunk_count" -eq "$source_count"
-            test "$committed_checks" -eq "$generated_checks"
-
-            {
-              echo "head=$head"
-              echo "test=$test_file"
-              echo "producer_command=result/bin/llzk-opt $* $test_file"
-              echo "split_boundary=// -----"
-              echo "chunk_count=$chunk_count"
-              echo "committed_check_lines=$committed_checks"
-              echo "fresh_generated_check_lines=$generated_checks"
-              echo "committed_checks_against_exact_head_output=PASS"
-              echo "fresh_generated_checks_against_exact_head_output=PASS"
-              echo "complete_check_line_count=PASS"
-            } > "$output_path/comparison.txt"
-          }
-
-          replay_script() {
-            local head="$1"
-            local test_file="$2"
-            local tested_path="$RUNNER_TEMP/llzk-pr672"
-            local output_path="$OUTPUT_PATH/pr672"
-
-            git fetch --no-tags --filter=blob:none https://github.com/1sgtpepper/llzk-lib.git "$head"
-            git worktree add --detach "$tested_path" "$head"
-            test "$(git -C "$tested_path" rev-parse HEAD)" = "$head"
-
-            (
-              cd "$tested_path"
-              nix --print-build-logs build '.#debugGCC'
-            )
-
-            mkdir -p "$output_path"
-            local llzk_opt="$tested_path/result/bin/llzk-opt"
-            local filecheck
-            filecheck="$(find_filecheck)"
-            test -x "$llzk_opt"
-            test -n "$filecheck"
-
-            cp "$(readlink -f "$llzk_opt")" "$output_path/llzk-opt"
-            "$llzk_opt" --version > "$output_path/llzk-opt.version"
-            cp "$tested_path/$test_file" "$output_path/committed-test.llzk"
-            awk '
-              /^\/\/--- inline-attributes\.llzk$/ { in_chunk = 1; next }
-              /^\/\/--- / && in_chunk { exit }
-              in_chunk { print }
-            ' "$tested_path/$test_file" > "$output_path/inline-attributes.llzk"
-            python3 "$tested_path/scripts/generate-test-checks.py" \
-              "$output_path/inline-attributes.llzk" \
-              > "$output_path/generated-checks.txt"
-            python3 "$tested_path/scripts/generate-test-checks.py" \
-              "$output_path/inline-attributes.llzk" \
-              | "$filecheck" "$tested_path/$test_file" --check-prefix=SCRIPT
-
-            {
-              echo "head=$head"
-              echo "test=$test_file"
-              echo "generator_command=python3 scripts/generate-test-checks.py < actual split chunk"
-              echo "fresh_generator_stdout=PASS"
-              echo "focused_script_contract=PASS"
-            } > "$output_path/comparison.txt"
-          }
-
-          capture_transform() {
-            local name="$1"
-            local head="$2"
-            local test_file="$3"
-            shift 3
-            local tested_path="$RUNNER_TEMP/llzk-$name"
-            local output_path="$OUTPUT_PATH/$name"
-
-            git fetch --no-tags --filter=blob:none https://github.com/1sgtpepper/llzk-lib.git "$head"
-            git worktree add --detach "$tested_path" "$head"
-            test "$(git -C "$tested_path" rev-parse HEAD)" = "$head"
-
-            (
-              cd "$tested_path"
-              nix build --impure --print-build-logs --expr \
-                'let flake = builtins.getFlake (toString ./.) ; in flake.packages.x86_64-linux.debugGCC.overrideAttrs (_: { doCheck = false; })'
-            )
-
-            local chunk_dir="$RUNNER_TEMP/llzk-$name-chunks"
-            mkdir -p "$chunk_dir" "$output_path"
-            local llzk_opt="$tested_path/result/bin/llzk-opt"
-            test -x "$llzk_opt"
-            cp "$(readlink -f "$llzk_opt")" "$output_path/llzk-opt"
-            "$llzk_opt" --version > "$output_path/llzk-opt.version"
-            cp "$tested_path/$test_file" "$output_path/source.llzk"
-            python3 - "$tested_path/$test_file" "$chunk_dir/clean.llzk" <<'PY'
-          from pathlib import Path
-          import sys
-
-          source = Path(sys.argv[1]).read_text()
-          clean_lines = [
-              line
-              for line in source.splitlines()
-              if not line.startswith("// CHECK")
-              and not line.startswith("// NOTE: Assertions have been autogenerated")
-          ]
-          Path(sys.argv[2]).write_text("\n".join(clean_lines).strip() + "\n")
-          PY
-            "$llzk_opt" "$@" "$chunk_dir/clean.llzk" \
-              > "$output_path/producer-output.llzk" 2>&1
-            python3 - "$output_path/producer-output.llzk" "$chunk_dir" <<'PY'
-          from pathlib import Path
-          import sys
-
-          source = Path(sys.argv[1]).read_text()
-          output = Path(sys.argv[2])
-          for index, chunk in enumerate(source.split("// -----")):
-              (output / f"output-{index:02d}.llzk").write_text(
-                  "\n".join(chunk.splitlines()).strip() + "\n"
-              )
-          PY
-            for output_file in "$chunk_dir"/output-*.llzk; do
-              local chunk_name
-              chunk_name="$(basename "$output_file" .llzk | sed 's/^output-//')"
-              python3 "$tested_path/scripts/generate-test-checks.py" \
-                < "$output_file" \
-                > "$output_path/generated-checks-$chunk_name.txt"
-            done
-          }
-
-          replay_split_transform \
-            pr635-struct-pass3 \
-            4a293e5fdbbe2808f2ae9d612847fe5e879f97e8 \
-            test/Transforms/Flattening/instantiate_structs_pass_3.llzk \
-            -split-input-file \
-            -llzk-flatten \
-            -verify-diagnostics
-          replay_split_transform \
-            pr635-felt \
-            4a293e5fdbbe2808f2ae9d612847fe5e879f97e8 \
-            test/Transforms/Flattening/instantiate_expr_felt_typevar_completion.llzk \
-            -split-input-file \
-            -llzk-flatten
-          replay_split_transform \
-            pr635-partial \
-            4a293e5fdbbe2808f2ae9d612847fe5e879f97e8 \
-            test/Transforms/Flattening/instantiate_expr_partial.llzk \
-            -split-input-file \
-            -llzk-flatten
-          replay_split_transform \
-            pr635-target-local \
-            4a293e5fdbbe2808f2ae9d612847fe5e879f97e8 \
-            test/Transforms/Flattening/instantiate_expr_target_local.llzk \
-            -split-input-file \
-            '--pass-pipeline=builtin.module(llzk-flatten{cleanup=disabled})'
-          replay_split_transform \
-            pr635-typevar \
-            4a293e5fdbbe2808f2ae9d612847fe5e879f97e8 \
-            test/Transforms/Flattening/instantiate_expr_typevar_completion.llzk \
-            -split-input-file \
-            -llzk-flatten
-          replay_split_transform \
-            pr635-normalized-felt \
-            4a293e5fdbbe2808f2ae9d612847fe5e879f97e8 \
-            test/Transforms/Flattening/instantiate_func_felt_normalization.llzk \
-            -split-input-file \
-            -llzk-flatten
-          exit 0
-          replay_split_transform \
-            pr637-order \
-            52f02ffd0573b23af34331174b551118ab75f421 \
-            test/Transforms/Flattening/instantiate_function_order.llzk \
-            -split-input-file \
-            -llzk-flatten=cleanup=disabled
-          replay_split_transform \
-            pr637-reuse \
-            52f02ffd0573b23af34331174b551118ab75f421 \
-            test/Transforms/Flattening/instantiate_function_reuse.llzk \
-            -split-input-file \
-            -llzk-flatten=cleanup=disabled
-          replay_split_transform \
-            pr675 \
-            7111a86e158a9166189b0471750aba330ca0a879 \
-            test/Transforms/RedundantAndUnusedElim/array_read_write_observation.llzk \
-            -split-input-file \
-            -llzk-duplicate-read-write-elim
-          replay_simple_transform pr484-if-containment 36156d1b37f229b6ae791eda6cfcb96a7575c752 test/Transforms/FuseProductLoops/fuse_if_containment.llzk --llzk-fuse-product-loops
-          replay_simple_transform pr484-if-direct 36156d1b37f229b6ae791eda6cfcb96a7575c752 test/Transforms/FuseProductLoops/fuse_if_direct_compute_result_use.llzk --llzk-fuse-product-loops
-          replay_simple_transform pr484-if-multi 36156d1b37f229b6ae791eda6cfcb96a7575c752 test/Transforms/FuseProductLoops/fuse_if_multi_result_direct_uses.llzk --llzk-fuse-product-loops
-          replay_simple_transform pr484-if-no-else 36156d1b37f229b6ae791eda6cfcb96a7575c752 test/Transforms/FuseProductLoops/fuse_if_no_else.llzk --llzk-fuse-product-loops
-          replay_simple_transform pr484-if-member-free 36156d1b37f229b6ae791eda6cfcb96a7575c752 test/Transforms/FuseProductLoops/fuse_if_no_member_read.llzk --llzk-compute-constrain-to-product=root-struct=A --llzk-fuse-product-loops
-          replay_simple_transform pr484-if-nondet 36156d1b37f229b6ae791eda6cfcb96a7575c752 test/Transforms/FuseProductLoops/fuse_if_nondet.llzk --llzk-fuse-product-loops
-          replay_simple_transform pr484-if-attrs 36156d1b37f229b6ae791eda6cfcb96a7575c752 test/Transforms/FuseProductLoops/fuse_if_preserves_attributes.llzk --llzk-fuse-product-loops
-          replay_simple_transform pr484-if-locations 36156d1b37f229b6ae791eda6cfcb96a7575c752 test/Transforms/FuseProductLoops/fuse_if_preserves_locations.llzk --llzk-fuse-product-loops -mlir-print-debuginfo
-          replay_simple_transform pr484-if-may-trap 36156d1b37f229b6ae791eda6cfcb96a7575c752 test/Transforms/FuseProductLoops/no_fuse_if_may_trap.llzk --llzk-fuse-product-loops
-          replay_simple_transform pr484-structured-control 36156d1b37f229b6ae791eda6cfcb96a7575c752 test/Transforms/FuseProductLoops/fuse_structured_control_movement.llzk --llzk-fuse-product-loops
-          replay_simple_transform pr484-loop-if 36156d1b37f229b6ae791eda6cfcb96a7575c752 test/Transforms/FuseProductLoops/fuse_loop_then_if_positive.llzk --llzk-fuse-product-loops
-          replay_simple_transform pr484-attr-mismatch 36156d1b37f229b6ae791eda6cfcb96a7575c752 test/Transforms/FuseProductLoops/no_fuse_if_attribute_mismatch.llzk --llzk-fuse-product-loops
-          replay_simple_transform pr484-call-write 36156d1b37f229b6ae791eda6cfcb96a7575c752 test/Transforms/FuseProductLoops/no_fuse_if_call_after_write.llzk --llzk-compute-constrain-to-product=root-struct=A --llzk-fuse-product-loops
-          replay_simple_transform pr484-cond-mismatch 36156d1b37f229b6ae791eda6cfcb96a7575c752 test/Transforms/FuseProductLoops/no_fuse_if_condition_mismatch.llzk --llzk-fuse-product-loops
-          replay_simple_transform pr484-else-yield-attr 36156d1b37f229b6ae791eda6cfcb96a7575c752 test/Transforms/FuseProductLoops/no_fuse_if_else_yield_attribute_mismatch.llzk --llzk-fuse-product-loops
-          replay_simple_transform pr484-shape 36156d1b37f229b6ae791eda6cfcb96a7575c752 test/Transforms/FuseProductLoops/no_fuse_if_incompatible_shape.llzk --llzk-fuse-product-loops
-          replay_simple_transform pr484-inferred-if 36156d1b37f229b6ae791eda6cfcb96a7575c752 test/Transforms/FuseProductLoops/no_fuse_if_inferred_product_source.llzk --llzk-fuse-product-loops
-          replay_simple_transform pr484-array-insert 36156d1b37f229b6ae791eda6cfcb96a7575c752 test/Transforms/FuseProductLoops/no_fuse_if_internal_array_insert_in_product.llzk --llzk-fuse-product-loops
-          replay_simple_transform pr484-array-read 36156d1b37f229b6ae791eda6cfcb96a7575c752 test/Transforms/FuseProductLoops/no_fuse_if_internal_array_read_in_product.llzk --llzk-fuse-product-loops
-          replay_simple_transform pr484-array-write 36156d1b37f229b6ae791eda6cfcb96a7575c752 test/Transforms/FuseProductLoops/no_fuse_if_internal_array_write_in_product.llzk --llzk-fuse-product-loops
-          replay_simple_transform pr484-global-read 36156d1b37f229b6ae791eda6cfcb96a7575c752 test/Transforms/FuseProductLoops/no_fuse_if_internal_global_read_in_product.llzk --llzk-fuse-product-loops
-          replay_simple_transform pr484-global-write 36156d1b37f229b6ae791eda6cfcb96a7575c752 test/Transforms/FuseProductLoops/no_fuse_if_internal_global_write_in_product.llzk --llzk-fuse-product-loops
-          replay_simple_transform pr484-pod-write 36156d1b37f229b6ae791eda6cfcb96a7575c752 test/Transforms/FuseProductLoops/no_fuse_if_internal_pod_write_in_product.llzk --llzk-fuse-product-loops
-          replay_simple_transform pr484-ram-load 36156d1b37f229b6ae791eda6cfcb96a7575c752 test/Transforms/FuseProductLoops/no_fuse_if_internal_ram_load_in_product.llzk --llzk-fuse-product-loops
-          replay_simple_transform pr484-ram-store 36156d1b37f229b6ae791eda6cfcb96a7575c752 test/Transforms/FuseProductLoops/no_fuse_if_internal_ram_store_in_product.llzk --llzk-fuse-product-loops
-          replay_simple_transform pr484-member-read 36156d1b37f229b6ae791eda6cfcb96a7575c752 test/Transforms/FuseProductLoops/no_fuse_if_internal_read.llzk --llzk-compute-constrain-to-product=root-struct=A --llzk-fuse-product-loops
-          replay_simple_transform pr484-unknown-effect 36156d1b37f229b6ae791eda6cfcb96a7575c752 test/Transforms/FuseProductLoops/no_fuse_if_internal_unknown_effect_in_product.llzk --allow-unregistered-dialect --llzk-fuse-product-loops
-          replay_simple_transform pr484-witness-call 36156d1b37f229b6ae791eda6cfcb96a7575c752 test/Transforms/FuseProductLoops/no_fuse_if_internal_witness_call_in_product.llzk --llzk-fuse-product-loops
-          replay_simple_transform pr484-writem 36156d1b37f229b6ae791eda6cfcb96a7575c752 test/Transforms/FuseProductLoops/no_fuse_if_internal_writem_in_product.llzk --llzk-fuse-product-loops
-          replay_simple_transform pr484-read-write 36156d1b37f229b6ae791eda6cfcb96a7575c752 test/Transforms/FuseProductLoops/no_fuse_if_read_after_write.llzk --llzk-compute-constrain-to-product=root-struct=A --llzk-fuse-product-loops
-          replay_simple_transform pr484-yield-mismatch 36156d1b37f229b6ae791eda6cfcb96a7575c752 test/Transforms/FuseProductLoops/no_fuse_if_yield_attribute_mismatch.llzk --llzk-fuse-product-loops
-          replay_simple_transform pr484-loop-inferred 36156d1b37f229b6ae791eda6cfcb96a7575c752 test/Transforms/FuseProductLoops/no_fuse_loop_inferred_product_source.llzk --llzk-fuse-product-loops
-          replay_simple_transform pr484-nested-if-after-loop 36156d1b37f229b6ae791eda6cfcb96a7575c752 test/Transforms/FuseProductLoops/no_fuse_nested_if_after_loop.llzk --llzk-compute-constrain-to-product=root-struct=A --llzk-fuse-product-loops
-          replay_simple_transform pr484-internal-while 36156d1b37f229b6ae791eda6cfcb96a7575c752 test/Transforms/FuseProductLoops/no_fuse_if_internal_while.llzk --llzk-fuse-product-loops
-          replay_simple_transform pr484-non-direct-member-write 36156d1b37f229b6ae791eda6cfcb96a7575c752 test/Transforms/FuseProductLoops/no_fuse_if_non_direct_member_write.llzk --llzk-fuse-product-loops
-          replay_script \
-            efb42f37f1ea04315815d07315e07aa597625816 \
-            test/Transforms/generate-test-checks-inline-attributes.llzk
-
-      - name: Upload exact-head generator evidence
+      - name: Upload generated output
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: generator-replay-evidence-${{ github.sha }}
-          path: /tmp/llzk-generator-output
+          name: pr484-fusion-guard-output-${{ github.sha }}
+          path: /tmp/llzk-pr484-output
           if-no-files-found: error
           retention-days: 7
           compression-level: 0
