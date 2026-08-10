@@ -206,8 +206,8 @@ public:
   }
 };
 
-/// Pattern for `CallOp`. Converts result types and rewritten operands while preserving the callee
-/// and explicit template arguments.
+/// Rebuild a `CallOp` with converted result types and remapped operands. Preserve its callee,
+/// affine-map instantiation state, and ordered explicit template arguments unchanged.
 class CallOpClassReplacePattern : public mlir::OpConversionPattern<function::CallOp> {
 public:
   CallOpClassReplacePattern(mlir::TypeConverter &converter, mlir::MLIRContext *ctx)

@@ -1,5 +1,5 @@
 fixed:
-  - Preserve target-used template expressions until staged specializations receive every required value and type binding
-  - Preserve and recursively materialize explicit nested-call template arguments as enclosing parameters become concrete
+  - Evaluate target-used template expressions when their value and type dependencies become concrete, preserving normalized expressions across partial specialization
+  - Preserve ordered explicit arguments on rebuilt nested calls and materialize enclosing bindings inside array, struct, POD, and scalar type arguments
   - Canonicalize equivalent felt spellings before function and struct specialization identity is computed
-  - Discard failed prospective specializations without publishing their diagnostics or reusable state
+  - Roll back failed prospective specializations without leaving generated definitions or emitting warnings from discarded clones
