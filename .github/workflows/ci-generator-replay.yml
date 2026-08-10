@@ -13,7 +13,7 @@ jobs:
   capture:
     runs-on: ubuntu-24.04
     env:
-      TARGET_HEAD: a5a1d040f7de052996a98b05aeb43bc8191d5e10
+      TARGET_HEAD: 40dd084b612517146fafbd8146168ecdae0858f9
       OUTPUT_PATH: /tmp/llzk-pr484-output
 
     steps:
