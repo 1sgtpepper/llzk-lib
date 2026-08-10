@@ -365,40 +365,40 @@ static void fuseIfPair(scf::IfOp a, scf::IfOp b, MLIRContext *context, IRRewrite
 /// Fuse uniquely matchable marked compute/constrain `scf.if` pairs in `body`; leave unmatched pairs
 /// unchanged.
 static void fuseMatchingIfPairs(Region &body, MLIRContext *context) {
-  llvm::SmallVector<scf::IfOp> witnessIfs, constraintIfs;
+  llvm::SmallVector<scf::IfOp> computeIfs, constrainIfs;
   body.walk<WalkOrder::PreOrder>([&](scf::IfOp ifOp) {
     std::optional<llvm::StringRef> productSource = getProductSource(ifOp);
     if (!productSource) {
       return WalkResult::advance();
     }
     if (*productSource == FUNC_NAME_COMPUTE) {
-      witnessIfs.push_back(ifOp);
+      computeIfs.push_back(ifOp);
     } else if (*productSource == FUNC_NAME_CONSTRAIN) {
-      constraintIfs.push_back(ifOp);
+      constrainIfs.push_back(ifOp);
     }
     return WalkResult::skip();
   });
 
   auto fusionCandidates = *alignmentHelpers::getMatchingPairs<scf::IfOp>(
-      witnessIfs, constraintIfs, canIfsBeFused, /*allowPartial=*/true
+      computeIfs, constrainIfs, canIfsBeFused, /*allowPartial=*/true
   );
 
   IRRewriter rewriter {context};
-  for (auto [w, c] : fusionCandidates) {
-    fuseIfPair(w, c, context, rewriter);
+  for (auto [computeIf, constrainIf] : fusionCandidates) {
+    fuseIfPair(computeIf, constrainIf, context, rewriter);
   }
 }
 
-/// Collect compute-sourced operations between sibling loops that must move after `constraintLoop`.
+/// Collect compute-sourced operations between sibling loops that must move after `constrainLoop`.
 /// Fail if the loops do not share a block or the move would cross already-fused constraint work.
 static FailureOr<SmallVector<Operation *>>
-canPrepareForFusion(scf::ForOp witnessLoop, scf::ForOp constraintLoop) {
-  if (witnessLoop->getBlock() != constraintLoop->getBlock()) {
+canPrepareForFusion(scf::ForOp computeLoop, scf::ForOp constrainLoop) {
+  if (computeLoop->getBlock() != constrainLoop->getBlock()) {
     return failure();
   }
 
   SmallVector<Operation *> opsToSink;
-  for (auto *op = witnessLoop->getNextNode(); op != constraintLoop; op = op->getNextNode()) {
+  for (auto *op = computeLoop->getNextNode(); op != constrainLoop; op = op->getNextNode()) {
     if (hasProductSource(op, "fused")) {
       // A fused op contains constrain work and cannot move with compute-only operations.
       return failure();
@@ -410,16 +410,16 @@ canPrepareForFusion(scf::ForOp witnessLoop, scf::ForOp constraintLoop) {
   return opsToSink;
 }
 
-/// Move the preflighted compute-only operations after `constraintLoop` in their original order.
+/// Move the preflighted compute-only operations after `constrainLoop` in their original order.
 /// Because collection finishes before the first move, failure leaves the IR unchanged.
 static LogicalResult
-prepareForFusion(scf::ForOp witnessLoop, scf::ForOp constraintLoop, IRRewriter &rewriter) {
-  auto computeOpsToSink = canPrepareForFusion(witnessLoop, constraintLoop);
+prepareForFusion(scf::ForOp computeLoop, scf::ForOp constrainLoop, IRRewriter &rewriter) {
+  auto computeOpsToSink = canPrepareForFusion(computeLoop, constrainLoop);
   if (failed(computeOpsToSink)) {
     return failure();
   }
 
-  Operation *insertionPoint = constraintLoop.getOperation();
+  Operation *insertionPoint = constrainLoop.getOperation();
   for (Operation *op : *computeOpsToSink) {
     rewriter.moveOpAfter(op, insertionPoint);
     insertionPoint = op;
@@ -432,16 +432,16 @@ prepareForFusion(scf::ForOp witnessLoop, scf::ForOp constraintLoop, IRRewriter &
 /// unpreparable pairs unchanged.
 static void fuseMatchingLoopPairs(Region &body, MLIRContext *context) {
   // Collect marked loops before matching unique compute/constrain pairs.
-  llvm::SmallVector<scf::ForOp> witnessLoops, constraintLoops;
-  body.walk<WalkOrder::PreOrder>([&witnessLoops, &constraintLoops](scf::ForOp forOp) {
+  llvm::SmallVector<scf::ForOp> computeLoops, constrainLoops;
+  body.walk<WalkOrder::PreOrder>([&computeLoops, &constrainLoops](scf::ForOp forOp) {
     std::optional<llvm::StringRef> productSource = getProductSource(forOp);
     if (!productSource) {
       return WalkResult::skip();
     }
     if (*productSource == FUNC_NAME_COMPUTE) {
-      witnessLoops.push_back(forOp);
+      computeLoops.push_back(forOp);
     } else if (*productSource == FUNC_NAME_CONSTRAIN) {
-      constraintLoops.push_back(forOp);
+      constrainLoops.push_back(forOp);
     }
     // Defer nested loops until their enclosing pair has been fused.
     return WalkResult::skip();
@@ -449,16 +449,16 @@ static void fuseMatchingLoopPairs(Region &body, MLIRContext *context) {
 
   // Select only pairs that match uniquely in both directions.
   auto fusionCandidates = *alignmentHelpers::getMatchingPairs<scf::ForOp>(
-      witnessLoops, constraintLoops, canLoopsBeFused, /*allowPartial=*/true
+      computeLoops, constrainLoops, canLoopsBeFused, /*allowPartial=*/true
   );
 
   // Fuse each unambiguous pair; leave preparation failures unchanged.
   IRRewriter rewriter {context};
-  for (auto [w, c] : fusionCandidates) {
-    if (failed(prepareForFusion(w, c, rewriter))) {
+  for (auto [computeLoop, constrainLoop] : fusionCandidates) {
+    if (failed(prepareForFusion(computeLoop, constrainLoop, rewriter))) {
       continue;
     }
-    auto fusedLoop = fuseIndependentSiblingForLoops(w, c, rewriter);
+    auto fusedLoop = fuseIndependentSiblingForLoops(computeLoop, constrainLoop, rewriter);
     setProductSource(fusedLoop, "fused");
     // Recurse so nested if/loop pairs become eligible after loop fusion.
     fuseMatchingRegionControlFlow(fusedLoop.getBodyRegion(), context);
