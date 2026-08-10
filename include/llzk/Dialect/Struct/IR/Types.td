@@ -27,12 +27,14 @@ class StructDialectType<string name, string typeMnemonic,
 def LLZK_StructType : StructDialectType<"Struct", "type"> {
   let summary = "circuit component";
   let description = [{
-    Type of a `struct` op instance. For structs that contain template parameters,
-    the type must contain a list of attributes that instantiate the template
-    parameters, one per parameter. Each attribute must be one of the following:
+    Type of a `struct.def` instance. An instantiation argument list supplies one attribute per
+    `poly.param` in the definition's enclosing `poly.template`, in declaration order. Every
+    argument must satisfy the corresponding parameter's type restriction; a symbol argument is
+    checked using its resolved enclosing template binding or global definition. Each attribute
+    must be one of the following:
       - IntegerAttr (with IndexType), specifying a fixed parameter value
       - FeltConstAttr, specifying a fixed finite-field parameter value
-      - SymbolRefAttr, specifying a parameter value defined by a struct parameter
+      - SymbolRefAttr, specifying a parameter value defined by an enclosing template parameter
         or global constant
       - AffineMapAttr, for an array of struct elements whose template parameters
         vary based on some fixed pattern.
@@ -100,7 +102,7 @@ def LLZK_StructType : StructDialectType<"Struct", "type"> {
     // Verifies that this type references a valid struct, relative to the given `op`.
     ::mlir::LogicalResult verifySymbolRef(::mlir::SymbolTableCollection &symbolTable, ::mlir::Operation *op);
 
-    /// Returns wether the struct this type refers to has members marked as columns.
+    /// Returns whether the struct this type refers to has members marked as columns.
     /// A lookup is necessary first and will forward the failure state if it fails.
     mlir::LogicalResult hasColumns(mlir::SymbolTableCollection &symbolTable, mlir::Operation *op) const;
   }];
