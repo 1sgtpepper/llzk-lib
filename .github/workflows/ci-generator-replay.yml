@@ -3,7 +3,7 @@ name: LLZK PR 484 exact-head replay
 on:
   push:
     branches:
-      - ci/verify-pr484-nested-if-recursion-20260810
+      - ci/verify-pr484-control-flow-rename-20260810
   workflow_dispatch:
 
 permissions:
@@ -14,7 +14,7 @@ jobs:
     runs-on: ubuntu-24.04
     env:
       BASE_HEAD: e1996219abd1772d5a96ff3d95833697a3363231
-      TARGET_HEAD: 9a99169446d3da4c3c64e1086f1540b762ba6572
+      TARGET_HEAD: 7f13c2c69502ceee7307d2143c5a300a23c99510
       OUTPUT_PATH: /home/runner/work/_temp/llzk-pr484-replay
 
     steps:
@@ -71,9 +71,9 @@ jobs:
 
           mapfile -t test_files < <(
             git -C "$tested_path" diff --name-only "$BASE_HEAD" "$TARGET_HEAD" -- \
-              'test/Transforms/FuseProductLoops/*.llzk'
+              'test/Transforms/FuseProductControlFlow/*.llzk'
           )
-          test "${#test_files[@]}" -eq 42
+          test "${#test_files[@]}" -eq 46
 
           for test_file in "${test_files[@]}"; do
             name=$(basename "$test_file" .llzk)
@@ -136,7 +136,7 @@ jobs:
 
           mutation_path="$OUTPUT_PATH/nested-if-recursion-mutation"
           mkdir -p "$mutation_path"
-          source_path="$tested_path/lib/Transforms/LLZKFuseProductLoopsPass.cpp"
+          source_path="$tested_path/lib/Transforms/LLZKFuseProductControlFlowPass.cpp"
           python3 - "$source_path" <<'PY'
           import pathlib
           import sys
@@ -162,7 +162,7 @@ jobs:
           )
 
           mutant_opt="$tested_path/result-mutant/bin/llzk-opt"
-          mutation_test=test/Transforms/FuseProductLoops/fuse_if_then_if_positive.llzk
+          mutation_test=test/Transforms/FuseProductControlFlow/fuse_if_then_if_positive.llzk
           mutation_run_line=$(sed -n '1p' "$tested_path/$mutation_test")
           mutation_pipeline=${mutation_run_line#*llzk-opt }
           mutation_pipeline=${mutation_pipeline%% %s*}
