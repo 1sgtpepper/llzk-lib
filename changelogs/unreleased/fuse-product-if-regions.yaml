@@ -3,3 +3,6 @@ added:
 
 changed:
   - Preserve compatible attributes on fused `scf.if` and `scf.yield` operations; skip conflicting pairs
+
+fixed:
+  - Preserve emitted attribute-definition order and references between named attributes in generated FileCheck output
