@@ -43,7 +43,11 @@ module attributes {llzk.lang} {
     }
 }
 
-// CHECK:      function.def @product(%[[VAL_0:[0-9a-zA-Z_\.]+]]: !array.type<8 x !felt.type>, %[[VAL_1:[0-9a-zA-Z_\.]+]]: i1) -> !struct.type<@A> attributes {function.allow_constraint, function.allow_witness} {
+// CHECK-LABEL: module attributes {llzk.lang} {
+// CHECK-NEXT:    struct.def @A {
+// CHECK-NEXT:      struct.member @foo : !array.type<8 x !felt.type>
+// CHECK-NEXT:      struct.member @bar : !array.type<8 x !felt.type>
+// CHECK-NEXT:      function.def @product(%[[VAL_0:[0-9a-zA-Z_\.]+]]: !array.type<8 x !felt.type>, %[[VAL_1:[0-9a-zA-Z_\.]+]]: i1) -> !struct.type<@A> attributes {function.allow_constraint, function.allow_witness} {
 // CHECK-NEXT:        %[[VAL_2:[0-9a-zA-Z_\.]+]] = struct.new : <@A>
 // CHECK-NEXT:        %[[VAL_3:[0-9a-zA-Z_\.]+]] = arith.constant 0 : index
 // CHECK-NEXT:        %[[VAL_4:[0-9a-zA-Z_\.]+]] = arith.constant 1 : index
@@ -67,3 +71,7 @@ module attributes {llzk.lang} {
 // CHECK-NEXT:          %[[VAL_14:[0-9a-zA-Z_\.]+]] = array.read %[[VAL_9]]{{\[}}%[[VAL_12]]] : <8 x !felt.type>, !felt.type {product_source = "constrain"}
 // CHECK-NEXT:          constrain.eq %[[VAL_13]], %[[VAL_14]] : !felt.type, !felt.type {product_source = "constrain"}
 // CHECK-NEXT:        } {product_source = "constrain"}
+// CHECK-NEXT:        function.return %[[VAL_2]] : !struct.type<@A>
+// CHECK-NEXT:      }
+// CHECK-NEXT:    }
+// CHECK-NEXT:  }
