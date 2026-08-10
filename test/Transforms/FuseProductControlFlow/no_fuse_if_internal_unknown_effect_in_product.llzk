@@ -1,4 +1,4 @@
-// RUN: llzk-opt --allow-unregistered-dialect --llzk-fuse-product-loops %s | FileCheck --enable-var-scope %s
+// RUN: llzk-opt --allow-unregistered-dialect --llzk-fuse-product-control-flow %s | FileCheck --enable-var-scope %s
 
 module attributes {llzk.lang = "llzk"} {
   struct.def @A {
