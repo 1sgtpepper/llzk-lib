@@ -21,6 +21,9 @@
 namespace llzk {
 
 /// Return the product-source value stored directly on `op`, if present.
+///
+/// `compute` and `constrain` identify one source role; `fused` identifies an operation containing
+/// both roles. Product-source helpers do not infer a role from nested operations.
 inline std::optional<llvm::StringRef> getProductSource(mlir::Operation *op) {
   if (mlir::StringAttr source = op->getAttrOfType<mlir::StringAttr>(PRODUCT_SOURCE)) {
     return source.getValue();
