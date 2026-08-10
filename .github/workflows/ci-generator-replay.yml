@@ -3,7 +3,7 @@ name: LLZK PR 484 exact-head replay
 on:
   push:
     branches:
-      - ci/verify-pr484-fusion-guards
+      - ci/verify-pr484-nested-if-recursion-20260810
   workflow_dispatch:
 
 permissions:
@@ -14,7 +14,7 @@ jobs:
     runs-on: ubuntu-24.04
     env:
       BASE_HEAD: e1996219abd1772d5a96ff3d95833697a3363231
-      TARGET_HEAD: 906ce7de3547c0f513b05330c1a272f6dea430ba
+      TARGET_HEAD: 9a99169446d3da4c3c64e1086f1540b762ba6572
       OUTPUT_PATH: /home/runner/work/_temp/llzk-pr484-replay
 
     steps:
@@ -73,7 +73,7 @@ jobs:
             git -C "$tested_path" diff --name-only "$BASE_HEAD" "$TARGET_HEAD" -- \
               'test/Transforms/FuseProductLoops/*.llzk'
           )
-          test "${#test_files[@]}" -eq 41
+          test "${#test_files[@]}" -eq 42
 
           for test_file in "${test_files[@]}"; do
             name=$(basename "$test_file" .llzk)
@@ -134,6 +134,56 @@ jobs:
             echo "focused_script_contract=PASS"
           } > "$generator_path/comparison.txt"
 
+          mutation_path="$OUTPUT_PATH/nested-if-recursion-mutation"
+          mkdir -p "$mutation_path"
+          source_path="$tested_path/lib/Transforms/LLZKFuseProductLoopsPass.cpp"
+          python3 - "$source_path" <<'PY'
+          import pathlib
+          import sys
+
+          path = pathlib.Path(sys.argv[1])
+          source = path.read_text()
+          recursion = '''  fuseMatchingRegionControlFlow(fusedIf.getThenRegion(), context);
+            if (!fusedIf.getElseRegion().empty()) {
+              fuseMatchingRegionControlFlow(fusedIf.getElseRegion(), context);
+            }
+
+          '''
+          if source.count(recursion) != 1:
+              raise SystemExit("expected one nested-if recursion block")
+          path.write_text(source.replace(recursion, ""))
+          PY
+          git -C "$tested_path" diff --check
+
+          (
+            cd "$tested_path"
+            nix build --impure --print-build-logs --out-link result-mutant --expr \
+              'let flake = builtins.getFlake (toString ./.) ; in flake.packages.x86_64-linux.debugGCC.overrideAttrs (_: { doCheck = false; })'
+          )
+
+          mutant_opt="$tested_path/result-mutant/bin/llzk-opt"
+          mutation_test=test/Transforms/FuseProductLoops/fuse_if_then_if_positive.llzk
+          mutation_run_line=$(sed -n '1p' "$tested_path/$mutation_test")
+          mutation_pipeline=${mutation_run_line#*llzk-opt }
+          mutation_pipeline=${mutation_pipeline%% %s*}
+          mutation_pipeline=${mutation_pipeline//\"/}
+          read -r -a mutation_args <<< "$mutation_pipeline"
+          "$mutant_opt" "${mutation_args[@]}" "$tested_path/$mutation_test" \
+            > "$mutation_path/producer-output.llzk" 2>&1
+          if "$filecheck" --enable-var-scope "$tested_path/$mutation_test" \
+            < "$mutation_path/producer-output.llzk" \
+            > "$mutation_path/filecheck-output.txt" 2>&1; then
+            echo "nested-if fixture unexpectedly accepted recursion-disabled output" >&2
+            exit 1
+          fi
+          {
+            echo "head=$TARGET_HEAD"
+            echo "test=$mutation_test"
+            echo "removed_behavior=fuseIfPair branch recursion"
+            echo "committed_checks_against_recursion_disabled_output=FAIL_AS_EXPECTED"
+            echo "mutation_test=PASS"
+          } > "$mutation_path/comparison.txt"
+
           {
             echo "base=$BASE_HEAD"
             echo "head=$TARGET_HEAD"
@@ -142,6 +192,7 @@ jobs:
             echo "transform_fresh_generated_checks=PASS"
             echo "transform_complete_check_line_counts=PASS"
             echo "generator_contract=PASS"
+            echo "nested_if_recursion_mutation=PASS"
           } > "$OUTPUT_PATH/summary.txt"
 
       - name: Upload replay evidence
