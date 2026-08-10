@@ -411,8 +411,8 @@ public:
   }
 };
 
-/// Converts template type variables whose bindings became concrete. More specialized converters
-/// extend this for compound types, while deferred expressions need this common scalar behavior.
+/// Converts template parameters whose bindings became concrete, including bindings nested in
+/// compound types.
 class TemplateParamTypeConverter : public TypeConverter {
   const DenseMap<Attribute, Attribute> &paramNameToValue;
 
@@ -434,6 +434,56 @@ public:
         }
       }
       return inputTy;
+    });
+
+    addConversion([this](ArrayType inputTy) {
+      SmallVector<Attribute> updatedDims;
+      bool changed = false;
+      for (Attribute dim : inputTy.getDimensionSizes()) {
+        Attribute converted = convertIfPossible(dim);
+        updatedDims.push_back(converted);
+        changed |= converted != dim;
+      }
+      Type updatedElement = convertType(inputTy.getElementType());
+      if (!changed && updatedElement == inputTy.getElementType()) {
+        return inputTy;
+      }
+      return flattenArrayElementType(
+          inputTy.cloneWith(inputTy.getElementType(), updatedDims), updatedElement
+      );
+    });
+
+    addConversion([this](StructType inputTy) -> StructType {
+      ArrayAttr params = inputTy.getParams();
+      if (!params) {
+        return inputTy;
+      }
+      SmallVector<Attribute> updatedParams;
+      bool changed = false;
+      for (Attribute param : params) {
+        Attribute converted = convertAttr(param);
+        updatedParams.push_back(converted);
+        changed |= converted != param;
+      }
+      return changed ? getStructTypeWithParams(
+                           inputTy.getNameRef(), inputTy.getContext(), updatedParams
+                       )
+                     : inputTy;
+    });
+
+    addConversion([this](pod::PodType inputTy) -> pod::PodType {
+      SmallVector<pod::RecordAttr> updatedRecords;
+      bool changed = false;
+      for (pod::RecordAttr record : inputTy.getRecords()) {
+        Type converted = convertType(record.getType());
+        updatedRecords.push_back(
+            converted == record.getType()
+                ? record
+                : pod::RecordAttr::get(inputTy.getContext(), record.getName(), converted)
+        );
+        changed |= converted != record.getType();
+      }
+      return changed ? pod::PodType::get(inputTy.getContext(), updatedRecords) : inputTy;
     });
   }
 
@@ -1155,9 +1205,12 @@ public:
     }
 
     LLVM_DEBUG(llvm::dbgs() << "[CallStructFuncPattern] replaced " << op);
+    ArrayAttr templateParamsAttr = op.getTemplateParamsAttr();
+    ArrayRef<Attribute> templateParams =
+        templateParamsAttr ? templateParamsAttr.getValue() : ArrayRef<Attribute>();
     CallOp newOp = replaceOpWithNewOp<CallOp>(
         rewriter, op, newResultTypes, calleeAttr, adapter.getMapOperands(),
-        op.getNumDimsPerMapAttr(), adapter.getArgOperands()
+        op.getNumDimsPerMapAttr(), adapter.getArgOperands(), templateParams
     );
     (void)newOp; // tell compiler it's intentionally unused in release builds
     LLVM_DEBUG(llvm::dbgs() << " with " << newOp << '\n');
@@ -1239,63 +1292,6 @@ LogicalResult instantiateMainStruct(ModuleOp modOp, ConversionTracker &tracker) 
 
 namespace Step2_InstantiateFunctions {
 
-/// TypeConverter for function instantiation that replaces TypeVarType and symbolic
-/// ArrayType/StructType parameters with their concrete values determined by unification.
-class FuncInstTypeConverter : public TemplateParamTypeConverter {
-public:
-  explicit FuncInstTypeConverter(const DenseMap<Attribute, Attribute> &paramNameToConcrete)
-      : TemplateParamTypeConverter(paramNameToConcrete) {
-
-    addConversion([this](ArrayType inputTy) {
-      SmallVector<Attribute> updated;
-      bool changed = false;
-      for (Attribute a : inputTy.getDimensionSizes()) {
-        Attribute converted = convertIfPossible(a);
-        updated.push_back(converted);
-        if (converted != a) {
-          changed = true;
-        }
-      }
-      Type newElemTy = this->convertType(inputTy.getElementType());
-      if (!changed && newElemTy == inputTy.getElementType()) {
-        return inputTy;
-      }
-      return flattenArrayElementType(
-          inputTy.cloneWith(inputTy.getElementType(), updated), newElemTy
-      );
-    });
-
-    addConversion([this](StructType inputTy) -> StructType {
-      if (ArrayAttr params = inputTy.getParams()) {
-        SmallVector<Attribute> updated;
-        bool changed = false;
-        for (Attribute a : params) {
-          if (TypeAttr ta = dyn_cast<TypeAttr>(a)) {
-            Type newTy = this->convertType(ta.getValue());
-            if (newTy != ta.getValue()) {
-              updated.push_back(TypeAttr::get(newTy));
-              changed = true;
-              continue;
-            }
-          } else {
-            Attribute converted = convertIfPossible(a);
-            if (converted != a) {
-              updated.push_back(converted);
-              changed = true;
-              continue;
-            }
-          }
-          updated.push_back(a);
-        }
-        if (changed) {
-          return getStructTypeWithParams(inputTy.getNameRef(), inputTy.getContext(), updated);
-        }
-      }
-      return inputTy;
-    });
-  }
-};
-
 /// Return the callee-side unification-derived value for a template parameter, if any.
 inline static std::optional<Attribute>
 inferUnifiedParam(const UnificationMap &unifyResult, SymbolRefAttr paramName) {
@@ -1342,7 +1338,7 @@ public:
     }
     activeInferences_.emplace_back(func.getOperation(), paramName);
 
-    FuncInstTypeConverter tyConv((paramNameToConcrete_));
+    TemplateParamTypeConverter tyConv(paramNameToConcrete_);
     std::optional<Attribute> inferred;
     bool ambiguous = false;
 
@@ -1432,7 +1428,7 @@ public:
 private:
   std::optional<Attribute> inferFromExplicitNestedCallParams(
       CallOp nestedCall, TemplateOp nestedTemplate, FlatSymbolRefAttr nestedParamName,
-      const FuncInstTypeConverter &tyConv
+      const TemplateParamTypeConverter &tyConv
   ) const {
     ArrayAttr nestedCallParams = nestedCall.getTemplateParamsAttr();
     if (isNullOrEmpty(nestedCallParams)) {
@@ -1491,14 +1487,14 @@ public:
   }
 };
 
-/// Use `FuncInstTypeConverter` to apply the given substitutions from instantiation and verify
+/// Use `TemplateParamTypeConverter` to apply the given substitutions from instantiation and verify
 /// that `CallOp` in the converted function are valid for their respective targets (we can emit a
 /// more helpful error at this point rather than discovering it later when verifying the module).
 static LogicalResult applyBodyConversions(
     CallOp op, FuncDefOp newFunc, const DenseMap<Attribute, Attribute> &paramNameToConcrete
 ) {
   MLIRContext *ctx = op.getContext();
-  FuncInstTypeConverter tyConv(paramNameToConcrete);
+  TemplateParamTypeConverter tyConv(paramNameToConcrete);
   ConversionTarget target = newConverterDefinedTarget<>(tyConv, ctx, tableOffsetIsntSymbol);
   target.addDynamicallyLegalOp<ConstReadOp>([&tyConv](ConstReadOp p) {
     // Legal if it's not in the map of concrete attribute instantiations
@@ -2629,7 +2625,11 @@ public:
     }
 
     LLVM_DEBUG(llvm::dbgs() << "[UpdateFreeFuncCallOpTypes] replaced " << op);
-    CallOp newOp = replaceOpWithNewOp<CallOp>(rewriter, op, targetFunc, op.getArgOperands());
+    ArrayAttr templateParamsAttr = op.getTemplateParamsAttr();
+    ArrayRef<Attribute> templateParams =
+        templateParamsAttr ? templateParamsAttr.getValue() : ArrayRef<Attribute>();
+    CallOp newOp =
+        replaceOpWithNewOp<CallOp>(rewriter, op, targetFunc, op.getArgOperands(), templateParams);
     (void)newOp; // tell compiler it's intentionally unused in release builds
     LLVM_DEBUG(llvm::dbgs() << " with " << newOp << '\n');
     return success();
