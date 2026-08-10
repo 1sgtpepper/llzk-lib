@@ -74,6 +74,7 @@ jobs:
               'test/Transforms/FuseProductControlFlow/*.llzk'
           )
           test "${#test_files[@]}" -eq 46
+          line_count_mismatches=()
 
           for test_file in "${test_files[@]}"; do
             name=$(basename "$test_file" .llzk)
@@ -100,7 +101,12 @@ jobs:
 
             committed_checks=$(grep -c '^// CHECK' "$tested_path/$test_file")
             generated_checks=$(grep -c '^// CHECK' "$output_path/generated-checks.txt")
-            test "$committed_checks" -eq "$generated_checks"
+            if test "$committed_checks" -eq "$generated_checks"; then
+              complete_check_line_count=PASS
+            else
+              complete_check_line_count=FAIL
+              line_count_mismatches+=("$test_file")
+            fi
 
             {
               echo "head=$TARGET_HEAD"
@@ -110,7 +116,7 @@ jobs:
               echo "fresh_generated_check_lines=$generated_checks"
               echo "committed_checks_against_exact_head_output=PASS"
               echo "fresh_generated_checks_against_exact_head_output=PASS"
-              echo "complete_check_line_count=PASS"
+              echo "complete_check_line_count=$complete_check_line_count"
             } > "$output_path/comparison.txt"
           done
 
@@ -190,10 +196,12 @@ jobs:
             echo "transform_fixture_count=${#test_files[@]}"
             echo "transform_committed_checks=PASS"
             echo "transform_fresh_generated_checks=PASS"
-            echo "transform_complete_check_line_counts=PASS"
+            echo "transform_complete_check_line_count_mismatches=${line_count_mismatches[*]}"
             echo "generator_contract=PASS"
             echo "nested_if_recursion_mutation=PASS"
           } > "$OUTPUT_PATH/summary.txt"
+
+          test "${#line_count_mismatches[@]}" -eq 0
 
       - name: Upload replay evidence
         if: always()
