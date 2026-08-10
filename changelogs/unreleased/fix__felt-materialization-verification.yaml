@@ -1,2 +1,2 @@
 fixed:
-  - Validate felt field restrictions consistently for constant and symbolic template arguments
+  - Materialize fieldless felt template constants in the required field and reject known field or value conflicts in concrete and symbolic arguments
