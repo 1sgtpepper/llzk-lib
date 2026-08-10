@@ -1827,7 +1827,9 @@ private:
             llvm::dbgs() << "[InstantiateFuncAtCallOp]   body conversion failed for "
                          << actualNewFuncName << '\n'
         );
-        newFunc->erase();
+        // Remove the operation through the table that inserted it so a failed clone leaves no
+        // stale symbol entry for a later specialization with the same preferred name.
+        symTables.getSymbolTable(parentModule).erase(newFunc);
         return rewriter.notifyMatchFailure(op, [&](Diagnostic &diag) {
           diag.append("failure while creating instantiated function '", actualNewFuncName, '\'');
         });
@@ -1903,7 +1905,12 @@ private:
 
     // Insert before body conversion so nested concrete callees verify from the root module. Use
     // SymbolTable::insert() so both physical symbol names are unique if necessary.
-    symTables.getSymbolTable(newTemplate).insert(newFunc);
+    // Keep the prospective template out of the long-lived collection until its conversion
+    // succeeds. The local table dies before the owner can be published or erased.
+    {
+      SymbolTable newTemplateSymbols(newTemplate);
+      newTemplateSymbols.insert(newFunc);
+    }
     symTables.getSymbolTable(parentModule).insert(newTemplate, Block::iterator(parentTemplate));
     if (failed(applyBodyConversions(op, newFunc, paramNameToConcrete))) {
       std::string newFuncName = newFunc.getSymName().str();
@@ -1911,7 +1918,9 @@ private:
           llvm::dbgs() << "[InstantiateFuncAtCallOp]   body conversion failed for " << newFuncName
                        << '\n'
       );
-      newTemplate->erase();
+      // Erase through the parent table so the operation and its published symbol entry roll back
+      // together. No table for the prospective owner is retained in `symTables`.
+      symTables.getSymbolTable(parentModule).erase(newTemplate);
       return rewriter.notifyMatchFailure(op, [&](Diagnostic &diag) {
         diag.append("failure while creating instantiated function '", newFuncName, '\'');
       });

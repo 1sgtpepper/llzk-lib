@@ -1,7 +1,8 @@
 // RUN: llzk-opt -llzk-flatten=cleanup=disabled -verify-diagnostics -mlir-print-ir-after-failure %s 2>&1 | FileCheck --enable-var-scope %s
 
-// Failed full and partial specializations must publish neither their cloned owners nor delayed
-// diagnostics. A later compatible call must still specialize successfully in the same pass run.
+// Failed full and partial specializations must publish neither their cloned owners, symbol-table
+// entries, nor delayed diagnostics. Later specializations that request the same preferred names
+// must still use those names successfully in the same pass run.
 module attributes {llzk.lang} {
   function.def @full_rollback_inner(
       %arg: !array.type<8,9 x !felt.type<"bn128">>
@@ -33,6 +34,21 @@ module attributes {llzk.lang} {
     %value = function.call @FullRollbackSource::@apply<[8, 9, i1, 2]>(%arg) :
         (!array.type<8,9 x i1>) -> i1
     function.return %value : i1
+  }
+
+  // This distinct source renders the same preferred full-specialization name as the failed clone.
+  poly.template @FullRollbackSource_8_9_b {
+    poly.param @B : index
+
+    function.def @apply() -> index {
+      %value = poly.read_const @B : index
+      function.return %value : index
+    }
+  }
+
+  function.def @call_full_after_rollback() -> index {
+    %value = function.call @FullRollbackSource_8_9_b::@apply<[2]>() : () -> index
+    function.return %value : index
   }
 
   function.def @partial_rollback_inner(
@@ -68,6 +84,27 @@ module attributes {llzk.lang} {
       %value = function.call @PartialRollbackSource::@apply<[8, @M, i1, 2]>(%arg) :
           (!array.type<8,@M x i1>) -> i1
       function.return %value : i1
+    }
+  }
+
+  // This distinct source renders the same preferred reduced-template name as the failed clone.
+  poly.template @PartialRollbackSource_8 {
+    poly.param @M : index
+    poly.param @T : !poly.tvar<@T>
+    poly.param @B
+
+    function.def @apply() -> index {
+      %value = poly.read_const @B : index
+      function.return %value : index
+    }
+  }
+
+  poly.template @PartialRollbackCollisionCaller {
+    poly.param @M : index
+
+    function.def @apply() -> index {
+      %value = function.call @PartialRollbackSource_8::@apply<[@M, i1, 2]>() : () -> index
+      function.return %value : index
     }
   }
 
