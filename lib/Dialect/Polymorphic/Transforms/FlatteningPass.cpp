@@ -411,8 +411,9 @@ public:
   }
 };
 
-/// Converts template parameters whose bindings became concrete, including bindings nested in
-/// compound types.
+/// Apply known template bindings throughout types and type-valued attributes. This converts scalar
+/// type variables, array dimensions and element types, parameterized struct arguments, and POD
+/// record types. Unbound parameters and otherwise unchanged types retain their original form.
 class TemplateParamTypeConverter : public TypeConverter {
   const DenseMap<Attribute, Attribute> &paramNameToValue;
 
@@ -487,6 +488,7 @@ public:
     });
   }
 
+  /// Recursively convert a type-valued attribute; otherwise replace an exact bound parameter.
   Attribute convertAttr(Attribute attr) const {
     if (TypeAttr tyAttr = llvm::dyn_cast<TypeAttr>(attr)) {
       Type convertedTy = convertType(tyAttr.getValue());
@@ -501,11 +503,11 @@ public:
   const DenseMap<Attribute, Attribute> &getParamMap() const { return paramNameToValue; }
 };
 
-/// Clone a deferred template expression and materialize parameters that became concrete. The
-/// reduced template preserves neither their symbols nor type variables, so both value reads and
-/// operation types must be converted before the expression is retained for later instantiation.
-/// An empty result defers the whole partial instantiation when a concrete value's type is not yet
-/// known; removing that value before it can be materialized would lose a required binding.
+/// Clone a target-used template expression and apply every currently concrete value and type
+/// binding. A reduced template no longer owns the removed parameter declarations, so its retained
+/// expression must contain neither reads nor type variables for those parameters. Return an empty
+/// result when a known value still has a non-concrete converted type, blocking that specialization
+/// attempt rather than discarding a binding that cannot yet be materialized.
 static FailureOr<std::optional<TemplateExprOp>> cloneDeferredExpr(
     TemplateExprOp exprOp, const DenseMap<Attribute, Attribute> &paramNameToConcrete,
     SmallVector<Diagnostic> &diagnostics
@@ -595,10 +597,10 @@ convertCalleeSymRefs(SymbolRefAttr callee, const DenseMap<Attribute, Attribute> 
   return asSymbolRefAttr(newPieces);
 }
 
+/// Rewrite callees in a cloned target using concrete type bindings. Materialize explicit nested-call
+/// arguments for removed bindings before the clone enters a reduced template or a parent module.
 static void
 convertCalleesInPlace(Operation *op, const DenseMap<Attribute, Attribute> &paramNameToValue) {
-  // A cloned function may become module-level, so symbolic template arguments on nested calls
-  // must be materialized before verification loses the enclosing template scope.
   TemplateParamTypeConverter tyConv(paramNameToValue);
   op->walk([&paramNameToValue, &tyConv](CallOp callOp) {
     callOp.setCalleeAttr(convertCalleeSymRefs(callOp.getCalleeAttr(), paramNameToValue));
@@ -719,9 +721,10 @@ static bool targetMayUseTemplateExpr(Operation *target, TemplateExprOp exprOp) {
   });
 }
 
-/// Evaluate the `TemplateExprOp`s used by `target` that can be computed from the currently-known
-/// concrete param values, adding results to the map and returning the expressions that must remain
-/// available for a later partial instantiation.
+/// Evaluate target-used `TemplateExprOp`s whose dependencies are concrete, adding their values to
+/// `paramNameToConcrete`. Skip expressions unused by `target`. Return normalized detached clones
+/// for expressions that still depend on remaining parameters; the caller must insert or destroy
+/// every returned clone. Any concrete but malformed or non-foldable expression is a failure.
 static FailureOr<SmallVector<TemplateExprOp>> evaluateTemplateExprs(
     TemplateOp templateOp, Operation *target, DenseMap<Attribute, Attribute> &paramNameToConcrete,
     SmallVector<Diagnostic> &deferredExprDiagnostics
@@ -1164,6 +1167,8 @@ public:
   }
 };
 
+/// Rebuild struct `compute` and `constrain` calls after their struct types change. Retarget the
+/// callee to the converted struct while preserving affine-map and explicit template arguments.
 class CallStructFuncPattern : public OpConversionPattern<CallOp> {
   ConversionTracker &tracker_;
 
@@ -1487,9 +1492,9 @@ public:
   }
 };
 
-/// Use `TemplateParamTypeConverter` to apply the given substitutions from instantiation and verify
-/// that `CallOp` in the converted function are valid for their respective targets (we can emit a
-/// more helpful error at this point rather than discovering it later when verifying the module).
+/// Apply the given template substitutions throughout a cloned function, then verify every nested
+/// `CallOp` against its converted target. Conversion warnings are reported only after both stages
+/// succeed, so a rejected clone cannot leak warnings from work that is rolled back.
 static LogicalResult applyBodyConversions(
     CallOp op, FuncDefOp newFunc, const DenseMap<Attribute, Attribute> &paramNameToConcrete
 ) {
@@ -1522,6 +1527,9 @@ static LogicalResult applyBodyConversions(
   return success();
 }
 
+/// Specialize calls whose target is a free function inside a `poly.template`. The rewrite
+/// materializes every known binding, creates a full clone or a reduced template when concrete
+/// progress is possible, and leaves the call unchanged when no parameter can yet be specialized.
 class InstantiateFuncAtCallOp final : public OpRewritePattern<CallOp> {
   ConversionTracker &tracker_;
 
@@ -2589,10 +2597,10 @@ public:
   }
 };
 
-/// Update CallOp result type based on the updated return type from the target FuncDefOp.
-/// This only applies to free (i.e., non-struct) functions because the functions within structs
-/// only return StructType or nothing and propagating those can result in bringing un-instantiated
-/// types from a templated struct into the current call which will give errors.
+/// Update a free-function call's result types from its target definition while preserving ordered
+/// explicit template arguments. Struct methods are excluded: they return a `StructType` or no value,
+/// and copying a method's declaration type back to its call could reintroduce a still-parameterized
+/// type after caller-side instantiation.
 class UpdateFreeFuncCallOpTypes final : public OpRewritePattern<CallOp> {
   ConversionTracker &tracker_;
 
