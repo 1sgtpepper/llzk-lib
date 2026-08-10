@@ -946,14 +946,14 @@ struct KnownTargetVerifier : public IncludeOpVerifier {
   LogicalResult verifyTemplateParams() override {
     Operation *tgtOp = tgt.getOperation();
     if (TemplateOp tgtOpParent = getParentOfType<TemplateOp>(tgtOp)) {
-      // When the target function is a free function within a TemplateOp, the IncludeOp may have
+      // When the target contract is within a TemplateOp, the IncludeOp may have
       // template parameter instantiations that must be checked against the template parameters.
-      // - If the function type signature references all template parameters, then the parameter
+      // - If the contract signature references all template parameters, then the parameter
       //   instantiation list on the IncludeOp is optional, otherwise it's required.
       // - If present, the instantiation list must provide a value for every template parameter
       //   and the value must be type-compatible with the parameter's declared type (if any).
-      // - If present, the instantiation list must result in a function type signature that can
-      //   be unified with the IncludeOp's operand and result types.
+      // - If present, the instantiation list must result in a contract signature that can be
+      //   unified with the IncludeOp's operand types.
       auto realParams = tgtOpParent.getConstOps<TemplateParamOp>();
       ArrayAttr callParams = includeOp->getTemplateParamsAttr();
 
@@ -1002,7 +1002,7 @@ struct KnownTargetVerifier : public IncludeOpVerifier {
       }
 
       // Check that the provided instantiation values are consistent with what type unification
-      // of the target function types against the call's operand and result types would determine.
+      // of the target contract signature against the IncludeOp's operand types would determine.
       FailureOr<UnificationMap> unifyResult = includeOp->unifyTypeSignature(tgtType);
       // This is already checked by `verifyInputs()`, but `verifyTemplateParams()` is called
       // even if `verifyInputs()` fails for error aggregation, so we still need to return
@@ -1012,7 +1012,7 @@ struct KnownTargetVerifier : public IncludeOpVerifier {
       }
       return includeOp->verifyTemplateParamsMatchInferred(realParams, unifyResult.value());
     } else {
-      // Non-template functions cannot contain template parameter instantiations.
+      // Contracts outside templates cannot have template parameter instantiations.
       return verifyNoTemplateInstantiations();
     }
   }
@@ -1073,7 +1073,7 @@ LogicalResult IncludeOp::verifySymbolUses(SymbolTableCollection &tables) {
   }
 
   // Otherwise, callee must be specified via full path from the root module. Perform the full set of
-  // checks against the known target function.
+  // checks against the known target contract.
   auto tgtOpt = lookupTopLevelSymbol<ContractOp>(
       tables, calleeAttr, getParentOfType<ModuleOp>(getOperation())
   );
