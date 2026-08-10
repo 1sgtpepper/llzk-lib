@@ -1,10 +1,9 @@
 // RUN: llzk-opt --llzk-compute-constrain-to-product="root-struct=A" --llzk-fuse-product-loops %s | FileCheck --enable-var-scope %s
-// REQUIRES: raghav-cf-fusion
 
 module attributes {llzk.lang = "llzk"} {
     poly.template @TA {
-      poly.param @N
-      poly.param @M
+      poly.param @N : index
+      poly.param @M : index
 
       struct.def @A {
           struct.member @arr : !array.type<@N x !felt.type>

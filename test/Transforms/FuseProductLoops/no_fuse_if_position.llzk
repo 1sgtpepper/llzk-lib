@@ -1,0 +1,53 @@
+// RUN: llzk-opt --llzk-fuse-product-loops %s | FileCheck --enable-var-scope %s
+
+module attributes {llzk.lang = "llzk"} {
+  struct.def @DifferentBlocks {
+    struct.member @foo : !felt.type
+
+    // Marked conditionals in mutually exclusive parent blocks are not siblings and cannot fuse.
+    function.def @product(%outer: i1, %condition: i1, %value: !felt.type) -> !struct.type<@DifferentBlocks> {
+      %self = struct.new : <@DifferentBlocks>
+
+      scf.if %outer {
+        scf.if %condition {
+          %zero = felt.const 0
+        } else {
+          %one = felt.const 1
+        } {product_source = "compute"}
+      } else {
+        scf.if %condition {
+          constrain.eq %value, %value : !felt.type
+        } else {
+          constrain.eq %value, %value : !felt.type
+        } {product_source = "constrain"}
+      }
+
+      function.return %self : !struct.type<@DifferentBlocks>
+    }
+  }
+
+  struct.def @ConstrainFirst {
+    struct.member @foo : !felt.type
+
+    // Fusion cannot move a later compute branch ahead of an earlier constrain branch.
+    function.def @product(%condition: i1, %value: !felt.type) -> !struct.type<@ConstrainFirst> {
+      %self = struct.new : <@ConstrainFirst>
+
+      scf.if %condition {
+        constrain.eq %value, %value : !felt.type
+      } else {
+        constrain.eq %value, %value : !felt.type
+      } {product_source = "constrain"}
+
+      scf.if %condition {
+        %two = felt.const 2
+      } else {
+        %three = felt.const 3
+      } {product_source = "compute"}
+
+      function.return %self : !struct.type<@ConstrainFirst>
+    }
+  }
+}
+
+// CHECK-LABEL: module attributes {llzk.lang = "llzk"} {

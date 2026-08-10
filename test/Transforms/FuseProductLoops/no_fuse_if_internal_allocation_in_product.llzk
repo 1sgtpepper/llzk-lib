@@ -1,0 +1,34 @@
+// RUN: llzk-opt --llzk-fuse-product-loops %s | FileCheck --enable-var-scope %s
+
+module attributes {llzk.lang = "llzk"} {
+  struct.def @A {
+    struct.member @foo : !felt.type
+
+    function.def @product(%condition: i1, %value: !felt.type) -> !struct.type<@A> {
+      %self = struct.new : <@A>
+
+      %computed = scf.if %condition -> !felt.type {
+        %zero = felt.const 0
+        scf.yield %zero : !felt.type
+      } else {
+        %one = felt.const 1
+        scf.yield %one : !felt.type
+      } {product_source = "compute"}
+
+      struct.writem %self[@foo] = %computed : <@A>, !felt.type
+
+      // Allocation is observable even when its result is unused, so this branch cannot move.
+      scf.if %condition {
+        %then_array = array.new : !array.type<1 x !felt.type>
+        constrain.eq %value, %value : !felt.type
+      } else {
+        %else_array = array.new : !array.type<1 x !felt.type>
+        constrain.eq %value, %value : !felt.type
+      } {product_source = "constrain"}
+
+      function.return %self : !struct.type<@A>
+    }
+  }
+}
+
+// CHECK-LABEL: module attributes {llzk.lang = "llzk"} {
