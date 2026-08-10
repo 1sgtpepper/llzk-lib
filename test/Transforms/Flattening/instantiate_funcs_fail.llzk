@@ -77,8 +77,6 @@ module attributes {llzk.lang} {
     }
   }
 }
-// The rejected prospective specialization must not survive its nested-call verification failure.
-// CHECK-NOT: function.def @{{"?}}template_b2_8_9
 // CHECK: llzk-flatten failed while instantiating functions in templates
 // -----
 
