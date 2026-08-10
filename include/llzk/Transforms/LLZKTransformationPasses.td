@@ -111,25 +111,29 @@ def ComputeConstrainToProductPass
                         "(default to `@Main`)">];
 }
 
-def FuseProductLoopsPass : LLZKPass<"llzk-fuse-product-loops"> {
+def FuseProductControlFlowPass : LLZKPass<"llzk-fuse-product-control-flow"> {
   let summary =
       "Fuse matching compute/constrain control flow in a @product function";
   let description = [{
-    Fuses unambiguous compute/constrain sibling `scf.for` loops with matching trip counts and
-    same-block sibling `scf.if` ops where the compute op precedes the constrain op, both use the
-    same SSA condition value and have the same else-region presence, and the constrain op is
-    resultless. `scf.if` fusion requires exact SSA value identity for the condition; it does not
-    perform general signal-equivalence analysis.
+    Fuses uniquely matched compute/constrain control-flow pairs in `@product` functions.
+    `scf.for` pairs must be siblings with matching trip counts. `scf.if` pairs must be same-block
+    siblings where the compute op precedes the constrain op, both use the same SSA condition value
+    and have the same else-region presence, and the constrain op is resultless. Conditional fusion
+    requires exact SSA value identity for the condition; it does not perform general
+    signal-equivalence analysis.
 
-    For `scf.if`, fusion is skipped if the moved constrain branch reads or writes storage, calls
-    functions (including compute functions), may trap, or has unknown effects. Constraint movement
-    is limited to `constrain.eq`, `constrain.in`, `llzk.nondet`, nested `scf.if`, speculatable
-    `scf.for`, and operations that MLIR proves pure. Unsupported structured control flow, such as
-    `scf.while`, and operations with allocation effects or unknown effects are rejected. The moved
-    constrain branch may cross only member writes whose value is a direct result of the compute
-    `scf.if`; member reads are neither hoisted nor remapped.
-    All attributes other than `product_source` must match on the paired `scf.if` operations and
-    corresponding terminators; matching attributes are preserved on the fused operations.
+    Each fused conditional branch keeps the compute operations before the cloned constrain
+    operations. Uses of compute-if results in constrain branches are remapped to the corresponding
+    branch yield values. Only member writes whose value is a direct compute-if result may appear
+    between the pair; member reads are neither hoisted nor remapped.
+
+    Conditional fusion is skipped if moved constrain code reads or writes storage, calls functions,
+    allocates, may trap, has unknown effects, or contains unsupported structured control flow such
+    as `scf.while`. Movable constrain code is limited to `constrain.eq`, `constrain.in`,
+    `llzk.nondet`, nested `scf.if`, speculatable `scf.for`, and operations that MLIR proves pure.
+    The fused conditional is marked `product_source = "fused"`. All other attributes must match on
+    the paired conditionals and corresponding `scf.yield` operations and are preserved; their
+    source locations are combined on the fused operations.
   }];
 }
 

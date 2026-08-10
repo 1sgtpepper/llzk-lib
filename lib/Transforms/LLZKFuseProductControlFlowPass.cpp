@@ -1,4 +1,4 @@
-//===-- LLZKFuseProductLoopsPass.cpp ----------------------------*- C++ -*-===//
+//===-- LLZKFuseProductControlFlowPass.cpp ----------------------*- C++ -*-===//
 //
 // Part of the LLZK Project, under the Apache License v2.0.
 // See LICENSE.txt for license information.
@@ -8,7 +8,7 @@
 //===----------------------------------------------------------------------===//
 ///
 /// \file
-/// This file implements the `-llzk-fuse-product-loops` pass.
+/// This file implements the `-llzk-fuse-product-control-flow` pass.
 ///
 //===----------------------------------------------------------------------===//
 
@@ -40,7 +40,7 @@
 
 // Include the generated base pass class definitions.
 namespace llzk {
-#define GEN_PASS_DEF_FUSEPRODUCTLOOPSPASS
+#define GEN_PASS_DEF_FUSEPRODUCTCONTROLFLOWPASS
 #include "llzk/Transforms/LLZKTransformationPasses.h.inc"
 } // namespace llzk
 
@@ -296,8 +296,8 @@ static void eraseDefaultTerminator(Block *block) {
   }
 }
 
-/// Clone compute and constrain branch bodies into `destBlock` and rebuild a compatible yield.
-/// Compute results are remapped to the branch-local values used by constrain operations.
+/// Clone compute operations before constrain operations in `destBlock`, then rebuild its yield.
+/// Validated compute results are remapped to the corresponding branch-local yield values.
 static void cloneIfBranch(
     Block *computeBlock, Block *constrainBlock, Block *destBlock,
     const llvm::DenseMap<Value, unsigned> &valueToResult, OpBuilder &builder
@@ -398,9 +398,8 @@ static void fuseMatchingIfPairs(Region &body, MLIRContext *context) {
   }
 }
 
-/// Determine which ops need to sink past `constraintLoop`, or return failure() if some of these
-/// ops can't be sunk. Conservatively tries to sink all compute ops, but we could do a more precise
-/// analysis here
+/// Collect compute-sourced operations between sibling loops that must move after `constraintLoop`.
+/// Fail if the loops do not share a block or the move would cross already-fused constraint work.
 static FailureOr<SmallVector<Operation *>>
 canPrepareForFusion(scf::ForOp witnessLoop, scf::ForOp constraintLoop) {
   if (witnessLoop->getBlock() != constraintLoop->getBlock()) {
@@ -422,6 +421,8 @@ canPrepareForFusion(scf::ForOp witnessLoop, scf::ForOp constraintLoop) {
   return opsToSink;
 }
 
+/// Move the preflighted compute-only operations after `constraintLoop` in their original order.
+/// Because collection finishes before the first move, failure leaves the IR unchanged.
 static LogicalResult
 prepareForFusion(scf::ForOp witnessLoop, scf::ForOp constraintLoop, IRRewriter &rewriter) {
   auto computeOpsToSink = canPrepareForFusion(witnessLoop, constraintLoop);
@@ -482,8 +483,8 @@ static void fuseMatchingRegionControlFlow(Region &body, MLIRContext *context) {
   fuseMatchingLoopPairs(body, context);
 }
 
-class PassImpl : public llzk::impl::FuseProductLoopsPassBase<PassImpl> {
-  using Base = FuseProductLoopsPassBase<PassImpl>;
+class PassImpl : public llzk::impl::FuseProductControlFlowPassBase<PassImpl> {
+  using Base = FuseProductControlFlowPassBase<PassImpl>;
   using Base::Base;
 
   void runOnOperation() override {
