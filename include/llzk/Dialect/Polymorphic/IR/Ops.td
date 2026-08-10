@@ -272,10 +272,14 @@ def LLZK_UnifiableCastOp : PolymorphicDialectOp<"unifiable_cast", [Pure]> {
     This cast can be introduced instead of the default cast operation to satisfy MLIR's assumptions
     on type equality.
 
+    When the input and result types are identical, this operation folds to its input. Merely
+    unifiable but unequal types do not fold because the replacement value would have the wrong
+    result type.
+
     Example:
     ```llzk
     %0 = some_other_op : !array.type<@N x !felt.type>
-    %1 = unifiable_cast %0 : (!array.type<@N x @felt.type>) -> !array.type<affine_map<()[s0, s1] -> (s0 + s1)> x !felt.type>
+    %1 = poly.unifiable_cast %0 : (!array.type<@N x !felt.type>) -> !array.type<affine_map<()[s0, s1] -> (s0 + s1)> x !felt.type>
     ```
   }];
 
