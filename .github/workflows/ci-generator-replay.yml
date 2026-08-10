@@ -14,7 +14,7 @@ jobs:
     runs-on: ubuntu-24.04
     env:
       BASE_HEAD: e1996219abd1772d5a96ff3d95833697a3363231
-      TARGET_HEAD: c468510373a40038fd14078cf5a6b0fdd338372c
+      TARGET_HEAD: 64a06cff75636449423869bc3e24c119c1b0bd61
       OUTPUT_PATH: /home/runner/work/_temp/llzk-pr484-replay
 
     steps:
@@ -120,6 +120,12 @@ jobs:
             } > "$output_path/comparison.txt"
           done
 
+          if test "${#line_count_mismatches[@]}" -eq 0; then
+            complete_check_line_counts=PASS
+          else
+            complete_check_line_counts=FAIL
+          fi
+
           generator_path="$OUTPUT_PATH/generator-contract"
           mkdir -p "$generator_path"
           generator_test=test/Transforms/generate-test-checks-inline-attributes.llzk
@@ -196,6 +202,7 @@ jobs:
             echo "transform_fixture_count=${#test_files[@]}"
             echo "transform_committed_checks=PASS"
             echo "transform_fresh_generated_checks=PASS"
+            echo "transform_complete_check_line_counts=$complete_check_line_counts"
             echo "transform_complete_check_line_count_mismatches=${line_count_mismatches[*]}"
             echo "generator_contract=PASS"
             echo "nested_if_recursion_mutation=PASS"
