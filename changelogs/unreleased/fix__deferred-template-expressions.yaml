@@ -2,4 +2,4 @@ fixed:
   - Evaluate target-used template expressions when their value and type dependencies become concrete, preserving normalized expressions across partial specialization
   - Preserve ordered explicit arguments on rebuilt nested calls and materialize enclosing bindings inside array, struct, POD, and scalar type arguments
   - Canonicalize equivalent felt spellings before function and struct specialization identity is computed
-  - Roll back failed prospective specializations without leaving generated definitions or emitting warnings from discarded clones
+  - Roll back failed prospective specializations without retaining generated definitions or symbol-table entries, and suppress warnings from discarded clones
