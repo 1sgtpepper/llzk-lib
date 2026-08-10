@@ -1,6 +1,7 @@
 // RUN: llzk-opt -split-input-file -llzk-flatten -verify-diagnostics %s | FileCheck --enable-var-scope %s
 
-// Test instantiation of templates with function member.
+// Signature-inferred index bindings create concrete free-function clones and materialize their
+// parameter reads.
 module attributes {llzk.lang} {
   poly.template @template_f1 {
     poly.param @N : index
@@ -37,8 +38,6 @@ module attributes {llzk.lang} {
     }
   }
 }
-//
-//
 
 // CHECK-LABEL: module attributes {llzk.lang} {
 // CHECK-NEXT:    function.def @template_f1_9_f(%[[VAL_0:[0-9a-zA-Z_\.]+]]: !array.type<8,5,9 x !felt.type>) -> !array.type<9 x !felt.type> {
@@ -69,7 +68,8 @@ module attributes {llzk.lang} {
 
 // -----
 
-// Test transitive instantiation of functions. Also different instantiations of the same function.
+// A concrete outer call specializes its nested target, while a direct call with another binding
+// retains a distinct specialization of that target.
 module attributes {llzk.lang} {
   poly.template @template_g1 {
     poly.param @N : index
@@ -87,7 +87,7 @@ module attributes {llzk.lang} {
     poly.param @T : !poly.tvar<@T>
 
     function.def @f(%inp: !array.type<@N,@M x !poly.tvar<@T>>) -> !poly.tvar<@T> {
-      // Not a common use case to call a more-specific template but it is possible.
+      // The outer signature has more dimensions than the nested target, but both still unify.
       %2 = function.call @template_g1::@f(%inp) : (!array.type<@N,@M x !poly.tvar<@T>>) -> !poly.tvar<@T>
       function.return %2 : !poly.tvar<@T>
     }
@@ -105,9 +105,6 @@ module attributes {llzk.lang} {
     }
   }
 }
-//
-//
-//
 
 // CHECK-LABEL: module attributes {llzk.lang} {
 // CHECK-NEXT:    function.def @template_g1_12_f(%[[VAL_0:[0-9a-zA-Z_\.]+]]: !array.type<8,12 x !felt.type>) -> !felt.type {
@@ -139,6 +136,8 @@ module attributes {llzk.lang} {
 
 // -----
 
+// A nested call with one concrete and one symbolic dimension creates a reduced callee template and
+// retargets the outer body to that partial specialization.
 module attributes {llzk.lang} {
   poly.template @template_h1 {
     poly.param @A : index
@@ -160,7 +159,6 @@ module attributes {llzk.lang} {
     }
   }
 }
-//
 
 // CHECK-LABEL: module attributes {llzk.lang} {
 // CHECK-NEXT:    poly.template @"template_h1_8_\1A" {
@@ -182,8 +180,8 @@ module attributes {llzk.lang} {
 
 // -----
 
-// Similar to previous but there is eventually a concrete instantiation of intermediate partial instantiations.
-// No cleanup runs in this test so the partials are left in the output IR.
+// A later call supplies the final dimension, so both the outer and nested functions become fully
+// specialized; preimage cleanup then removes their parameterized sources.
 module attributes {llzk.lang} {
   poly.template @template_k1 {
     poly.param @A : index
@@ -216,8 +214,6 @@ module attributes {llzk.lang} {
     }
   }
 }
-//
-//
 
 // CHECK-LABEL: module attributes {llzk.lang} {
 // CHECK-NEXT:    function.def @template_k1_8_5_f(%[[VAL_0:[0-9a-zA-Z_\.]+]]: !array.type<8,5 x !felt.type>) -> !felt.type {
@@ -243,7 +239,8 @@ module attributes {llzk.lang} {
 
 // -----
 
-// Test instantiation of function with template parameters specified at call site.
+// An explicit argument specializes a parameter absent from the function signature and materializes
+// its `poly.read_const`.
 module attributes {llzk.lang} {
   poly.template @GlobalFunc {
     poly.param @A : index
@@ -284,7 +281,8 @@ module attributes {llzk.lang} {
 
 // -----
 
-// Test instantiation of function with template parameters specified at call site.
+// A nested explicit argument remains attached while the outer function is cloned, then materializes
+// before the nested target is specialized.
 module attributes {llzk.lang} {
   poly.template @template_b1 {
     poly.param @X : index
@@ -316,8 +314,6 @@ module attributes {llzk.lang} {
     }
   }
 }
-//
-//
 
 // CHECK-LABEL: module attributes {llzk.lang} {
 // CHECK-NEXT:    function.def @template_b1_9_f(%[[VAL_0:[0-9a-zA-Z_\.]+]]: !array.type<8,9 x !felt.type>) -> !felt.type {
@@ -343,7 +339,7 @@ module attributes {llzk.lang} {
 
 // -----
 
-// COM: `read_const` with a variable type
+// A value parameter read through a type-variable result materializes both the value and result type.
 module attributes {llzk.lang} {
   poly.template @T {
     poly.param @Num
@@ -360,7 +356,6 @@ module attributes {llzk.lang} {
     function.return %0 : index
   }
 }
-//
 
 // CHECK-LABEL: module attributes {llzk.lang} {
 // CHECK-NEXT:    function.def @T_89_i_compute() -> index {
