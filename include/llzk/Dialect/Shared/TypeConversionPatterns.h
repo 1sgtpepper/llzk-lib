@@ -206,7 +206,8 @@ public:
   }
 };
 
-/// Pattern for `CallOp`. Converts result types only; the callee symbol is left unchanged.
+/// Pattern for `CallOp`. Converts result types and rewritten operands while preserving the callee
+/// and explicit template arguments.
 class CallOpClassReplacePattern : public mlir::OpConversionPattern<function::CallOp> {
 public:
   CallOpClassReplacePattern(mlir::TypeConverter &converter, mlir::MLIRContext *ctx)
@@ -219,9 +220,12 @@ public:
     if (mlir::failed(getTypeConverter()->convertTypes(op.getResultTypes(), newResultTypes))) {
       return op->emitError("Could not convert Op result types.");
     }
+    mlir::ArrayAttr templateParamsAttr = op.getTemplateParamsAttr();
+    llvm::ArrayRef<mlir::Attribute> templateParams =
+        templateParamsAttr ? templateParamsAttr.getValue() : llvm::ArrayRef<mlir::Attribute>();
     replaceOpWithNewOp<function::CallOp>(
         rewriter, op, newResultTypes, op.getCalleeAttr(), adapter.getMapOperands(),
-        op.getNumDimsPerMapAttr(), adapter.getArgOperands()
+        op.getNumDimsPerMapAttr(), adapter.getArgOperands(), templateParams
     );
     return mlir::success();
   }
