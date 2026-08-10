@@ -73,6 +73,125 @@ module attributes {llzk.lang} {
 
 // -----
 
+// Deferred expression preservation, canonical felt materialization, and source-based reuse meet
+// here. Equivalent felt spellings must converge on the same uniquified specialization without
+// retargeting to the user function that occupies its preferred generated name.
+module attributes {llzk.lang} {
+  poly.template @Seam {
+    poly.param @F : !felt.type<"bn128">
+    poly.param @M : !felt.type<"bn128">
+    poly.expr @Sum {
+      %f = poly.read_const @F : !felt.type<"bn128">
+      %m = poly.read_const @M : !felt.type<"bn128">
+      %sum = felt.add %f, %m : !felt.type<"bn128">, !felt.type<"bn128">
+      poly.yield %sum : !felt.type<"bn128">
+    }
+    function.def @value() -> !felt.type<"bn128"> {
+      %sum = poly.read_const @Sum : !felt.type<"bn128">
+      function.return %sum : !felt.type<"bn128">
+    }
+  }
+
+  function.def @"Seam_f<35:5:bn128>_f<7:5:bn128>_value"() -> !felt.type<"bn128"> {
+    %wrong = felt.const 99 : !felt.type<"bn128">
+    function.return %wrong : !felt.type<"bn128">
+  }
+
+  poly.template @Bridge {
+    poly.param @M : !felt.type<"bn128">
+    function.def @value() -> !felt.type<"bn128"> {
+      %fieldless = function.call @Seam::@value<[#felt<const 35>, @M]>() :
+          () -> !felt.type<"bn128">
+      %integer = function.call @Seam::@value<[35, @M]>() : () -> !felt.type<"bn128">
+      %fielded = function.call @Seam::@value<[
+          #felt<const 35 : !felt.type<"bn128">>, @M
+      ]>() : () -> !felt.type<"bn128">
+      function.return %fielded : !felt.type<"bn128">
+    }
+  }
+
+  function.def @main() -> !felt.type<"bn128"> {
+    %fieldless = function.call @Bridge::@value<[#felt<const 7>]>() :
+        () -> !felt.type<"bn128">
+    %fielded = function.call @Bridge::@value<[
+        #felt<const 7 : !felt.type<"bn128">>
+    ]>() : () -> !felt.type<"bn128">
+    %other = function.call @Bridge::@value<[8]>() : () -> !felt.type<"bn128">
+    function.return %fielded : !felt.type<"bn128">
+  }
+}
+
+// CHECK-LABEL: module attributes {llzk.lang} {
+// CHECK-NEXT:    function.def @"Seam_f<35:5:bn128>_f<7:5:bn128>_value_0"() -> !felt.type<"bn128"> {
+// CHECK-NEXT:      %[[VAL_0:[0-9a-zA-Z_\.]+]] = felt.const  42 : <"bn128">
+// CHECK-NEXT:      function.return %[[VAL_0]] : !felt.type<"bn128">
+// CHECK-NEXT:    }
+// CHECK-NEXT:    function.def @"Seam_f<35:5:bn128>_f<8:5:bn128>_value"() -> !felt.type<"bn128"> {
+// CHECK-NEXT:      %[[VAL_1:[0-9a-zA-Z_\.]+]] = felt.const  43 : <"bn128">
+// CHECK-NEXT:      function.return %[[VAL_1]] : !felt.type<"bn128">
+// CHECK-NEXT:    }
+// CHECK-NEXT:    poly.template @"Seam_f<35:5:bn128>_\1A" {
+// CHECK-NEXT:      poly.param @M : !felt.type<"bn128">
+// CHECK-NEXT:      poly.expr @Sum {
+// CHECK-NEXT:        %[[VAL_2:[0-9a-zA-Z_\.]+]] = felt.const  35 : <"bn128">
+// CHECK-NEXT:        %[[VAL_3:[0-9a-zA-Z_\.]+]] = poly.read_const @M : !felt.type<"bn128">
+// CHECK-NEXT:        %[[VAL_4:[0-9a-zA-Z_\.]+]] = felt.add %[[VAL_3]], %[[VAL_2]] : !felt.type<"bn128">, !felt.type<"bn128">
+// CHECK-NEXT:        poly.yield %[[VAL_4]] : !felt.type<"bn128">
+// CHECK-NEXT:      }
+// CHECK-NEXT:      function.def @value() -> !felt.type<"bn128"> {
+// CHECK-NEXT:        %[[VAL_5:[0-9a-zA-Z_\.]+]] = poly.read_const @Sum : !felt.type<"bn128">
+// CHECK-NEXT:        function.return %[[VAL_5]] : !felt.type<"bn128">
+// CHECK-NEXT:      }
+// CHECK-NEXT:    } {poly.name_pattern = ["Seam_f<35:5:bn128>_", ""]}
+// CHECK-NEXT:    poly.template @Seam {
+// CHECK-NEXT:      poly.param @F : !felt.type<"bn128">
+// CHECK-NEXT:      poly.param @M : !felt.type<"bn128">
+// CHECK-NEXT:      poly.expr @Sum {
+// CHECK-NEXT:        %[[VAL_6:[0-9a-zA-Z_\.]+]] = poly.read_const @F : !felt.type<"bn128">
+// CHECK-NEXT:        %[[VAL_7:[0-9a-zA-Z_\.]+]] = poly.read_const @M : !felt.type<"bn128">
+// CHECK-NEXT:        %[[VAL_8:[0-9a-zA-Z_\.]+]] = felt.add %[[VAL_6]], %[[VAL_7]] : !felt.type<"bn128">, !felt.type<"bn128">
+// CHECK-NEXT:        poly.yield %[[VAL_8]] : !felt.type<"bn128">
+// CHECK-NEXT:      }
+// CHECK-NEXT:      function.def @value() -> !felt.type<"bn128"> {
+// CHECK-NEXT:        %[[VAL_9:[0-9a-zA-Z_\.]+]] = poly.read_const @Sum : !felt.type<"bn128">
+// CHECK-NEXT:        function.return %[[VAL_9]] : !felt.type<"bn128">
+// CHECK-NEXT:      }
+// CHECK-NEXT:    }
+// CHECK-NEXT:    function.def @"Seam_f<35:5:bn128>_f<7:5:bn128>_value"() -> !felt.type<"bn128"> {
+// CHECK-NEXT:      %[[VAL_10:[0-9a-zA-Z_\.]+]] = felt.const  99 : <"bn128">
+// CHECK-NEXT:      function.return %[[VAL_10]] : !felt.type<"bn128">
+// CHECK-NEXT:    }
+// CHECK-NEXT:    function.def @"Bridge_f<7:5:bn128>_value"() -> !felt.type<"bn128"> {
+// CHECK-NEXT:      %[[VAL_11:[0-9a-zA-Z_\.]+]] = function.call @"Seam_f<35:5:bn128>_f<7:5:bn128>_value_0"() : () -> !felt.type<"bn128">
+// CHECK-NEXT:      %[[VAL_12:[0-9a-zA-Z_\.]+]] = function.call @"Seam_f<35:5:bn128>_f<7:5:bn128>_value_0"() : () -> !felt.type<"bn128">
+// CHECK-NEXT:      %[[VAL_13:[0-9a-zA-Z_\.]+]] = function.call @"Seam_f<35:5:bn128>_f<7:5:bn128>_value_0"() : () -> !felt.type<"bn128">
+// CHECK-NEXT:      function.return %[[VAL_13]] : !felt.type<"bn128">
+// CHECK-NEXT:    }
+// CHECK-NEXT:    function.def @"Bridge_f<8:5:bn128>_value"() -> !felt.type<"bn128"> {
+// CHECK-NEXT:      %[[VAL_14:[0-9a-zA-Z_\.]+]] = function.call @"Seam_f<35:5:bn128>_f<8:5:bn128>_value"() : () -> !felt.type<"bn128">
+// CHECK-NEXT:      %[[VAL_15:[0-9a-zA-Z_\.]+]] = function.call @"Seam_f<35:5:bn128>_f<8:5:bn128>_value"() : () -> !felt.type<"bn128">
+// CHECK-NEXT:      %[[VAL_16:[0-9a-zA-Z_\.]+]] = function.call @"Seam_f<35:5:bn128>_f<8:5:bn128>_value"() : () -> !felt.type<"bn128">
+// CHECK-NEXT:      function.return %[[VAL_16]] : !felt.type<"bn128">
+// CHECK-NEXT:    }
+// CHECK-NEXT:    poly.template @Bridge {
+// CHECK-NEXT:      poly.param @M : !felt.type<"bn128">
+// CHECK-NEXT:      function.def @value() -> !felt.type<"bn128"> {
+// CHECK-NEXT:        %[[VAL_17:[0-9a-zA-Z_\.]+]] = function.call @"Seam_f<35:5:bn128>_\1A"::@value<[@M]>() : () -> !felt.type<"bn128">
+// CHECK-NEXT:        %[[VAL_18:[0-9a-zA-Z_\.]+]] = function.call @"Seam_f<35:5:bn128>_\1A"::@value<[@M]>() : () -> !felt.type<"bn128">
+// CHECK-NEXT:        %[[VAL_19:[0-9a-zA-Z_\.]+]] = function.call @"Seam_f<35:5:bn128>_\1A"::@value<[@M]>() : () -> !felt.type<"bn128">
+// CHECK-NEXT:        function.return %[[VAL_19]] : !felt.type<"bn128">
+// CHECK-NEXT:      }
+// CHECK-NEXT:    }
+// CHECK-NEXT:    function.def @main() -> !felt.type<"bn128"> {
+// CHECK-NEXT:      %[[VAL_20:[0-9a-zA-Z_\.]+]] = function.call @"Bridge_f<7:5:bn128>_value"() : () -> !felt.type<"bn128">
+// CHECK-NEXT:      %[[VAL_21:[0-9a-zA-Z_\.]+]] = function.call @"Bridge_f<7:5:bn128>_value"() : () -> !felt.type<"bn128">
+// CHECK-NEXT:      %[[VAL_22:[0-9a-zA-Z_\.]+]] = function.call @"Bridge_f<8:5:bn128>_value"() : () -> !felt.type<"bn128">
+// CHECK-NEXT:      function.return %[[VAL_21]] : !felt.type<"bn128">
+// CHECK-NEXT:    }
+// CHECK-NEXT:  }
+
+// -----
+
 // Distinct source paths may render the same preferred specialization name. Each sibling module
 // must retain its own clone, while repeated calls within that source reuse it.
 module attributes {llzk.lang} {
