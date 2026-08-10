@@ -14,7 +14,7 @@ jobs:
     runs-on: ubuntu-24.04
     env:
       TARGET_HEAD: 40dd084b612517146fafbd8146168ecdae0858f9
-      OUTPUT_PATH: ${{ runner.temp }}/llzk-pr484-output
+      OUTPUT_PATH: /home/runner/work/_temp/llzk-pr484-output
 
     steps:
       - name: Check out validation workflow
@@ -121,7 +121,7 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: pr484-fusion-guard-output-${{ github.sha }}
-          path: ${{ runner.temp }}/llzk-pr484-output
+          path: /home/runner/work/_temp/llzk-pr484-output
           if-no-files-found: error
           retention-days: 7
           compression-level: 0
