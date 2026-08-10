@@ -63,6 +63,8 @@ def FlatteningPass : LLZKPass<"llzk-flatten"> {
       to `compute()` functions and unroll loops
     - Preserve template expressions needed by partial specializations until
       their remaining parameters become concrete
+    - Preserve and materialize explicit template arguments on nested calls as
+      enclosing template parameters become concrete
     - Unroll loops
   }];
   // Implementation note: These options should be kept in sync with
