@@ -16,18 +16,25 @@ def RedundantReadAndWriteEliminationPass
     : LLZKPass<"llzk-duplicate-read-write-elim"> {
   let summary = "Remove redundant reads and writes";
   let description = [{
-    Remove struct-member and array reads or writes that repeat the same access.
+    Remove redundant or unnecessary reads and writes to struct members, arrays,
+    globals, and RAM. Global writes are removed when they are overwritten or
+    write an already-known value. RAM stores require the same translated address
+    SSA value.
+
     Struct-member accesses match only when the base, member, table offset,
     affine map metadata, and translated affine operands match. Omitted
     member-read offsets and member writes denote the current row.
+
+    Stateful reads are reused when the current analysis state proves the read
+    observes the same value. Writes and stores update that known state, while
+    unknown or non-read state effects invalidate it.
   }];
 }
 
 def RedundantOperationEliminationPass : LLZKPass<"llzk-duplicate-op-elim"> {
   let summary = "Remove redundant operations";
   let description = [{
-    Remove llzk and arith dialect operations that produce the same results
-    as previously executed operations.
+    Remove equivalent memory-effect-free operations and duplicate LLZK constraints.
 
     Pass should be run after `llzk-duplicate-read-write-elim` for maximum effect.
   }];
@@ -99,7 +106,7 @@ def ComputeConstrainToProductPass
                 "struct with a single @product function";
   let description = summary;
   let options = [Option<"rootStruct", "root-struct", "std::string",
-                        /* default */ "\"@Main\"",
+                        /* default */ "\"Main\"",
                         "Root struct at which to start alignment "
                         "(default to `@Main`)">];
 }
@@ -117,6 +124,25 @@ def EnforceNoMemberOverwritePass : LLZKPass<"llzk-enforce-no-overwrite"> {
       attempt to perform any repairs (e.g. SSA-ifying overwritten struct
       members, or default-initializing unwritten members). This pass
       overapproximates conditionals, and can result in false positives.
+  }];
+}
+
+def InlineFreeFunctionsPass : LLZKPass<"llzk-inline-free-functions"> {
+  let summary = "Inline calls to free functions";
+  let description = [{
+    Inlines `function.call` operations inside `function.def` bodies when the
+    target is a free `function.def` directly inside the pass's root
+    `builtin.module`. Calls to functions in nested or included modules, and
+    calls outside `function.def` bodies, are left unchanged. After inlining,
+    root free functions that have no remaining symbol uses anywhere in the
+    module are erased. This cleanup applies to every non-external root free
+    function, regardless of its symbol visibility or whether any call to it
+    was inlined.
+
+    Inlining is best effort: free functions that participate in a call
+    cycle are skipped (inlining one would re-materialize its calls
+    forever). If inlining a callee fails, its remaining calls are left in
+    place with a warning while processing continues with other callees.
   }];
 }
 
