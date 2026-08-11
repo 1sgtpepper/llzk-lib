@@ -1,0 +1,40 @@
+// RUN: not --crash llzk-opt -llzk-duplicate-op-elim %s
+
+// Mutual recursion is a valid symbol-use shape in LLZK.  The redundant-op
+// pass recursively classifies nested constrain calls without a visited set,
+// so this valid input overflows the compiler stack while checking whether the
+// call is purposeless.  The expected result is normal completion; on the
+// current revision the command terminates with SIGSEGV (exit status 139), with
+// the repeating frames rooted at callsPurposelessConstrainFunc and
+// isPurposelessConstrainFunc.
+module attributes {llzk.lang} {
+  struct.def @CycleA {
+    function.def @compute(%other: !struct.type<@CycleB>) -> !struct.type<@CycleA> {
+      %self = struct.new : !struct.type<@CycleA>
+      function.return %self : !struct.type<@CycleA>
+    }
+
+    function.def @constrain(
+        %self: !struct.type<@CycleA>, %other: !struct.type<@CycleB>
+    ) {
+      function.call @CycleB::@constrain(%other, %self) :
+          (!struct.type<@CycleB>, !struct.type<@CycleA>) -> ()
+      function.return
+    }
+  }
+
+  struct.def @CycleB {
+    function.def @compute(%other: !struct.type<@CycleA>) -> !struct.type<@CycleB> {
+      %self = struct.new : !struct.type<@CycleB>
+      function.return %self : !struct.type<@CycleB>
+    }
+
+    function.def @constrain(
+        %self: !struct.type<@CycleB>, %other: !struct.type<@CycleA>
+    ) {
+      function.call @CycleA::@constrain(%other, %self) :
+          (!struct.type<@CycleA>, !struct.type<@CycleB>) -> ()
+      function.return
+    }
+  }
+}
