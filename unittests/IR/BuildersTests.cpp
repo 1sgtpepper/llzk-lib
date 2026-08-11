@@ -113,6 +113,20 @@ TEST_F(TemplateBuilderTests, testInsertAndLookupParam) {
   ASSERT_TRUE(mlir::succeeded(param));
 }
 
+TEST_F(TemplateBuilderTests, testPartialNamePatternSurvivesClone) {
+  auto location = mlir::UnknownLoc::get(&ctx);
+  mlir::OpBuilder builder(&ctx);
+  auto tmpl = createTemplate(location);
+  auto pattern =
+      builder.getArrayAttr({builder.getStringAttr("testTemplate_"), builder.getUnitAttr()});
+  tmpl->setAttr("poly.name_pattern", pattern);
+
+  mlir::OwningOpRef<mlir::Operation *> clonedOperation(tmpl->clone());
+  auto clonedTemplate = mlir::cast<polymorphic::TemplateOp>(clonedOperation.get());
+
+  EXPECT_EQ(clonedTemplate->getAttr("poly.name_pattern"), pattern);
+}
+
 TEST_F(TemplateBuilderTests, testInsertAndLookupExpr) {
   auto location = mlir::UnknownLoc::get(&ctx);
 
