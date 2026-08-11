@@ -22,6 +22,7 @@
 #include "llzk/Dialect/Felt/IR/Ops.h"
 #include "llzk/Dialect/Function/IR/Ops.h"
 #include "llzk/Transforms/LLZKLoweringUtils.h"
+#include "llzk/Util/Constants.h"
 #include "llzk/Util/DynamicAPIntHelper.h"
 
 #include <mlir/IR/BuiltinOps.h>
@@ -289,6 +290,11 @@ class PassImpl : public r1cs::impl::R1CSLoweringPassBase<PassImpl> {
     if (auto it = rewrites.find(root); it != rewrites.end()) {
       return it->second;
     }
+
+    // Use an insertion guard to restore the builder's insertion point after this function.
+    // This avoids invalid references that could occur in the caller after executing this
+    // function since `handleAddOrSub` sets the insertion point to an op that it may erase.
+    OpBuilder::InsertionGuard guard(builder);
 
     SmallVector<Value, 16> postOrder;
     getPostOrder(root, postOrder);
@@ -628,7 +634,9 @@ class PassImpl : public r1cs::impl::R1CSLoweringPassBase<PassImpl> {
     // Step 4: For every struct member we a) create a signaldefop and b) add that signal to our
     // outputs
     DenseMap<StringRef, Value> memberSignalMap;
-    uint32_t signalDefCntr = 0;
+    // Label 0 belongs to the implicit constant-one wire in the binary R1CS
+    // format. Keep source signal labels compatible with binary export.
+    uint32_t signalDefCntr = 1;
     for (auto member : structDef.getMemberDefs()) {
       r1cs::PublicAttr pubAttr;
       if (member.hasPublicAttr()) {
@@ -710,7 +718,6 @@ class PassImpl : public r1cs::impl::R1CSLoweringPassBase<PassImpl> {
 
         // If both sides are degree 2, isolate one side
         if (degLhs == 2 && degRhs == 2) {
-          builder.setInsertionPoint(eqOp);
           std::string auxName = R1CS_AUXILIARY_MEMBER_PREFIX + std::to_string(auxCounter++);
           MemberDefOp auxMember = addAuxMember(structDef, auxName, lhs.getType());
           Value aux = builder.create<MemberReadOp>(
