@@ -8,6 +8,7 @@ permissions:
   contents: read
   checks: write
   pull-requests: write
+# publish-tests creates a check run and PR comment.
 
 jobs:
   run:
