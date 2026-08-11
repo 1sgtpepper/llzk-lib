@@ -1,0 +1,31 @@
+// RUN: llzk-opt -llzk-duplicate-read-write-elim %s 2>&1 | FileCheck %s
+
+// A dynamic write may alias a later constant-index write.  For the concrete
+// input %idx == 0, the read must observe 2, but the current pass retains the
+// dynamic child after the constant write and returns the stale 1 value.
+module attributes {llzk.lang} {
+  function.def @dynamic_then_constant_alias(
+      %idx: index
+  ) -> !felt.type {
+    %first = felt.const 1
+    %second = felt.const 2
+    %arr = array.new %first, %first : !array.type<2 x !felt.type>
+    array.write %arr[%idx] = %first : !array.type<2 x !felt.type>, !felt.type
+    %zero = arith.constant 0 : index
+    array.write %arr[%zero] = %second : !array.type<2 x !felt.type>, !felt.type
+    %observed = array.read %arr[%idx] : !array.type<2 x !felt.type>, !felt.type
+    function.return %observed : !felt.type
+  }
+}
+
+// CHECK-LABEL: module attributes {llzk.lang} {
+// CHECK-NEXT:    function.def @dynamic_then_constant_alias(%[[VAL_0:[0-9a-zA-Z_\.]+]]: index) -> !felt.type {
+// CHECK-NEXT:      %[[VAL_1:[0-9a-zA-Z_\.]+]] = felt.const  1
+// CHECK-NEXT:      %[[VAL_2:[0-9a-zA-Z_\.]+]] = felt.const  2
+// CHECK-NEXT:      %[[VAL_3:[0-9a-zA-Z_\.]+]] = array.new %[[VAL_1]], %[[VAL_1]] : <2 x !felt.type>
+// CHECK-NEXT:      array.write %[[VAL_3]]{{\[}}%[[VAL_0]]] = %[[VAL_1]] : <2 x !felt.type>, !felt.type
+// CHECK-NEXT:      %[[VAL_4:[0-9a-zA-Z_\.]+]] = arith.constant 0 : index
+// CHECK-NEXT:      array.write %[[VAL_3]]{{\[}}%[[VAL_4]]] = %[[VAL_2]] : <2 x !felt.type>, !felt.type
+// CHECK-NEXT:      function.return %[[VAL_1]] : !felt.type
+// CHECK-NEXT:    }
+// CHECK-NEXT:  }
