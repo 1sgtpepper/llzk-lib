@@ -210,12 +210,12 @@ def process_source_lines(source_lines, note, args):
         source_segments[-1].append(line + "\n")
     return source_segments
 
-def process_attribute_definition(line, attribute_namer, output):
+def process_attribute_definition(line, attribute_namer, output_segment):
     m = ATTR_DEF_RE.match(line)
     if m:
         attribute_name = attribute_namer.generate_name(m.group(1))
         line = '// CHECK: #[[' + attribute_name + ':[0-9a-zA-Z_\\.]+]] =' + line[len(m.group(0)):] + '\n'
-        output.write(line)
+        output_segment.append(line)
     return bool(m)
 
 def process_attribute_references(line, attribute_namer):
@@ -332,7 +332,7 @@ def main():
             continue
 
         # Check if this is an attribute definition and process it
-        if process_attribute_definition(input_line, attribute_namer, output):
+        if process_attribute_definition(input_line, attribute_namer, output_segments[-1]):
             continue
 
         # Lines with blocks begin with a ^. These lines have a trailing comment
