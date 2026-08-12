@@ -71,7 +71,7 @@ jobs:
           for relative_name in changed:
               source = root / relative_name
               lines = source.read_text().splitlines()
-              run_lines = [line[9:] for line in lines if line.startswith("// RUN: ")]
+              run_lines = [line[len("// RUN: "):] for line in lines if line.startswith("// RUN: ")]
               for run_number, run_line in enumerate(run_lines, 1):
                   file_check = re.search(r"\|\s*FileCheck\b(.*)$", run_line)
                   if not file_check:
