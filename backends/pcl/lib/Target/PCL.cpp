@@ -94,7 +94,7 @@ class SexpCache {
 public:
   /// If the s-expression is a success, map it to the value.
   ///
-  /// Returns the s-expression intact to facilitate using this method
+  /// Returns the s-expression intact to faciliate using this method
   /// as a pass-through.
   FailureOr<pcl::Sexp> map(Value v, FailureOr<pcl::Sexp> s) {
     if (succeeded(s)) {
