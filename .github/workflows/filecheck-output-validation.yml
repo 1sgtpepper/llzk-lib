@@ -1,0 +1,132 @@
+name: FileCheck output validation
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+
+jobs:
+  capture:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout exact validation head
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: cachix/install-nix-action@d1ca217b388ee87b2507a9a93bf01368bde7cec2
+        with:
+          install_url: https://releases.nixos.org/nix/nix-2.23.3/install
+          github_access_token: "${{ secrets.GITHUB_TOKEN }}"
+
+      - name: Set Git credentials
+        run: |
+          git config --global 'url.https://api@github.com/'.insteadOf 'https://github.com/'
+          git config --global 'url.https://ssh@github.com/'.insteadOf 'ssh://git@github.com/'
+          git config --global 'url.https://git@github.com/'.insteadOf 'git@github.com:'
+
+      - uses: cachix/cachix-action@v17
+        with:
+          name: veridise-public
+          authToken: '${{ secrets.CACHIX_PUBLIC_TOKEN }}'
+
+      - name: Build exact-head tools and run the repository tests
+        run: nix --print-build-logs build '.#debugGCC'
+
+      - name: Capture producer output and generator checks
+        env:
+          BASE_REF: 0d652966c80f3149aec874cc0572909bf7a61bda
+        run: |
+          mkdir -p artifacts
+          python3 - <<'PY'
+          import os
+          import re
+          import shlex
+          import subprocess
+          import sys
+          from pathlib import Path
+
+          root = Path.cwd()
+          output_dir = root / "artifacts"
+          base_ref = os.environ["BASE_REF"]
+          changed = subprocess.check_output(
+              ["git", "diff", "--name-only", f"{base_ref}...HEAD", "--", "*.llzk"],
+              text=True,
+          ).splitlines()
+          env = os.environ.copy()
+          env["PATH"] = f"{root / 'result' / 'bin'}:{env['PATH']}"
+          manifest = []
+
+          for relative_name in changed:
+              source = root / relative_name
+              lines = source.read_text().splitlines()
+              run_lines = [line[9:] for line in lines if line.startswith("// RUN: ")]
+              for run_number, run_line in enumerate(run_lines, 1):
+                  file_check = re.search(r"\|\s*FileCheck\b(.*)$", run_line)
+                  if not file_check:
+                      continue
+                  producer = run_line[: file_check.start()].rstrip()
+                  producer = producer.replace("%s", shlex.quote(str(source)))
+                  stem = relative_name.replace("/", "__").removesuffix(".llzk")
+                  prefix_match = re.search(
+                      r"--check-prefix(?:es)?=([A-Za-z0-9_,]+)", file_check.group(1)
+                  )
+                  prefixes = (prefix_match.group(1) if prefix_match else "CHECK").split(",")
+                  raw_stem = f"{stem}.run{run_number}"
+                  result = subprocess.run(
+                      ["bash", "-o", "pipefail", "-c", producer],
+                      cwd=root,
+                      env=env,
+                      capture_output=True,
+                      text=True,
+                  )
+                  raw_path = output_dir / f"{raw_stem}.stdout.txt"
+                  stderr_path = output_dir / f"{raw_stem}.stderr.txt"
+                  raw_path.write_text(result.stdout)
+                  stderr_path.write_text(result.stderr)
+                  for prefix in prefixes:
+                      generated = subprocess.run(
+                          [
+                              sys.executable,
+                              "scripts/generate-test-checks.py",
+                              "--check-prefix",
+                              prefix,
+                          ],
+                          cwd=root,
+                          env=env,
+                          input=result.stdout,
+                          capture_output=True,
+                          text=True,
+                      )
+                      generated_path = output_dir / f"{raw_stem}.{prefix}.generated.txt"
+                      generated_path.write_text(generated.stdout)
+                      if generated.returncode:
+                          (output_dir / f"{raw_stem}.{prefix}.generator.stderr.txt").write_text(
+                              generated.stderr
+                          )
+                  manifest.append(
+                      "\t".join(
+                          [
+                              relative_name,
+                              str(run_number),
+                              str(result.returncode),
+                              producer,
+                              raw_stem,
+                          ]
+                      )
+                  )
+
+          (output_dir / "manifest.tsv").write_text("\n".join(manifest) + "\n")
+          print("Captured", len(manifest), "FileCheck producer pipelines")
+          PY
+
+      - name: Upload exact-head output
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: filecheck-output-${{ github.event.pull_request.head.sha }}
+          path: artifacts
