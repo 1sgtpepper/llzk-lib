@@ -12,8 +12,7 @@
 #include "llzk/Analysis/AnalysisUtil.h"
 #include "llzk/Analysis/ConstraintDependencyGraph.h"
 #include "llzk/Analysis/SourceRef.h"
-#include "llzk/Dialect/Felt/IR/Attrs.h"
-#include "llzk/Dialect/Felt/IR/Types.h"
+#include "llzk/Dialect/Global/IR/Ops.h"
 #include "llzk/Dialect/LLZK/IR/Ops.h"
 #include "llzk/Dialect/Polymorphic/IR/Ops.h"
 #include "llzk/Dialect/Verif/Util/ForbiddenPreconditionInfluence.h"
@@ -22,6 +21,7 @@
 #include "llzk/Util/ErrorHelper.h"
 #include "llzk/Util/SymbolHelper.h"
 #include "llzk/Util/SymbolTableLLZK.h"
+#include "llzk/Util/TypeHelper.h"
 #include "llzk/Util/Walk.h"
 
 #include <mlir/Dialect/Arith/IR/Arith.h>
@@ -52,7 +52,6 @@
 
 using namespace mlir;
 using namespace llzk::polymorphic;
-using namespace llzk::felt;
 using namespace llzk::component;
 using namespace llzk::function;
 
@@ -778,29 +777,58 @@ LogicalResult IncludeOp::verifyTemplateParamCompatibility(
       return success();
     }
   }
-  if (std::optional<Type> declaredType = targetParam.getTypeOpt()) {
-    // Note: `declaredType` is restricted by `isValidConstReadType()`
-    bool compatible = false;
-    if (llvm::isa<TypeVarType>(*declaredType)) {
-      compatible = llvm::isa<TypeAttr>(paramFromIncludeOp);
-    } else if (llvm::isa<FeltType>(*declaredType)) {
-      compatible = llvm::isa<FeltConstAttr, IntegerAttr>(paramFromIncludeOp) &&
-                   isValidConstReadType(llvm::cast<TypedAttr>(paramFromIncludeOp).getType());
-    } else if (llvm::isa<IndexType, IntegerType>(*declaredType)) {
-      // Note: Just like struct type instantiation, there is no restriction on passing a
-      // larger value to an `i1`. The flattening pass will treat 0 as false and any other
-      // value as true (but give a warning if it's not 1).
-      compatible = llvm::isa<IntegerAttr>(paramFromIncludeOp) &&
-                   isValidConstReadType(llvm::cast<TypedAttr>(paramFromIncludeOp).getType());
-    } else {
-      llvm_unreachable("inconsistent with `isValidConstReadType()`");
+  // Note: `declaredType` is restricted by `isValidConstReadType()`
+  std::optional<Type> declaredType = targetParam.getTypeOpt();
+  bool compatible = !declaredType;
+  if (auto sym = llvm::dyn_cast<SymbolRefAttr>(paramFromIncludeOp)) {
+    bool resolvedLocal = false;
+    if (sym.getNestedReferences().empty()) {
+      SymbolTableCollection tables;
+      FailureOr<TemplateOp> parentTemplate = getConstResolutionTemplate(tables, *this);
+      if (failed(parentTemplate)) {
+        return failure();
+      }
+      if (TemplateOp p = *parentTemplate) {
+        auto binding = p.getConstNamed<TemplateSymbolBindingOpInterface>(sym.getRootReference());
+        if (binding) {
+          resolvedLocal = true;
+          if (declaredType) {
+            compatible = isTemplateParamTypeCompatible(binding.getTypeOpt(), *declaredType);
+          }
+        }
+      }
     }
-    if (!compatible) {
-      return this->emitOpError().append(
-          "instantiation value '", paramFromIncludeOp, "' is not compatible with parameter \"@",
-          targetParam.getName(), "\" type restriction ", *declaredType
-      );
+    if (!resolvedLocal) {
+      SymbolTableCollection tables;
+      auto lookup = lookupTopLevelSymbol(tables, sym, *this);
+      if (failed(lookup)) {
+        return failure();
+      }
+      auto global = llvm::dyn_cast<global::GlobalDefOp>(lookup->get());
+      if (!global) {
+        return this->emitOpError().append(
+            "instantiation value '", paramFromIncludeOp, "' refers to a '",
+            lookup->get()->getName(), "' which is not allowed"
+        );
+      }
+      if (!global.isConstant()) {
+        return this->emitOpError().append(
+            "instantiation value '", paramFromIncludeOp,
+            "' refers to a global that is not marked as 'const'"
+        );
+      }
+      if (declaredType) {
+        compatible = isTemplateParamTypeCompatible(global.getType(), *declaredType);
+      }
     }
+  } else if (declaredType) {
+    compatible = succeeded(materializeTemplateParamValue(paramFromIncludeOp, declaredType));
+  }
+  if (declaredType && !compatible) {
+    return this->emitOpError().append(
+        "instantiation value '", paramFromIncludeOp, "' is not compatible with parameter \"@",
+        targetParam.getName(), "\" type restriction ", *declaredType
+    );
   }
   return success();
 }
@@ -825,6 +853,29 @@ LogicalResult IncludeOp::verifyTemplateParamsMatchInferred(
     const UnificationMap &unifications
 ) {
   ArrayAttr callParams = this->getTemplateParamsAttr();
+  if (isNullOrEmpty(callParams)) {
+    for (TemplateParamOp paramOp : targetParamDefs) {
+      if (std::optional<Type> declaredType = paramOp.getTypeOpt();
+          declaredType && llvm::isa<TypeVarType>(*declaredType)) {
+        continue;
+      }
+      auto it = unifications.find({FlatSymbolRefAttr::get(paramOp.getNameAttr()), Side::RHS});
+      if (it == unifications.end()) {
+        // No inferred value means the signature did not expose this parameter to this include.
+        continue;
+      }
+      if (!it->second) {
+        return this->emitOpError().append(
+            "cannot infer template instantiation value for parameter \"@", paramOp.getName(),
+            "\" from contract type signature"
+        );
+      }
+      if (failed(verifyTemplateParamCompatibility(it->second, paramOp))) {
+        return failure();
+      }
+    }
+    return success();
+  }
   assert(!isNullOrEmpty(callParams) && "pre-condition");
   assert((callParams.size() == llvm::range_size(targetParamDefs)) && "pre-condition");
 
@@ -836,10 +887,29 @@ LogicalResult IncludeOp::verifyTemplateParamsMatchInferred(
       }
     }
     auto it = unifications.find({FlatSymbolRefAttr::get(paramOp.getNameAttr()), Side::RHS});
-    if (it != unifications.end() && !typeParamsUnify({attr}, {it->second})) {
+    if (it != unifications.end() && !it->second) {
+      return this->emitOpError().append(
+          "cannot infer a unique template instantiation value for parameter \"@", paramOp.getName(),
+          "\" from contract type signature"
+      );
+    }
+    if (it != unifications.end() && failed(verifyTemplateParamCompatibility(it->second, paramOp))) {
+      return failure();
+    }
+    bool valuesUnify = true;
+    if (it != unifications.end()) {
+      SymbolTableCollection tables;
+      FailureOr<bool> resolved =
+          resolvedTemplateParamValuesUnify(tables, *this, attr, it->second, paramOp.getTypeOpt());
+      if (failed(resolved)) {
+        return failure();
+      }
+      valuesUnify = *resolved;
+    }
+    if (!valuesUnify) {
       return this->emitOpError().append(
           "template instantiation value '", attr, "' for parameter \"@", paramOp.getName(),
-          "\" conflicts with value '", it->second, "' inferred from function type signature"
+          "\" conflicts with value '", it->second, "' inferred from contract type signature"
       );
     }
   }
@@ -893,18 +963,18 @@ struct KnownTargetVerifier : public IncludeOpVerifier {
   LogicalResult verifyTemplateParams() override {
     Operation *tgtOp = tgt.getOperation();
     if (TemplateOp tgtOpParent = getParentOfType<TemplateOp>(tgtOp)) {
-      // When the target function is a free function within a TemplateOp, the IncludeOp may have
+      // When the target contract is within a TemplateOp, the IncludeOp may have
       // template parameter instantiations that must be checked against the template parameters.
-      // - If the function type signature references all template parameters, then the parameter
+      // - If the contract signature references all template parameters, then the parameter
       //   instantiation list on the IncludeOp is optional, otherwise it's required.
       // - If present, the instantiation list must provide a value for every template parameter
       //   and the value must be type-compatible with the parameter's declared type (if any).
-      // - If present, the instantiation list must result in a function type signature that can
-      //   be unified with the IncludeOp's operand and result types.
+      // - If present, the instantiation list must result in a contract signature that can be
+      //   unified with the IncludeOp's operand types.
       auto realParams = tgtOpParent.getConstOps<TemplateParamOp>();
       ArrayAttr callParams = includeOp->getTemplateParamsAttr();
 
-      // When there is no instantiation list, just ensure that it's not required.
+      // When every parameter appears in the signature, infer and validate omitted arguments.
       if (isNullOrEmpty(callParams)) {
         llvm::SmallDenseSet<SymbolRefAttr> referencedInSignature;
         llzk::getSymbolsUsedIn(tgtType.getInputs(), referencedInSignature);
@@ -914,7 +984,11 @@ struct KnownTargetVerifier : public IncludeOpVerifier {
           return referencedInSignature.contains(FlatSymbolRefAttr::get(p.getNameAttr()));
         });
         if (allParamsReferenced) {
-          return success();
+          FailureOr<UnificationMap> unifyResult = includeOp->unifyTypeSignature(tgtType);
+          if (failed(unifyResult)) {
+            return failure();
+          }
+          return includeOp->verifyTemplateParamsMatchInferred(realParams, unifyResult.value());
         }
         return includeOp->emitOpError().append(
             "must provide template instantiation parameters when calling \"@", tgt.getSymName(),
@@ -945,7 +1019,7 @@ struct KnownTargetVerifier : public IncludeOpVerifier {
       }
 
       // Check that the provided instantiation values are consistent with what type unification
-      // of the target function types against the call's operand and result types would determine.
+      // of the target contract signature against the IncludeOp's operand types would determine.
       FailureOr<UnificationMap> unifyResult = includeOp->unifyTypeSignature(tgtType);
       // This is already checked by `verifyInputs()`, but `verifyTemplateParams()` is called
       // even if `verifyInputs()` fails for error aggregation, so we still need to return
@@ -955,7 +1029,7 @@ struct KnownTargetVerifier : public IncludeOpVerifier {
       }
       return includeOp->verifyTemplateParamsMatchInferred(realParams, unifyResult.value());
     } else {
-      // Non-template functions cannot contain template parameter instantiations.
+      // Contracts outside templates cannot have template parameter instantiations.
       return verifyNoTemplateInstantiations();
     }
   }
@@ -1016,7 +1090,7 @@ LogicalResult IncludeOp::verifySymbolUses(SymbolTableCollection &tables) {
   }
 
   // Otherwise, callee must be specified via full path from the root module. Perform the full set of
-  // checks against the known target function.
+  // checks against the known target contract.
   auto tgtOpt = lookupTopLevelSymbol<ContractOp>(
       tables, calleeAttr, getParentOfType<ModuleOp>(getOperation())
   );
