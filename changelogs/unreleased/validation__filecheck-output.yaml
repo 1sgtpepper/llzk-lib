@@ -1,0 +1,2 @@
+fixed:
+  - Capture exact FileCheck producer output and generated checks in fork CI for validation
