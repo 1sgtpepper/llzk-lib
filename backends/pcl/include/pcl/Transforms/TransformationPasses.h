@@ -1,4 +1,4 @@
-//===-- ConversionPasses.h --------------------------------------*- C++ -*-===//
+//===-- TransformationPasses.h ----------------------------------*- C++ -*-===//
 //
 // Part of the LLZK Project, under the Apache License v2.0.
 // See LICENSE.txt for license information.
@@ -9,16 +9,12 @@
 
 #pragma once
 
-#include "llzk/Config/Config.h"
 #include "llzk/Pass/PassBase.h"
-#include "llzk/Transforms/Parsers.h"
 
 namespace pcl {
 
-enum class LlzkToPclMode : std::uint8_t { Full, Stubbed };
-
 #define GEN_PASS_DECL
 #define GEN_PASS_REGISTRATION
-#include "pcl/Conversion/ConversionPasses.h.inc"
+#include "pcl/Transforms/TransformationPasses.h.inc"
 
 } // namespace pcl
