@@ -30,7 +30,7 @@
 
 // Include the generated base pass class definitions.
 namespace llzk {
-#define GEN_PASS_DEF_FUSEPRODUCTLOOPSPASS
+#define GEN_PASS_DEF_FUSEPRODUCTCONTROLFLOWPASS
 #include "llzk/Transforms/LLZKTransformationPasses.h.inc"
 } // namespace llzk
 
