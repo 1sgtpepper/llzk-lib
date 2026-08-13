@@ -642,7 +642,9 @@ class PassImpl : public llzk::impl::RedundantReadAndWriteEliminationPassBase<Pas
     BlockWriteCandidates writeCandidates;
     auto clearTreeWriteCandidates = [](KnownState &knownState) {
       for (auto &[_, valueTree] : knownState.values) {
-        valueTree->clearLastWritesInSubtree();
+        if (valueTree) {
+          valueTree->clearLastWritesInSubtree();
+        }
       }
     };
 

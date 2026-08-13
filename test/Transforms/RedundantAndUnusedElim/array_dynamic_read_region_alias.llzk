@@ -39,3 +39,29 @@ module attributes {llzk.lang} {
 // CHECK-NEXT:      function.return %[[VAL_7]] : !felt.type
 // CHECK-NEXT:    }
 // CHECK-NEXT:  }
+
+// -----
+
+module attributes {llzk.lang} {
+  // A zero-index insert replaces the whole root tree in one exclusive arm. The
+  // join must tolerate that the two arms have no common value tree.
+  function.def @zero_index_insert_region(%cond: i1) -> !felt.type {
+    %zero = felt.const 0
+    %one = felt.const 1
+    %arr = array.new %zero, %zero : !array.type<2 x !felt.type>
+    %replacement = array.new %one, %one : !array.type<2 x !felt.type>
+    %i0 = arith.constant 0 : index
+    %result = scf.if %cond -> !felt.type {
+      array.insert %arr[] = %replacement : !array.type<2 x !felt.type>, !array.type<2 x !felt.type>
+      %observed = array.read %arr[%i0] : !array.type<2 x !felt.type>, !felt.type
+      scf.yield %observed : !felt.type
+    } else {
+      %observed = array.read %arr[%i0] : !array.type<2 x !felt.type>, !felt.type
+      scf.yield %observed : !felt.type
+    }
+    function.return %result : !felt.type
+  }
+}
+
+// CHECK-LABEL: module attributes {llzk.lang} {
+// CHECK-NEXT:    function.def @zero_index_insert_region
