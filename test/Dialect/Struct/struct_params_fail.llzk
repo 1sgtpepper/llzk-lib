@@ -756,8 +756,8 @@ module attributes {llzk.lang, llzk.main = !struct.type<@T::@S<[!felt.type]>>} {
 
 // -----
 
-#map = affine_map<(i) -> (i)>
 // An affine map is deferred only for an integer-like restriction, not a felt restriction.
+#map = affine_map<(i) -> (i)>
 module attributes {llzk.lang} {
   poly.template @T {
     poly.param @N : !felt.type<"bn128">
