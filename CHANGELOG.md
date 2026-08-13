@@ -274,7 +274,7 @@
     - "`llzk-poly-lowering-pass` - Lowers the degree of all polynomial equations to a specified maximum"
     - "`llzk-inline-structs` - Inline nested structs (i.e., subcomponents)"
     - "`llzk-compute-constrain-to-product` - Replace @compute/@constrain with @product function"
-    - "`llzk-fuse-product-loops` - Fuse matching witness/constraint loops in a @product function"
+    - "`llzk-fuse-product-control-flow` - Fuse matching compute/constrain control flow in a @product function"
   - Conversion:
     - "`llzk-to-pcl` - Rewrite constraints to be compatible with PCL constraints"
     - "`llzk-r1cs-lowering` - Rewrite constraints to be compatible with R1CS constraints"

@@ -1,4 +1,4 @@
-//===-- LLZKFuseProductLoopsPass.cpp ----------------------------*- C++ -*-===//
+//===-- LLZKFuseProductControlFlowPass.cpp ----------------------*- C++ -*-===//
 //
 // Part of the LLZK Project, under the Apache License v2.0.
 // See LICENSE.txt for license information.
@@ -8,7 +8,7 @@
 //===----------------------------------------------------------------------===//
 ///
 /// \file
-/// This file implements the `-llzk-fuse-product-loops` pass.
+/// This file implements the `-llzk-fuse-product-control-flow` pass.
 ///
 //===----------------------------------------------------------------------===//
 
@@ -205,8 +205,8 @@ static LogicalResult fuseMatchingLoopPairs(Region &body, MLIRContext *context) {
   return success();
 }
 
-class PassImpl : public llzk::impl::FuseProductLoopsPassBase<PassImpl> {
-  using Base = FuseProductLoopsPassBase<PassImpl>;
+class PassImpl : public llzk::impl::FuseProductControlFlowPassBase<PassImpl> {
+  using Base = FuseProductControlFlowPassBase<PassImpl>;
   using Base::Base;
 
   void runOnOperation() override {
