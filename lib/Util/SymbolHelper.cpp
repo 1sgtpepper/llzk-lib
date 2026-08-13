@@ -214,7 +214,7 @@ public:
 
 LogicalResult verifyTemplateSymbolType(
     TemplateSymbolBindingOpInterface binding, SymbolRefAttr param, Type parameterizedType,
-    Operation *origin, std::optional<Type> requiredParamType
+    Operation *origin, std::optional<Type> requiredParamType, std::optional<Location> requiredParamLoc
 ) {
   if (requiredParamType) {
     std::optional<Type> actualType = binding.getTypeOpt();
@@ -225,6 +225,9 @@ LogicalResult verifyTemplateSymbolType(
             "' that must have type ", *requiredParamType
         );
         diag.attachNote(binding->getLoc()).append("template parameter declared here");
+        if (requiredParamLoc) {
+          diag.attachNote(*requiredParamLoc).append("template parameter declared here");
+        }
         return diag;
       }
       auto diag = origin->emitError().append(
@@ -232,6 +235,9 @@ LogicalResult verifyTemplateSymbolType(
           "' with type ", *actualType, " but expected ", *requiredParamType
       );
       diag.attachNote(binding->getLoc()).append("template parameter declared here");
+      if (requiredParamLoc) {
+        diag.attachNote(*requiredParamLoc).append("template parameter declared here");
+      }
       return diag;
     }
   }
@@ -492,7 +498,9 @@ LogicalResult verifyParamOfType(
     if (*parent) {
       if (auto b =
               parent->getConstNamed<TemplateSymbolBindingOpInterface>(param.getRootReference())) {
-        return verifyTemplateSymbolType(b, param, parameterizedType, origin, requiredParamType);
+        return verifyTemplateSymbolType(
+            b, param, parameterizedType, origin, requiredParamType, requiredParamLoc
+        );
       }
     }
   }
@@ -726,9 +734,6 @@ verifyStructTypeResolution(SymbolTableCollection &tables, StructType ty, Operati
   }
   // If there are any SymbolRefAttr parameters on the StructType, ensure those refs are valid.
   if (ArrayAttr tyParams = ty.getParams()) {
-    if (failed(verifyParamsOfType(tables, tyParams.getValue(), ty, origin))) {
-      return failure(); // verifyParamsOfType() already emits a sufficient error message
-    }
     if (TemplateOp parent = getParentOfType<TemplateOp>(defForType.getOperation())) {
       for (auto [paramOp, value] :
            llvm::zip_equal(parent.getConstOps<TemplateParamOp>(), tyParams.getValue())) {
@@ -741,6 +746,9 @@ verifyStructTypeResolution(SymbolTableCollection &tables, StructType ty, Operati
           return failure();
         }
       }
+    }
+    if (failed(verifyParamsOfType(tables, tyParams.getValue(), ty, origin))) {
+      return failure(); // verifyParamsOfType() already emits a sufficient error message
     }
   }
   return defForType;
