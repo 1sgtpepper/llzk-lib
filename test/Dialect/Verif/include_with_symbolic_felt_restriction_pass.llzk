@@ -1,4 +1,4 @@
-// RUN: llzk-opt -split-input-file %s
+// RUN: llzk-opt -split-input-file %s | FileCheck %s
 
 // Accepted includes cover explicit and inferred symbols, qualified constant globals, fielded and
 // fieldless felt constants, and matching concrete evidence.

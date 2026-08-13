@@ -1,4 +1,4 @@
-// RUN: llzk-opt -split-input-file %s
+// RUN: llzk-opt -split-input-file %s | FileCheck %s
 
 // A fielded local symbolic argument satisfies a fieldless struct restriction.
 module attributes {llzk.lang} {
