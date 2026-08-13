@@ -721,7 +721,7 @@ module attributes {llzk.lang, llzk.main = !struct.type<@T::@S<[index]>>} {
 // -----
 
 // An IntegerAttr cannot instantiate a type-variable parameter.
-// expected-error@+1 {{instantiation value '35' is not compatible with parameter "@Ty" type restriction '!poly.tvar<@Ty>'}}
+// expected-error@+1 {{instantiation value '35 : index' is not compatible with parameter "@Ty" type restriction '!poly.tvar<@Ty>'}}
 module attributes {llzk.lang, llzk.main = !struct.type<@T::@S<[35]>>} {
   poly.template @T {
     poly.param @Ty : !poly.tvar<@Ty>
@@ -772,7 +772,7 @@ module attributes {llzk.lang} {
   }
 
   struct.def @Use {
-    // expected-error@+1 {{instantiation value '#map' is not compatible with parameter "@N" type restriction '!felt.type<"bn128">'}}
+    // expected-error@+1 {{instantiation value 'affine_map<(d0) -> (d0)>' is not compatible with parameter "@N" type restriction '!felt.type<"bn128">'}}
     struct.member @value : !struct.type<@T::@S<[#map]>>
 
     function.def @compute() -> !struct.type<@Use> {
