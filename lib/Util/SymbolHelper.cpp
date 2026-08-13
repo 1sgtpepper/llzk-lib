@@ -214,7 +214,8 @@ public:
 
 LogicalResult verifyTemplateSymbolType(
     TemplateSymbolBindingOpInterface binding, SymbolRefAttr param, Type parameterizedType,
-    Operation *origin, std::optional<Type> requiredParamType, std::optional<Location> requiredParamLoc
+    Operation *origin, std::optional<Type> requiredParamType,
+    std::optional<Location> requiredParamLoc
 ) {
   if (requiredParamType) {
     std::optional<Type> actualType = binding.getTypeOpt();
@@ -459,8 +460,7 @@ LogicalResult verifyTemplateParamValueCompatibility(
       }
       if (!global.isConstant()) {
         auto diag = origin->emitOpError().append(
-            "instantiation value '", value,
-            "' refers to a global that is not marked as 'const'"
+            "instantiation value '", value, "' refers to a global that is not marked as 'const'"
         );
         diag.attachNote(global.getLoc()).append("global defined here");
         return diag;
@@ -740,9 +740,9 @@ verifyStructTypeResolution(SymbolTableCollection &tables, StructType ty, Operati
         std::optional<Type> restriction = paramOp.getTypeOpt();
         if (auto symbolValue = llvm::dyn_cast<SymbolRefAttr>(value);
             symbolValue && restriction &&
-            failed(verifyParamOfType(
-                tables, symbolValue, ty, origin, restriction, paramOp.getLoc()
-            ))) {
+            failed(
+                verifyParamOfType(tables, symbolValue, ty, origin, restriction, paramOp.getLoc())
+            )) {
           return failure();
         }
       }
