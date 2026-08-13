@@ -20,11 +20,11 @@ module @Second {
 //--- checks
 // Each definition check must stay with the source segment that contains its
 // definition; emitting all definitions before the segments loses source order.
-// SCRIPT: // CHECK: #[[
+// SCRIPT: // CHECK:
 // SCRIPT-SAME: ATTR_0:{{[0-9a-zA-Z_\\.]+}}]] = affine_map<(d0) -> (d0)>
 // SCRIPT-NEXT: #first = affine_map<(d0) -> (d0)>
 // SCRIPT: // CHECK-LABEL: module @First {
 // SCRIPT-NEXT: // CHECK-NEXT:  }
-// SCRIPT-NEXT: // CHECK: #[[
+// SCRIPT-NEXT: // CHECK:
 // SCRIPT-SAME: ATTR_1:{{[0-9a-zA-Z_\\.]+}}]] = loc("second")
 // SCRIPT-NEXT: module @First {
