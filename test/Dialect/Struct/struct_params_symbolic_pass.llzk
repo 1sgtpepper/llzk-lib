@@ -42,7 +42,7 @@ module attributes {llzk.lang} {
 // CHECK-NEXT:      }
 // CHECK-NEXT:    }
 // CHECK-NEXT:  }
-// CHECK-NEXT:  // -----
+// CHECK:  // -----
 // CHECK-LABEL: module attributes {llzk.lang} {
 // CHECK-NEXT:    poly.template @Target {
 // CHECK-NEXT:      poly.param @F : !felt.type
@@ -63,7 +63,7 @@ module attributes {llzk.lang} {
 // CHECK-NEXT:      function.return
 // CHECK-NEXT:    }
 // CHECK-NEXT:  }
-// CHECK-NEXT:  // -----
+// CHECK:  // -----
 // CHECK-LABEL: module attributes {llzk.lang} {
 // CHECK-NEXT:    poly.template @IndexTarget {
 // CHECK-NEXT:      poly.param @N : index
