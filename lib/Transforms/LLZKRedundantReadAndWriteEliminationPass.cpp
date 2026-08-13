@@ -428,9 +428,12 @@ struct BlockWriteCandidates {
 ValueMap intersectValueMap(const ValueMap &lhs, const ValueMap &rhs) {
   ValueMap res;
   for (const auto &[id, lhsValTree] : lhs) {
-    if (auto it = rhs.find(id); it != rhs.end()) {
+    if (auto it = rhs.find(id); it != rhs.end() && lhsValTree && it->second) {
       const auto &rhsValTree = it->second;
-      res[id] = greatestCommonSubtree(lhsValTree, rhsValTree);
+      // A missing common subtree is the conservative no-common-fact state.
+      if (auto common = greatestCommonSubtree(lhsValTree, rhsValTree)) {
+        res[id] = std::move(common);
+      }
     }
   }
   return res;
