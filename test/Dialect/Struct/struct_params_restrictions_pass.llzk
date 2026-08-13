@@ -1,4 +1,4 @@
-// RUN: llzk-opt -split-input-file %s
+// RUN: llzk-opt -split-input-file %s | FileCheck %s
 
 // A fieldless concrete felt can be materialized in the required field.
 module attributes {llzk.lang, llzk.main = !struct.type<@T::@S<[#felt<const 35>]>>} {

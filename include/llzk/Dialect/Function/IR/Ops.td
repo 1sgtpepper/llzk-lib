@@ -345,8 +345,8 @@ def CallOp : FunctionDialectOp<
     parameter list supplies one argument per `poly.param`, in declaration order. The list may be
     omitted only when every parameter appears in the function signature; omitted values are
     inferred by unifying the call's operand and result types with that signature. The `?` wildcard
-    is valid only for a parameter with a `poly.tvar` restriction and leaves that type for a later
-    inference transformation.
+    is valid for any parameter with a `poly.tvar` restriction and leaves that type for later
+    inference based on the body of the callee function.
 
     Every explicit or inferred argument must satisfy its `poly.param` type restriction. If the
     function signature independently infers a value for an explicitly supplied parameter, all

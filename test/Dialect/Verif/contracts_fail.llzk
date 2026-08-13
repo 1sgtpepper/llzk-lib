@@ -27,6 +27,7 @@ module attributes {llzk.lang} {
     }
   }
   module @globals {
+    // expected-note@+1 {{global defined here}}
     global.def @G : !felt.type<"bn128"> = 35
   }
   verif.contract @Wrapper for @MutableGlobalInitializedInclude::@token () {
@@ -50,6 +51,7 @@ module attributes {llzk.lang} {
     }
   }
   module @globals {
+    // expected-note@+1 {{global defined here}}
     global.def @G : !felt.type<"bn128">
   }
   verif.contract @Wrapper for @MutableGlobalUninitializedInclude::@token () {

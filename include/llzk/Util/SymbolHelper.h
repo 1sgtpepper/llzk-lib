@@ -30,6 +30,7 @@ class FuncDefOp;
 } // namespace function
 namespace polymorphic {
 class TemplateOp;
+class TemplateParamOp;
 } // namespace polymorphic
 
 llvm::SmallVector<mlir::StringRef> getNames(mlir::SymbolRefAttr ref);
@@ -210,11 +211,18 @@ inline mlir::FailureOr<SymbolLookupResult<T>> resolveCallable(mlir::CallOpInterf
 mlir::FailureOr<polymorphic::TemplateOp>
 getConstResolutionTemplate(mlir::SymbolTableCollection &tables, mlir::Operation *origin);
 
+/// Verify one explicit or inferred template argument against its declared parameter restriction.
+/// Symbol references are resolved in the context of `origin`; diagnostics are emitted on it.
+mlir::LogicalResult verifyTemplateParamValueCompatibility(
+    mlir::Operation *origin, mlir::Attribute value, polymorphic::TemplateParamOp targetParam
+);
+
 /// Ensure that the given symbol (that is used as a parameter of the given type) can be resolved.
 /// If `requiredParamType` is provided, any resolved template symbol must satisfy that restriction.
 mlir::LogicalResult verifyParamOfType(
     mlir::SymbolTableCollection &tables, mlir::SymbolRefAttr param, mlir::Type structOrArrayType,
-    mlir::Operation *origin, std::optional<mlir::Type> requiredParamType = std::nullopt
+    mlir::Operation *origin, std::optional<mlir::Type> requiredParamType = std::nullopt,
+    std::optional<mlir::Location> requiredParamLoc = std::nullopt
 );
 
 /// Ensure that any symbols that appear within the given attributes (that are parameters of the
