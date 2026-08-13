@@ -15,6 +15,21 @@ module attributes {llzk.lang, llzk.main = !struct.type<@T::@S<[#felt<const 35>]>
   }
 }
 
+// CHECK-LABEL: module attributes {llzk.lang, llzk.main = !struct.type<@T::@S<[#felt<const 35>]>>} {
+// CHECK-NEXT:    poly.template @T {
+// CHECK-NEXT:      poly.param @N : !felt.type<"bn128">
+// CHECK-NEXT:      struct.def @S {
+// CHECK-NEXT:        function.def @compute() -> !struct.type<@T::@S<[@N]>> attributes {function.allow_witness} {
+// CHECK-NEXT:          %[[VAL_0:[0-9a-zA-Z_\.]+]] = struct.new : <@T::@S<[@N]>>
+// CHECK-NEXT:          function.return %[[VAL_0]] : !struct.type<@T::@S<[@N]>>
+// CHECK-NEXT:        }
+// CHECK-NEXT:        function.def @constrain(%[[VAL_1:[0-9a-zA-Z_\.]+]]: !struct.type<@T::@S<[@N]>>) attributes {function.allow_constraint} {
+// CHECK-NEXT:          function.return
+// CHECK-NEXT:        }
+// CHECK-NEXT:      }
+// CHECK-NEXT:    }
+// CHECK-NEXT:  }
+
 // -----
 
 // A concrete TypeAttr can instantiate a type-only restriction.
@@ -31,6 +46,21 @@ module attributes {llzk.lang, llzk.main = !struct.type<@T::@S<[!felt.type]>>} {
     }
   }
 }
+
+// CHECK-LABEL: module attributes {llzk.lang, llzk.main = !struct.type<@T::@S<[!felt.type]>>} {
+// CHECK-NEXT:    poly.template @T {
+// CHECK-NEXT:      poly.param @N : !poly.tvar<@N>
+// CHECK-NEXT:      struct.def @S {
+// CHECK-NEXT:        function.def @compute() -> !struct.type<@T::@S<[@N]>> attributes {function.allow_witness} {
+// CHECK-NEXT:          %[[VAL_0:[0-9a-zA-Z_\.]+]] = struct.new : <@T::@S<[@N]>>
+// CHECK-NEXT:          function.return %[[VAL_0]] : !struct.type<@T::@S<[@N]>>
+// CHECK-NEXT:        }
+// CHECK-NEXT:        function.def @constrain(%[[VAL_1:[0-9a-zA-Z_\.]+]]: !struct.type<@T::@S<[@N]>>) attributes {function.allow_constraint} {
+// CHECK-NEXT:          function.return
+// CHECK-NEXT:        }
+// CHECK-NEXT:      }
+// CHECK-NEXT:    }
+// CHECK-NEXT:  }
 
 // -----
 
@@ -49,6 +79,21 @@ module attributes {llzk.lang, llzk.main = !struct.type<@T::@S<[#felt<const 35 : 
   }
 }
 
+// CHECK-LABEL: module attributes {llzk.lang, llzk.main = !struct.type<@T::@S<[#felt<const 35 : <"bn128">>]>>} {
+// CHECK-NEXT:    poly.template @T {
+// CHECK-NEXT:      poly.param @N : !felt.type<"bn128">
+// CHECK-NEXT:      struct.def @S {
+// CHECK-NEXT:        function.def @compute() -> !struct.type<@T::@S<[@N]>> attributes {function.allow_witness} {
+// CHECK-NEXT:          %[[VAL_0:[0-9a-zA-Z_\.]+]] = struct.new : <@T::@S<[@N]>>
+// CHECK-NEXT:          function.return %[[VAL_0]] : !struct.type<@T::@S<[@N]>>
+// CHECK-NEXT:        }
+// CHECK-NEXT:        function.def @constrain(%[[VAL_1:[0-9a-zA-Z_\.]+]]: !struct.type<@T::@S<[@N]>>) attributes {function.allow_constraint} {
+// CHECK-NEXT:          function.return
+// CHECK-NEXT:        }
+// CHECK-NEXT:      }
+// CHECK-NEXT:    }
+// CHECK-NEXT:  }
+
 // -----
 
 // An integer argument can also be materialized in the required field.
@@ -65,6 +110,21 @@ module attributes {llzk.lang, llzk.main = !struct.type<@T::@S<[35]>>} {
     }
   }
 }
+
+// CHECK-LABEL: module attributes {llzk.lang, llzk.main = !struct.type<@T::@S<[35]>>} {
+// CHECK-NEXT:    poly.template @T {
+// CHECK-NEXT:      poly.param @N : !felt.type<"bn128">
+// CHECK-NEXT:      struct.def @S {
+// CHECK-NEXT:        function.def @compute() -> !struct.type<@T::@S<[@N]>> attributes {function.allow_witness} {
+// CHECK-NEXT:          %[[VAL_0:[0-9a-zA-Z_\.]+]] = struct.new : <@T::@S<[@N]>>
+// CHECK-NEXT:          function.return %[[VAL_0]] : !struct.type<@T::@S<[@N]>>
+// CHECK-NEXT:        }
+// CHECK-NEXT:        function.def @constrain(%[[VAL_1:[0-9a-zA-Z_\.]+]]: !struct.type<@T::@S<[@N]>>) attributes {function.allow_constraint} {
+// CHECK-NEXT:          function.return
+// CHECK-NEXT:        }
+// CHECK-NEXT:      }
+// CHECK-NEXT:    }
+// CHECK-NEXT:  }
 
 // -----
 
@@ -94,66 +154,6 @@ module attributes {llzk.lang} {
   }
 }
 
-// CHECK-LABEL: module attributes {llzk.lang, llzk.main = !struct.type<@T::@S<[#felt<const 35>]>>} {
-// CHECK-NEXT:    poly.template @T {
-// CHECK-NEXT:      poly.param @N : !felt.type<"bn128">
-// CHECK-NEXT:      struct.def @S {
-// CHECK-NEXT:        function.def @compute() -> !struct.type<@T::@S<[@N]>> attributes {function.allow_witness} {
-// CHECK-NEXT:          %[[VAL_0:[0-9a-zA-Z_\.]+]] = struct.new : <@T::@S<[@N]>>
-// CHECK-NEXT:          function.return %[[VAL_0]] : !struct.type<@T::@S<[@N]>>
-// CHECK-NEXT:        }
-// CHECK-NEXT:        function.def @constrain(%[[VAL_1:[0-9a-zA-Z_\.]+]]: !struct.type<@T::@S<[@N]>>) attributes {function.allow_constraint} {
-// CHECK-NEXT:          function.return
-// CHECK-NEXT:        }
-// CHECK-NEXT:      }
-// CHECK-NEXT:    }
-// CHECK-NEXT:  }
-// CHECK:  // -----
-// CHECK-LABEL: module attributes {llzk.lang, llzk.main = !struct.type<@T::@S<[!felt.type]>>} {
-// CHECK-NEXT:    poly.template @T {
-// CHECK-NEXT:      poly.param @N : !poly.tvar<@N>
-// CHECK-NEXT:      struct.def @S {
-// CHECK-NEXT:        function.def @compute() -> !struct.type<@T::@S<[@N]>> attributes {function.allow_witness} {
-// CHECK-NEXT:          %[[VAL_0:[0-9a-zA-Z_\.]+]] = struct.new : <@T::@S<[@N]>>
-// CHECK-NEXT:          function.return %[[VAL_0]] : !struct.type<@T::@S<[@N]>>
-// CHECK-NEXT:        }
-// CHECK-NEXT:        function.def @constrain(%[[VAL_1:[0-9a-zA-Z_\.]+]]: !struct.type<@T::@S<[@N]>>) attributes {function.allow_constraint} {
-// CHECK-NEXT:          function.return
-// CHECK-NEXT:        }
-// CHECK-NEXT:      }
-// CHECK-NEXT:    }
-// CHECK-NEXT:  }
-// CHECK:  // -----
-// CHECK-LABEL: module attributes {llzk.lang, llzk.main = !struct.type<@T::@S<[#felt<const 35 : <"bn128">>]>>} {
-// CHECK-NEXT:    poly.template @T {
-// CHECK-NEXT:      poly.param @N : !felt.type<"bn128">
-// CHECK-NEXT:      struct.def @S {
-// CHECK-NEXT:        function.def @compute() -> !struct.type<@T::@S<[@N]>> attributes {function.allow_witness} {
-// CHECK-NEXT:          %[[VAL_0:[0-9a-zA-Z_\.]+]] = struct.new : <@T::@S<[@N]>>
-// CHECK-NEXT:          function.return %[[VAL_0]] : !struct.type<@T::@S<[@N]>>
-// CHECK-NEXT:        }
-// CHECK-NEXT:        function.def @constrain(%[[VAL_1:[0-9a-zA-Z_\.]+]]: !struct.type<@T::@S<[@N]>>) attributes {function.allow_constraint} {
-// CHECK-NEXT:          function.return
-// CHECK-NEXT:        }
-// CHECK-NEXT:      }
-// CHECK-NEXT:    }
-// CHECK-NEXT:  }
-// CHECK:  // -----
-// CHECK-LABEL: module attributes {llzk.lang, llzk.main = !struct.type<@T::@S<[35]>>} {
-// CHECK-NEXT:    poly.template @T {
-// CHECK-NEXT:      poly.param @N : !felt.type<"bn128">
-// CHECK-NEXT:      struct.def @S {
-// CHECK-NEXT:        function.def @compute() -> !struct.type<@T::@S<[@N]>> attributes {function.allow_witness} {
-// CHECK-NEXT:          %[[VAL_0:[0-9a-zA-Z_\.]+]] = struct.new : <@T::@S<[@N]>>
-// CHECK-NEXT:          function.return %[[VAL_0]] : !struct.type<@T::@S<[@N]>>
-// CHECK-NEXT:        }
-// CHECK-NEXT:        function.def @constrain(%[[VAL_1:[0-9a-zA-Z_\.]+]]: !struct.type<@T::@S<[@N]>>) attributes {function.allow_constraint} {
-// CHECK-NEXT:          function.return
-// CHECK-NEXT:        }
-// CHECK-NEXT:      }
-// CHECK-NEXT:    }
-// CHECK-NEXT:  }
-// CHECK:  // -----
 // CHECK: #[[$ATTR_0:[0-9a-zA-Z_\.]+]] = affine_map<(d0) -> (d0)>
 // CHECK-LABEL: module attributes {llzk.lang} {
 // CHECK-NEXT:    poly.template @T {
