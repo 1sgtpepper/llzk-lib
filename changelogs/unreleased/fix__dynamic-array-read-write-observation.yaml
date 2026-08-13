@@ -1,0 +1,2 @@
+fixed:
+  - Preserve constant-index array writes that a live dynamic-index read may observe.

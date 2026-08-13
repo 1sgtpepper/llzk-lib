@@ -97,6 +97,20 @@ module attributes {llzk.lang} {
     }
     function.return %observed : !felt.type
   }
+
+  // A live dynamic read may observe the earlier constant-index write, so the
+  // later constant-index write must not remove it.
+  function.def @constant_write_then_dynamic_read_then_constant_write(%idx: index) -> !felt.type {
+    %zero = felt.const 0
+    %one = felt.const 1
+    %two = felt.const 2
+    %arr = array.new %zero, %zero : !array.type<2 x !felt.type>
+    %i0 = arith.constant 0 : index
+    array.write %arr[%i0] = %one : !array.type<2 x !felt.type>, !felt.type
+    %observed = array.read %arr[%idx] : !array.type<2 x !felt.type>, !felt.type
+    array.write %arr[%i0] = %two : !array.type<2 x !felt.type>, !felt.type
+    function.return %observed : !felt.type
+  }
 }
 
 // CHECK-LABEL: module attributes {llzk.lang} {
@@ -170,5 +184,16 @@ module attributes {llzk.lang} {
 // CHECK-NEXT:        scf.yield %[[VAL_36]] : !felt.type
 // CHECK-NEXT:      }
 // CHECK-NEXT:      function.return %[[VAL_39]] : !felt.type
+// CHECK-NEXT:    }
+// CHECK-NEXT:    function.def @constant_write_then_dynamic_read_then_constant_write(%[[VAL_42:[0-9a-zA-Z_\.]+]]: index) -> !felt.type {
+// CHECK-NEXT:      %[[VAL_43:[0-9a-zA-Z_\.]+]] = felt.const  0
+// CHECK-NEXT:      %[[VAL_44:[0-9a-zA-Z_\.]+]] = felt.const  1
+// CHECK-NEXT:      %[[VAL_45:[0-9a-zA-Z_\.]+]] = felt.const  2
+// CHECK-NEXT:      %[[VAL_46:[0-9a-zA-Z_\.]+]] = array.new %[[VAL_43]], %[[VAL_43]] : <2 x !felt.type>
+// CHECK-NEXT:      %[[VAL_47:[0-9a-zA-Z_\.]+]] = arith.constant 0 : index
+// CHECK-NEXT:      array.write %[[VAL_46]]{{\[}}%[[VAL_47]]] = %[[VAL_44]] : <2 x !felt.type>, !felt.type
+// CHECK-NEXT:      %[[VAL_48:[0-9a-zA-Z_\.]+]] = array.read %[[VAL_46]]{{\[}}%[[VAL_42]]] : <2 x !felt.type>, !felt.type
+// CHECK-NEXT:      array.write %[[VAL_46]]{{\[}}%[[VAL_47]]] = %[[VAL_45]] : <2 x !felt.type>, !felt.type
+// CHECK-NEXT:      function.return %[[VAL_48]] : !felt.type
 // CHECK-NEXT:    }
 // CHECK-NEXT:  }
