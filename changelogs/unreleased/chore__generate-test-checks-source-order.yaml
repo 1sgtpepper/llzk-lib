@@ -1,0 +1,2 @@
+fixed:
+  - Preserve generated FileCheck output ordering by source segment.
