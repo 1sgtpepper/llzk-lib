@@ -42,66 +42,6 @@ module attributes {llzk.lang} {
 // CHECK-NEXT:      }
 // CHECK-NEXT:    }
 // CHECK-NEXT:  }
-// CHECK:  // -----
-// CHECK-LABEL: module attributes {llzk.lang} {
-// CHECK-NEXT:    poly.template @Target {
-// CHECK-NEXT:      poly.param @F : !felt.type
-// CHECK-NEXT:      struct.def @S {
-// CHECK-NEXT:        function.def @compute() -> !struct.type<@Target::@S<[@F]>> attributes {function.allow_witness} {
-// CHECK-NEXT:          %[[VAL_0:[0-9a-zA-Z_\.]+]] = struct.new : <@Target::@S<[@F]>>
-// CHECK-NEXT:          function.return %[[VAL_0]] : !struct.type<@Target::@S<[@F]>>
-// CHECK-NEXT:        }
-// CHECK-NEXT:        function.def @constrain(%[[VAL_1:[0-9a-zA-Z_\.]+]]: !struct.type<@Target::@S<[@F]>>) attributes {function.allow_constraint} {
-// CHECK-NEXT:          function.return
-// CHECK-NEXT:        }
-// CHECK-NEXT:      }
-// CHECK-NEXT:    }
-// CHECK-NEXT:    module @globals {
-// CHECK-NEXT:      global.def const @G : !felt.type<"bn128"> =  35
-// CHECK-NEXT:    }
-// CHECK-NEXT:    function.def @useGlobal(%[[VAL_2:[0-9a-zA-Z_\.]+]]: !struct.type<@Target::@S<[@globals::@G]>>) {
-// CHECK-NEXT:      function.return
-// CHECK-NEXT:    }
-// CHECK-NEXT:  }
-// CHECK:  // -----
-// CHECK-LABEL: module attributes {llzk.lang} {
-// CHECK-NEXT:    poly.template @IndexTarget {
-// CHECK-NEXT:      poly.param @N : index
-// CHECK-NEXT:      struct.def @S {
-// CHECK-NEXT:        function.def @compute() -> !struct.type<@IndexTarget::@S<[@N]>> attributes {function.allow_witness} {
-// CHECK-NEXT:          %[[VAL_0:[0-9a-zA-Z_\.]+]] = struct.new : <@IndexTarget::@S<[@N]>>
-// CHECK-NEXT:          function.return %[[VAL_0]] : !struct.type<@IndexTarget::@S<[@N]>>
-// CHECK-NEXT:        }
-// CHECK-NEXT:        function.def @constrain(%[[VAL_1:[0-9a-zA-Z_\.]+]]: !struct.type<@IndexTarget::@S<[@N]>>) attributes {function.allow_constraint} {
-// CHECK-NEXT:          function.return
-// CHECK-NEXT:        }
-// CHECK-NEXT:      }
-// CHECK-NEXT:    }
-// CHECK-NEXT:    poly.template @TypeTarget {
-// CHECK-NEXT:      poly.param @T : !poly.tvar<@T>
-// CHECK-NEXT:      struct.def @S {
-// CHECK-NEXT:        function.def @compute() -> !struct.type<@TypeTarget::@S<[@T]>> attributes {function.allow_witness} {
-// CHECK-NEXT:          %[[VAL_2:[0-9a-zA-Z_\.]+]] = struct.new : <@TypeTarget::@S<[@T]>>
-// CHECK-NEXT:          function.return %[[VAL_2]] : !struct.type<@TypeTarget::@S<[@T]>>
-// CHECK-NEXT:        }
-// CHECK-NEXT:        function.def @constrain(%[[VAL_3:[0-9a-zA-Z_\.]+]]: !struct.type<@TypeTarget::@S<[@T]>>) attributes {function.allow_constraint} {
-// CHECK-NEXT:          function.return
-// CHECK-NEXT:        }
-// CHECK-NEXT:      }
-// CHECK-NEXT:    }
-// CHECK-NEXT:    poly.template @TypeCaller {
-// CHECK-NEXT:      poly.param @U : !poly.tvar<@U>
-// CHECK-NEXT:      function.def @useLocal(%[[VAL_4:[0-9a-zA-Z_\.]+]]: !struct.type<@TypeTarget::@S<[@U]>>) {
-// CHECK-NEXT:        function.return
-// CHECK-NEXT:      }
-// CHECK-NEXT:    }
-// CHECK-NEXT:    module @globals {
-// CHECK-NEXT:      global.def const @G : index = 35
-// CHECK-NEXT:    }
-// CHECK-NEXT:    function.def @useIndex(%[[VAL_5:[0-9a-zA-Z_\.]+]]: !struct.type<@IndexTarget::@S<[@globals::@G]>>) {
-// CHECK-NEXT:      function.return
-// CHECK-NEXT:    }
-// CHECK-NEXT:  }
 
 // -----
 
@@ -126,6 +66,27 @@ module attributes {llzk.lang} {
     function.return
   }
 }
+
+// CHECK-LABEL: module attributes {llzk.lang} {
+// CHECK-NEXT:    poly.template @Target {
+// CHECK-NEXT:      poly.param @F : !felt.type
+// CHECK-NEXT:      struct.def @S {
+// CHECK-NEXT:        function.def @compute() -> !struct.type<@Target::@S<[@F]>> attributes {function.allow_witness} {
+// CHECK-NEXT:          %[[VAL_0:[0-9a-zA-Z_\.]+]] = struct.new : <@Target::@S<[@F]>>
+// CHECK-NEXT:          function.return %[[VAL_0]] : !struct.type<@Target::@S<[@F]>>
+// CHECK-NEXT:        }
+// CHECK-NEXT:        function.def @constrain(%[[VAL_1:[0-9a-zA-Z_\.]+]]: !struct.type<@Target::@S<[@F]>>) attributes {function.allow_constraint} {
+// CHECK-NEXT:          function.return
+// CHECK-NEXT:        }
+// CHECK-NEXT:      }
+// CHECK-NEXT:    }
+// CHECK-NEXT:    module @globals {
+// CHECK-NEXT:      global.def const @G : !felt.type<"bn128"> =  35
+// CHECK-NEXT:    }
+// CHECK-NEXT:    function.def @useGlobal(%[[VAL_2:[0-9a-zA-Z_\.]+]]: !struct.type<@Target::@S<[@globals::@G]>>) {
+// CHECK-NEXT:      function.return
+// CHECK-NEXT:    }
+// CHECK-NEXT:  }
 
 // -----
 
@@ -169,3 +130,42 @@ module attributes {llzk.lang} {
     function.return
   }
 }
+
+// CHECK-LABEL: module attributes {llzk.lang} {
+// CHECK-NEXT:    poly.template @IndexTarget {
+// CHECK-NEXT:      poly.param @N : index
+// CHECK-NEXT:      struct.def @S {
+// CHECK-NEXT:        function.def @compute() -> !struct.type<@IndexTarget::@S<[@N]>> attributes {function.allow_witness} {
+// CHECK-NEXT:          %[[VAL_0:[0-9a-zA-Z_\.]+]] = struct.new : <@IndexTarget::@S<[@N]>>
+// CHECK-NEXT:          function.return %[[VAL_0]] : !struct.type<@IndexTarget::@S<[@N]>>
+// CHECK-NEXT:        }
+// CHECK-NEXT:        function.def @constrain(%[[VAL_1:[0-9a-zA-Z_\.]+]]: !struct.type<@IndexTarget::@S<[@N]>>) attributes {function.allow_constraint} {
+// CHECK-NEXT:          function.return
+// CHECK-NEXT:        }
+// CHECK-NEXT:      }
+// CHECK-NEXT:    }
+// CHECK-NEXT:    poly.template @TypeTarget {
+// CHECK-NEXT:      poly.param @T : !poly.tvar<@T>
+// CHECK-NEXT:      struct.def @S {
+// CHECK-NEXT:        function.def @compute() -> !struct.type<@TypeTarget::@S<[@T]>> attributes {function.allow_witness} {
+// CHECK-NEXT:          %[[VAL_2:[0-9a-zA-Z_\.]+]] = struct.new : <@TypeTarget::@S<[@T]>>
+// CHECK-NEXT:          function.return %[[VAL_2]] : !struct.type<@TypeTarget::@S<[@T]>>
+// CHECK-NEXT:        }
+// CHECK-NEXT:        function.def @constrain(%[[VAL_3:[0-9a-zA-Z_\.]+]]: !struct.type<@TypeTarget::@S<[@T]>>) attributes {function.allow_constraint} {
+// CHECK-NEXT:          function.return
+// CHECK-NEXT:        }
+// CHECK-NEXT:      }
+// CHECK-NEXT:    }
+// CHECK-NEXT:    poly.template @TypeCaller {
+// CHECK-NEXT:      poly.param @U : !poly.tvar<@U>
+// CHECK-NEXT:      function.def @useLocal(%[[VAL_4:[0-9a-zA-Z_\.]+]]: !struct.type<@TypeTarget::@S<[@U]>>) {
+// CHECK-NEXT:        function.return
+// CHECK-NEXT:      }
+// CHECK-NEXT:    }
+// CHECK-NEXT:    module @globals {
+// CHECK-NEXT:      global.def const @G : index = 35
+// CHECK-NEXT:    }
+// CHECK-NEXT:    function.def @useIndex(%[[VAL_5:[0-9a-zA-Z_\.]+]]: !struct.type<@IndexTarget::@S<[@globals::@G]>>) {
+// CHECK-NEXT:      function.return
+// CHECK-NEXT:    }
+// CHECK-NEXT:  }
