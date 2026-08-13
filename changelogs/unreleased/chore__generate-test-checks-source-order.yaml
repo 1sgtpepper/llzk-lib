@@ -1,2 +1,2 @@
 fixed:
-  - Preserve generated FileCheck output ordering by source segment.
+  - Keep generated FileCheck attribute-definition checks in the source segment that produced them.

@@ -19,6 +19,9 @@ within the file. By default this script will also try to insert string
 substitution blocks for all SSA value names. If --source file is specified, the
 script will attempt to insert the generated CHECKs to the source file by looking
 for line positions matched by --source_delim_regex.
+Generated attribute-definition checks stay in the source segment that contains
+their definitions, preserving their order when the source is split into
+multiple segments.
 
 The script is designed to make adding checks to a test case fast, it is *not*
 designed to be authoritative about what constitutes a good test!
@@ -210,6 +213,7 @@ def process_source_lines(source_lines, note, args):
         source_segments[-1].append(line + "\n")
     return source_segments
 
+# Keep the definition check in the output segment containing its source definition.
 def process_attribute_definition(line, attribute_namer, output_segment):
     m = ATTR_DEF_RE.match(line)
     if m:
@@ -267,9 +271,8 @@ def main():
     parser.add_argument(
         "--source",
         type=str,
-        help="Print each CHECK chunk before each delimeter line in the source"
-        "file, respectively. The delimeter lines are identified by "
-        "--source_delim_regex.",
+        help="Print each CHECK chunk before the corresponding delimiter in the source "
+        "file. Delimiters are identified by --source_delim_regex.",
     )
     parser.add_argument("--source_delim_regex", type=str, default="func @")
     parser.add_argument(
