@@ -63,8 +63,11 @@ jobs:
               nix --print-build-logs build --impure --out-link "$tested_path/result" --expr \
                 'let flake = builtins.getFlake (toString ./.); in flake.packages.x86_64-linux.debugGCC.overrideAttrs (_: { doCheck = false; })'
             )
-            readlink -f "$tested_path/result"
-            test -x "$tested_path/result/bin/llzk-opt"
+            result_path=$(readlink -f "$tested_path/result")
+            printf 'result_path=%s\n' "$result_path"
+            ls -ld "$tested_path/result" "$result_path" "$result_path/bin" "$result_path/bin/llzk-opt"
+            test -e "$result_path/bin/llzk-opt"
+            test -x "$result_path/bin/llzk-opt"
           }
 
           replay_test() {
