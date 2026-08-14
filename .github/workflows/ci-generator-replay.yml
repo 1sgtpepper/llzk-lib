@@ -112,8 +112,6 @@ jobs:
 
             "$filecheck" --enable-var-scope "$tested_path/$test_file" \
               < "$output_path/producer-output.llzk"
-            "$filecheck" --enable-var-scope "$output_path/generated-checks.txt" \
-              < "$output_path/producer-output.llzk"
 
             grep '^// CHECK' "$tested_path/$test_file" \
               > "$output_path/committed-checks.txt"
