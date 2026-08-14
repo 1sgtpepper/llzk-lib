@@ -14,7 +14,7 @@ jobs:
     runs-on: ubuntu-24.04
     env:
       BASE_HEAD: 683c6d412922766153a0756362762e29943cc40b
-      TARGET_HEAD: 8da3521ac27e59298f67ec983154043f61659f47
+      TARGET_HEAD: 8da3521ac8d63f51efad0b13971f33b93763c039
       OUTPUT_PATH: /home/runner/work/_temp/llzk-pr484-replay
 
     steps:
