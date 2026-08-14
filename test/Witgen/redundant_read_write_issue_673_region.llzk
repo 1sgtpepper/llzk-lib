@@ -7,6 +7,7 @@
 
 // Compare the original and optimized witnesses for both sibling-arm outcomes.
 // The false arm's dynamic read must still observe the pre-if write.
+
 // SUCCESS: output matched expected JSON
 
 //--- test.llzk
