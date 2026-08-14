@@ -1,2 +1,3 @@
 fixed:
-  - Materialize fieldless felt template constants in the required field, reject known field or value conflicts in concrete and symbolic arguments, and require every symbolic template argument to resolve to a constant global or local template binding
+  - Materialize fieldless felt constants in a declared field restriction and reject explicit field or value conflicts across concrete and symbolic template arguments
+  - Require symbolic template arguments to resolve to an enclosing template binding or a constant global
