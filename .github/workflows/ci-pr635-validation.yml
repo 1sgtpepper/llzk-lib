@@ -45,11 +45,11 @@ jobs:
           rm -rf "$OUTPUT_PATH"
           mkdir -p "$OUTPUT_PATH"
 
-          pr484_head=8b6dc9e62e3437092ec8d7f00bddc3bb31f966d7
+          pr484_head=693b6e850caa8718a3c84a222d8ad819945312de
           pr634_head=a1162541c20edab7a211d4db8cdcf1fe220c1727
           pr635_head=520bc7cea85406802865807802c39afd0e0faa08
           pr637_head=88b42e5f3daa3e6110e634e7ddbbd8212cd6d405
-          pr675_head=e8c663ecb0ba86ceb59a351d2deeb7aa89c5da28
+          pr675_head=63779b4c01e53215340a6f3de1c9f779bef7a84c
           filecheck=
           full_check_results=()
 
@@ -191,6 +191,7 @@ jobs:
           directive_re = re.compile(
               rf"^// {re.escape(prefix)}(?::|-LABEL:|-NEXT:|-SAME:|-NOT:|-DAG:|-EMPTY:)"
           )
+          split_separator_test = test_file.endswith("array_dynamic_alias.llzk")
           committed = [
               line for line in committed_path.read_text().splitlines()
               if directive_re.match(line)
@@ -206,6 +207,15 @@ jobs:
               after_not = False
               module_seen = False
               for line in lines:
+                  if (
+                      source == "generated"
+                      and split_separator_test
+                      and line == f"// {prefix}-NEXT:  // -----"
+                  ):
+                      adjustments.append(
+                          f"{source}: generator-only split separator omitted from committed block"
+                      )
+                      continue
                   if line.startswith(f"// {prefix}-NOT:"):
                       adjustments.append(f"{source}: bounded CHECK-NOT absence assertion retained")
                       after_not = True
