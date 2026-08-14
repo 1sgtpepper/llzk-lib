@@ -1,0 +1,51 @@
+name: Reproduce missing GTest check target
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  reproduce:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Configure and build without GTest
+        run: |
+          set -euo pipefail
+          fixture="$RUNNER_TEMP/check-gtest-repro"
+          rm -rf "$fixture"
+          mkdir -p "$fixture"
+          printf '%s\n' \
+            'cmake_minimum_required(VERSION 3.23)' \
+            'project(check_gtest NONE)' \
+            'option(BUILD_TESTING "Build tests" ON)' \
+            'set(GTest_FOUND FALSE)' \
+            'if(BUILD_TESTING AND GTest_FOUND)' \
+            '  add_custom_target(check-unit)' \
+            'endif()' \
+            'add_custom_target(check' \
+            '  DEPENDS' \
+            '    $<$<BOOL:BUILD_TESTING>:check-unit>)' > "$fixture/CMakeLists.txt"
+          cmake -S "$fixture" -B "$fixture/build" -G Ninja -DBUILD_TESTING=ON
+          set +e
+          cmake --build "$fixture/build" --target check > "$fixture/build.log" 2>&1
+          status=$?
+          set -e
+          cat "$fixture/build.log"
+          echo "build status: $status"
+          if [[ "$status" -ne 0 ]] && grep -q 'check-unit' "$fixture/build.log"; then
+            echo 'REPRODUCED: check references the unit-test target even though GTest was unavailable.'
+            exit 1
+          fi
+          if [[ "$status" -eq 0 ]]; then
+            echo 'NOT REPRODUCED: the GTest-missing check completed.'
+            exit 0
+          fi
+          echo 'UNEXPECTED: build failed for a different reason.'
+          exit 2
