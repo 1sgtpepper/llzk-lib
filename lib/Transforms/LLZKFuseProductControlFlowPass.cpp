@@ -257,6 +257,9 @@ static bool collectConstrainValueMappings(
   SmallVector<MemberWriteOp> precedingWrites;
   for (Operation *op = computeIf->getNextNode(); op != constrainIf; op = op->getNextNode()) {
     if (auto writeOp = dyn_cast<MemberWriteOp>(op)) {
+      if (!hasProductSource(writeOp, FUNC_NAME_COMPUTE)) {
+        return false;
+      }
       std::optional<unsigned> resultIndex = getIfResultIndex(computeIf, writeOp.getVal());
       if (!resultIndex) {
         return false;
