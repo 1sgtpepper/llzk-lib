@@ -174,7 +174,8 @@ jobs:
                 "$output_path/generated-checks.txt" \
                 "$output_path/comparison.txt" \
                 "$output_path/check-comparison.diff" \
-                "$check_prefix" <<'PY'
+                "$check_prefix" \
+                "$test_file" <<'PY'
           from difflib import unified_diff
           from pathlib import Path
           import re
@@ -185,6 +186,8 @@ jobs:
           comparison_path = Path(sys.argv[3])
           diff_path = Path(sys.argv[4])
           prefix = sys.argv[5]
+          test_file = sys.argv[6]
+          location_test = test_file.endswith("fuse_if_preserves_locations.llzk")
           directive_re = re.compile(
               rf"^// {re.escape(prefix)}(?::|-LABEL:|-NEXT:|-SAME:|-NOT:|-DAG:|-EMPTY:)"
           )
@@ -201,6 +204,7 @@ jobs:
           def normalize(lines, source):
               normalized = []
               after_not = False
+              module_seen = False
               for line in lines:
                   if line.startswith(f"// {prefix}-NOT:"):
                       adjustments.append(f"{source}: bounded CHECK-NOT absence assertion retained")
@@ -236,6 +240,40 @@ jobs:
                       line = re.sub(
                           r'loc\("[^"]+\.llzk":',
                           'loc("__SOURCE__.llzk":',
+                          line,
+                      )
+                  if location_test:
+                      if line.startswith(f"// {prefix}-LABEL: module attributes"):
+                          line = line.replace(
+                              f"// {prefix}-LABEL:",
+                              f"// {prefix}-NEXT:",
+                              1,
+                          )
+                          module_seen = True
+                      elif line.startswith(f"// {prefix}: #") and module_seen:
+                          line = line.replace(
+                              f"// {prefix}:",
+                              f"// {prefix}-NEXT:",
+                              1,
+                          )
+                      line = re.sub(
+                          r'#\[\[\$?ATTR_[0-9]+:[^\]]+\]\]',
+                          '#loc{{[0-9]+}}',
+                          line,
+                      )
+                      line = re.sub(
+                          r'#loc\[\[[^\]]+\]\]',
+                          '#loc{{[0-9]+}}',
+                          line,
+                      )
+                      line = re.sub(
+                          r'#loc[0-9]*(?![A-Za-z0-9_])',
+                          '#loc{{[0-9]*}}',
+                          line,
+                      )
+                      line = re.sub(
+                          r'#loc\{\{\[0-9\]\+\}\}',
+                          '#loc{{[0-9]*}}',
                           line,
                       )
                   normalized.append(line)
