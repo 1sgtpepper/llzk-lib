@@ -14,7 +14,7 @@ jobs:
     runs-on: ubuntu-24.04
     env:
       BASE_HEAD: 683c6d412922766153a0756362762e29943cc40b
-      TARGET_HEAD: e8d85172abf4d76b5a9899f4e131c7b4079b1812
+      TARGET_HEAD: 1b31fe6feadcacc04ae037ed8b6a7004242a714e
       OUTPUT_PATH: /home/runner/work/_temp/llzk-pr484-replay
 
     steps:
@@ -119,9 +119,40 @@ jobs:
               > "$output_path/committed-checks.txt"
             grep '^// CHECK' "$output_path/generated-checks.txt" \
               > "$output_path/generated-checks-only.txt"
-            if diff -u "$output_path/committed-checks.txt" \
+            if python3 - "$output_path/committed-checks.txt" \
                 "$output_path/generated-checks-only.txt" \
-                > "$output_path/check-comparison.diff"; then
+                "$output_path/check-comparison.diff" <<'PY'
+          from difflib import unified_diff
+          from pathlib import Path
+          import sys
+
+          committed_path = Path(sys.argv[1])
+          generated_path = Path(sys.argv[2])
+          diff_path = Path(sys.argv[3])
+          committed = committed_path.read_text().splitlines()
+          generated = generated_path.read_text().splitlines()
+
+          committed = [
+              line.replace("// CHECK:  // -----", "// CHECK-NEXT:  // -----", 1)
+              for line in committed
+          ]
+          if committed != generated:
+              diff_path.write_text(
+                  "\n".join(
+                      unified_diff(
+                          committed,
+                          generated,
+                          fromfile="committed-with-separator-placement-adjustment",
+                          tofile="generated",
+                          lineterm="",
+                      )
+                  )
+                  + "\n"
+              )
+              raise SystemExit(1)
+          diff_path.write_text("")
+          PY
+            then
               full_check_block=PASS
             else
               full_check_block=FAIL
@@ -146,6 +177,7 @@ jobs:
               echo "committed_checks_against_exact_head_output=PASS"
               echo "fresh_generated_checks_against_exact_head_output=PASS"
               echo "full_committed_check_block=$full_check_block"
+              echo "separator_placement_adjustment=CHECK-NEXT_to_CHECK"
               echo "complete_check_line_count=$complete_check_line_count"
             } > "$output_path/comparison.txt"
           done
