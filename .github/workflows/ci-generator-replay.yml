@@ -75,6 +75,7 @@ jobs:
           )
           test "${#test_files[@]}" -eq 16
           line_count_mismatches=()
+          full_check_mismatches=()
 
           for test_file in "${test_files[@]}"; do
             name=$(basename "$test_file" .llzk)
@@ -114,8 +115,21 @@ jobs:
             "$filecheck" --enable-var-scope "$output_path/generated-checks.txt" \
               < "$output_path/producer-output.llzk"
 
-            committed_checks=$(grep -c '^// CHECK' "$tested_path/$test_file")
-            generated_checks=$(grep -c '^// CHECK' "$output_path/generated-checks.txt")
+            grep '^// CHECK' "$tested_path/$test_file" \
+              > "$output_path/committed-checks.txt"
+            grep '^// CHECK' "$output_path/generated-checks.txt" \
+              > "$output_path/generated-checks-only.txt"
+            if diff -u "$output_path/committed-checks.txt" \
+                "$output_path/generated-checks-only.txt" \
+                > "$output_path/check-comparison.diff"; then
+              full_check_block=PASS
+            else
+              full_check_block=FAIL
+              full_check_mismatches+=("$test_file")
+            fi
+
+            committed_checks=$(wc -l < "$output_path/committed-checks.txt")
+            generated_checks=$(wc -l < "$output_path/generated-checks-only.txt")
             if test "$committed_checks" -eq "$generated_checks"; then
               complete_check_line_count=PASS
             else
@@ -131,6 +145,7 @@ jobs:
               echo "fresh_generated_check_lines=$generated_checks"
               echo "committed_checks_against_exact_head_output=PASS"
               echo "fresh_generated_checks_against_exact_head_output=PASS"
+              echo "full_committed_check_block=$full_check_block"
               echo "complete_check_line_count=$complete_check_line_count"
             } > "$output_path/comparison.txt"
           done
@@ -139,6 +154,11 @@ jobs:
             complete_check_line_counts=PASS
           else
             complete_check_line_counts=FAIL
+          fi
+          if test "${#full_check_mismatches[@]}" -eq 0; then
+            full_committed_check_blocks=PASS
+          else
+            full_committed_check_blocks=FAIL
           fi
 
           generator_path="$OUTPUT_PATH/generator-contract"
@@ -219,11 +239,14 @@ jobs:
             echo "transform_fresh_generated_checks=PASS"
             echo "transform_complete_check_line_counts=$complete_check_line_counts"
             echo "transform_complete_check_line_count_mismatches=${line_count_mismatches[*]}"
+            echo "transform_full_committed_check_blocks=$full_committed_check_blocks"
+            echo "transform_full_committed_check_block_mismatches=${full_check_mismatches[*]}"
             echo "generator_contract=PASS"
             echo "nested_if_recursion_mutation=PASS"
           } > "$OUTPUT_PATH/summary.txt"
 
           test "${#line_count_mismatches[@]}" -eq 0
+          test "${#full_check_mismatches[@]}" -eq 0
 
       - name: Upload replay evidence
         if: always()
