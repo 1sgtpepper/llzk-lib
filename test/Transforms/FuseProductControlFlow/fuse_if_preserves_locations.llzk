@@ -32,7 +32,7 @@ module attributes {llzk.lang = "llzk"} {
   }
 }
 
-// CHECK:      #loc{{[0-9]+}} = loc("{{.*}}fuse_if_preserves_locations.llzk":7:27)
+// CHECK: #loc{{[0-9]+}} = loc("{{.*}}fuse_if_preserves_locations.llzk":7:27)
 // CHECK-NEXT: module attributes {llzk.lang = "llzk"} {
 // CHECK-NEXT:    struct.def @A {
 // CHECK-NEXT:      struct.member @foo : !felt.type loc(#loc[[MEMBER_LOC:[0-9]+]])
