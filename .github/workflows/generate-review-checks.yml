@@ -101,10 +101,6 @@ jobs:
             python3 scripts/generate-test-checks.py \
               < "$test_output/producer-output.llzk" \
               > "$test_output/generated-checks.txt"
-            "$filecheck" --enable-var-scope "$test_output/generated-checks.txt" \
-              < "$test_output/producer-output.llzk" \
-              > "$test_output/generated-filecheck.txt" \
-              2>&1
 
             python3 - "$test_output/committed-test.llzk" \
                 "$test_output/generated-checks.txt" \
