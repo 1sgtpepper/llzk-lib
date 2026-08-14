@@ -15,9 +15,11 @@
 // The direct regression runs through both backends; recursive aggregate cases
 // use the interpreter because execution-engine lowering does not support
 // array.extract.
+//
 // In the direct case, selector 0 must observe the written element 1 and catches
 // a deleted write; selector 1 observes the untouched element 0 as the opposite
 // dynamic-index outcome.
+//
 // SUCCESS: output matched expected JSON
 
 //--- test.llzk

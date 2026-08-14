@@ -236,7 +236,7 @@ public:
   /// selected subtree because a later access through the result may observe
   /// writes below it.
   /// @param indices Access path from this node to the observed array element or subtree.
-  void clearLastWritesObservedBy(llvm::ArrayRef<ReferenceID> indices) {
+  void clearLastWritesObservedBy(ArrayRef<ReferenceID> indices) {
     if (indices.empty()) {
       clearLastWritesInSubtree();
       return;
@@ -244,7 +244,7 @@ public:
     clearLastWrite();
 
     const ReferenceID &index = indices.front();
-    llvm::ArrayRef<ReferenceID> remaining = indices.drop_front();
+    ArrayRef<ReferenceID> remaining = indices.drop_front();
     if (!index.isConst()) {
       for (const auto &[id, child] : children) {
         if (!id.isAttribute()) {
@@ -428,10 +428,12 @@ struct BlockWriteCandidates {
 ValueMap intersectValueMap(const ValueMap &lhs, const ValueMap &rhs) {
   ValueMap res;
   for (const auto &[id, lhsValTree] : lhs) {
-    if (auto it = rhs.find(id); it != rhs.end() && lhsValTree && it->second) {
-      const auto &rhsValTree = it->second;
+    if (!lhsValTree) {
+      continue;
+    }
+    if (auto it = rhs.find(id); it != rhs.end() && it->second) {
       // A missing common subtree is the conservative no-common-fact state.
-      if (auto common = greatestCommonSubtree(lhsValTree, rhsValTree)) {
+      if (auto common = greatestCommonSubtree(lhsValTree, it->second)) {
         res[id] = std::move(common);
       }
     }
