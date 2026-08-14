@@ -48,6 +48,7 @@ jobs:
           pr635_head=c40563187f0587f2c16a2326c36a5d0834221b8d
           pr637_head=7979b2297106a484173b23d8989d117b10fe4d32
           filecheck=
+          full_check_mismatches=()
 
           prepare_head() {
             local name="$1"
@@ -131,6 +132,18 @@ jobs:
                 < "$output_file" > "$checks_file"
               "$filecheck" "$committed_file" < "$output_file"
               "$filecheck" "$checks_file" < "$output_file"
+              grep '^// CHECK' "$committed_file" \
+                > "$output_path/committed-checks-$chunk.txt"
+              grep '^// CHECK' "$checks_file" \
+                > "$output_path/generated-checks-only-$chunk.txt"
+              if diff -u "$output_path/committed-checks-$chunk.txt" \
+                  "$output_path/generated-checks-only-$chunk.txt" \
+                  > "$output_path/check-comparison-$chunk.diff"; then
+                full_check_block=PASS
+              else
+                full_check_block=FAIL
+                full_check_mismatches+=("$test_file split $chunk")
+              fi
               committed_chunk_checks=$(grep -Ec '^// CHECK(:|-LABEL:|-NEXT:)' "$committed_file" || true)
               generated_chunk_checks=$(grep -Ec '^// CHECK(:|-LABEL:|-NEXT:)' "$checks_file" || true)
               committed_checks=$((committed_checks + committed_chunk_checks))
@@ -150,6 +163,7 @@ jobs:
               echo "fresh_generated_check_lines=$generated_checks"
               echo "committed_checks_against_exact_head_output=PASS"
               echo "fresh_generated_checks_against_exact_head_output=PASS"
+              echo "full_committed_check_block=$full_check_block"
               echo "complete_check_line_count=PASS"
             } > "$output_path/comparison.txt"
           }
@@ -184,12 +198,21 @@ jobs:
             test/Transforms/Flattening/instantiate_function_reuse.llzk \
             -split-input-file -llzk-flatten=cleanup=disabled
 
+          if test "${#full_check_mismatches[@]}" -eq 0; then
+            full_check_blocks=PASS
+          else
+            full_check_blocks=FAIL
+          fi
           {
             echo "pr635_head=$pr635_head"
             echo "pr637_head=$pr637_head"
             echo "full_output_replays=8"
-            echo "result=PASS"
+            echo "full_committed_check_blocks=$full_check_blocks"
+            echo "full_check_block_mismatches=${full_check_mismatches[*]}"
+            echo "result=$full_check_blocks"
           } > "$OUTPUT_PATH/summary.txt"
+
+          test "${#full_check_mismatches[@]}" -eq 0
 
       - name: Upload validation evidence
         uses: actions/upload-artifact@v7
