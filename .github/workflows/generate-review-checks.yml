@@ -14,7 +14,7 @@ jobs:
     runs-on: ubuntu-24.04
     env:
       TARGET_HEAD: a83892c3dc6b9fc4f1854e88bac37820ccae40fa
-      BASE_HEAD: 0d652966c80f3149aec874cc0572909bf7a61bda
+      BASE_HEAD: 683c6d412922766153a0756362762e29943cc40b2
     steps:
       - name: Check out the reviewed head
         uses: actions/checkout@v6
