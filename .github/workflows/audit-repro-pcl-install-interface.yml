@@ -57,7 +57,7 @@ jobs:
             -DLLZK_TARGETS="$tmp/install/lib/cmake/LLZK/LLZKTargets.cmake"
 
           set +e
-          cmake --build "$tmp/consumer-build" 2> "$tmp/build.log"
+          cmake --build "$tmp/consumer-build" > "$tmp/build.log" 2>&1
           build_status=$?
           set -e
           cat "$tmp/build.log"
