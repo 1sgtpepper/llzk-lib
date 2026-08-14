@@ -140,6 +140,50 @@ static std::optional<unsigned> getIfResultIndex(scf::IfOp ifOp, Value value) {
   return std::nullopt;
 }
 
+/// Return whether every operand of `op` is available at `insertionPoint` using the conservative
+/// same-block dominance proof accepted by this pass. Block arguments are available by definition;
+/// operation results must be defined earlier in the insertion block.
+static bool operandsDominateInsertion(Operation *op, Operation *insertionPoint) {
+  for (Value operand : op->getOperands()) {
+    if (Operation *def = operand.getDefiningOp()) {
+      if (def->getBlock() != insertionPoint->getBlock() || !def->isBeforeInBlock(insertionPoint)) {
+        return false;
+      }
+    }
+  }
+  return true;
+}
+
+/// Return whether a plain member read can be hoisted before `computeIf` without changing the
+/// constraint's signal identity. The read must match a preceding direct compute-if-result write,
+/// have no table offset, have operands available before the compute if, and be used only inside the
+/// paired constrain if.
+static bool canHoistMemberRead(
+    MemberReadOp read, scf::IfOp computeIf, scf::IfOp constrainIf,
+    ArrayRef<MemberWriteOp> precedingWrites
+) {
+  if (!hasProductSource(read, FUNC_NAME_CONSTRAIN) || read.getTableOffset().has_value() ||
+      read.getVal().use_empty() || !operandsDominateInsertion(read, computeIf)) {
+    return false;
+  }
+
+  bool matchesWrite = llvm::any_of(precedingWrites, [&](MemberWriteOp write) {
+    return hasProductSource(write, FUNC_NAME_COMPUTE) &&
+           write.getComponent() == read.getComponent() &&
+           write.getMemberNameAttr() == read.getMemberNameAttr();
+  });
+  if (!matchesWrite) {
+    return false;
+  }
+
+  for (Operation *user : read.getVal().getUsers()) {
+    if (!constrainIf->isAncestor(user)) {
+      return false;
+    }
+  }
+  return true;
+}
+
 /// Return whether `op` may move with the constrain branch across compute-side operations.
 static bool isSafeToMoveConstrainOp(Operation *op) {
   // ConstraintOpInterface identifies constraint-producing operations but does not guarantee
@@ -204,25 +248,33 @@ static bool hasUnsafeMovedConstrainOp(scf::IfOp constrainIf) {
 /// Collect the compute-if result mappings needed by `constrainIf` and reject unsafe crossings.
 ///
 /// The mapping lets cloned constrain operands use branch-local compute values; return false when
-/// intervening definitions or effects would make the move observable.
+/// intervening definitions or effects would make the move observable. Matching constrain-side
+/// member reads are returned in `readsToHoist` for movement before `computeIf`.
 static bool collectConstrainValueMappings(
-    scf::IfOp computeIf, scf::IfOp constrainIf, llvm::DenseMap<Value, unsigned> &valueToResult
+    scf::IfOp computeIf, scf::IfOp constrainIf, llvm::DenseMap<Value, unsigned> &valueToResult,
+    SmallVector<MemberReadOp> &readsToHoist
 ) {
-  // Fusion clones the constrain branch before direct compute-result member writes. Only member
-  // writes whose value is a direct compute-if result are currently proven safe to cross; member
-  // reads, other storage operations, and intervening operations are rejected.
+  SmallVector<MemberWriteOp> precedingWrites;
   for (Operation *op = computeIf->getNextNode(); op != constrainIf; op = op->getNextNode()) {
     if (auto writeOp = dyn_cast<MemberWriteOp>(op)) {
       std::optional<unsigned> resultIndex = getIfResultIndex(computeIf, writeOp.getVal());
       if (!resultIndex) {
         return false;
       }
+      precedingWrites.push_back(writeOp);
       continue;
     }
 
-    // Only the direct member writes above are currently proven safe to cross. In particular,
-    // moving before a member read can change the state observed by the constrain branch, while
-    // replacing that read would remove the member signal from emitted constraints.
+    if (auto readOp = dyn_cast<MemberReadOp>(op)) {
+      if (!canHoistMemberRead(readOp, computeIf, constrainIf, precedingWrites)) {
+        return false;
+      }
+      readsToHoist.push_back(readOp);
+      continue;
+    }
+
+    // Only direct member writes and matching plain member reads are currently proven safe to
+    // cross. Unknown storage operations, calls, and other intervening definitions are rejected.
     return false;
   }
 
@@ -275,7 +327,8 @@ static bool canIfsBeFused(scf::IfOp a, scf::IfOp b) {
   }
 
   llvm::DenseMap<Value, unsigned> valueToResult;
-  return collectConstrainValueMappings(computeIf, constrainIf, valueToResult);
+  SmallVector<MemberReadOp> readsToHoist;
+  return collectConstrainValueMappings(computeIf, constrainIf, valueToResult, readsToHoist);
 }
 
 /// Remove the destination block's existing `scf.yield` before appending a cloned branch.
@@ -329,9 +382,16 @@ static void fuseIfPair(scf::IfOp a, scf::IfOp b, MLIRContext *context, IRRewrite
   scf::IfOp constrainIf = computeIf == a ? b : a;
 
   llvm::DenseMap<Value, unsigned> valueToResult;
+  SmallVector<MemberReadOp> readsToHoist;
   [[maybe_unused]] bool canMap =
-      collectConstrainValueMappings(computeIf, constrainIf, valueToResult);
+      collectConstrainValueMappings(computeIf, constrainIf, valueToResult, readsToHoist);
   assert(canMap && "fusion candidates must have already been checked");
+
+  // Preserve the member signal used by the constrain branch. Move reads in reverse order so the
+  // original order remains stable before the fused conditional; the matching writes stay after it.
+  for (auto it = readsToHoist.rbegin(); it != readsToHoist.rend(); ++it) {
+    rewriter.moveOpBefore(*it, computeIf);
+  }
 
   rewriter.setInsertionPoint(computeIf);
   std::optional<DictionaryAttr> fusedAttrs = getCompatibleFusedAttrs(computeIf, constrainIf);
