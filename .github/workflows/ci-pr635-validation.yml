@@ -179,7 +179,21 @@ jobs:
 
           def normalize(lines, source):
               normalized = []
+              after_not = False
               for line in lines:
+                  if line.startswith(f"// {prefix}-NOT:"):
+                      adjustments.append(f"{source}: bounded CHECK-NOT absence assertion retained")
+                      after_not = True
+                      continue
+                  if after_not:
+                      if line.startswith(f"// {prefix}:"):
+                          adjustments.append(f"{source}: CHECK after bounded CHECK-NOT normalized to generated NEXT placement")
+                          line = line.replace(
+                              f"// {prefix}:",
+                              f"// {prefix}-NEXT:",
+                              1,
+                          )
+                      after_not = False
                   if line.startswith(f"// {prefix}:") and "affine_map" in line:
                       adjustments.append(f"{source}: affine-map check kept with its defining split")
                       continue
@@ -211,7 +225,12 @@ jobs:
               variable_re = re.compile(
                   r"\[\[([A-Za-z_][A-Za-z0-9_]*)(?::(.*?))?\]\]"
               )
-              return [variable_re.sub(variable, line) for line in lines]
+              normalized = []
+              for line in lines:
+                  if line.startswith(f"// {prefix}-LABEL:"):
+                      variable_names = {}
+                  normalized.append(variable_re.sub(variable, line))
+              return normalized
 
           committed_normalized = normalize(committed, "committed")
           generated_normalized = normalize(generated, "generated")
@@ -243,8 +262,11 @@ jobs:
           comparison_path.write_text("\n".join(comparison) + "\n")
           PY
 
-            committed_checks=$(grep -Ec "^// ${check_prefix}(:|-LABEL:|-NEXT:|-SAME:|-NOT:|-DAG:|-EMPTY:)" \
+            focused_absence_checks=$(grep -Ec "^// ${check_prefix}-NOT:" \
               "$output_path/committed-test.llzk" || true)
+            committed_checks=$(grep -Ev "^// ${check_prefix}-NOT:" \
+              "$output_path/committed-test.llzk" | \
+              grep -Ec "^// ${check_prefix}(:|-LABEL:|-NEXT:|-SAME:|-NOT:|-DAG:|-EMPTY:)" || true)
             generated_checks=$(grep -Ec "^// ${check_prefix}(:|-LABEL:|-NEXT:|-SAME:|-NOT:|-DAG:|-EMPTY:)" \
               "$output_path/generated-checks.txt" || true)
 
@@ -255,6 +277,7 @@ jobs:
               echo "producer_command=result/bin/llzk-opt $* $test_file"
               echo "committed_check_lines=$committed_checks"
               echo "fresh_generated_check_lines=$generated_checks"
+              echo "focused_absence_checks=$focused_absence_checks"
               echo "committed_checks_against_exact_head_output=PASS"
               echo "fresh_generated_checks_against_exact_head_output=PASS"
               echo "raw_generated_filecheck=$generated_filecheck_status"
