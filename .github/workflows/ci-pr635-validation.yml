@@ -116,9 +116,20 @@ jobs:
               printf ' %q' "$@"
               printf ' %q\n' "$clean_input"
             } > "$output_path/producer-command.txt"
+            set +e
             "$llzk_opt" "$@" "$clean_input" \
               > "$output_path/producer-output.llzk" \
               2> "$output_path/producer-stderr.txt"
+            local producer_status=$?
+            set -e
+            printf 'producer_exit_status=%s\n' "$producer_status" \
+              > "$output_path/producer-status.txt"
+            if test "$producer_status" -ne 0; then
+              printf 'producer failed for %s with exit status %s\n' \
+                "$test_file" "$producer_status"
+              sed -n '1,160p' "$output_path/producer-stderr.txt"
+              return "$producer_status"
+            fi
 
             "$filecheck" "${filecheck_args[@]}" --check-prefix="$check_prefix" \
               "$source_root/$test_file" \
@@ -312,6 +323,7 @@ jobs:
           test "${#full_check_results[@]}" -eq 34
 
       - name: Upload validation evidence
+        if: always()
         uses: actions/upload-artifact@v7
         with:
           name: llzk-validation-evidence-${{ github.sha }}
