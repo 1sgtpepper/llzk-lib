@@ -46,7 +46,7 @@ jobs:
           mkdir -p "$OUTPUT_PATH"
 
           pr635_head=199e2d690b5662a34411ea39e6afcfa3903df823
-          pr637_head=c2505d4de39dae5ce56915272641a6efb7550c5c
+          pr637_head=6cb9683685057a28515e8e65b1d2c7b97957e063
           filecheck=
           full_check_results=()
 
