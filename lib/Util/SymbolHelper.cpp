@@ -535,8 +535,8 @@ LogicalResult verifyTemplateParamsMatchInferred(
     auto it = unifications.find({FlatSymbolRefAttr::get(paramOp.getNameAttr()), Side::RHS});
     if (it != unifications.end() && !it->second) {
       return origin->emitOpError().append(
-          "cannot infer a unique template instantiation value for parameter \"@",
-          paramOp.getName(), "\" from ", signatureDescription, " type signature"
+          "cannot infer a unique template instantiation value for parameter \"@", paramOp.getName(),
+          "\" from ", signatureDescription, " type signature"
       );
     }
     if (it != unifications.end() &&
@@ -546,9 +546,8 @@ LogicalResult verifyTemplateParamsMatchInferred(
     bool valuesUnify = true;
     if (it != unifications.end()) {
       SymbolTableCollection tables;
-      FailureOr<bool> resolved = resolvedTemplateParamValuesUnify(
-          tables, origin, attr, it->second, paramOp.getTypeOpt()
-      );
+      FailureOr<bool> resolved =
+          resolvedTemplateParamValuesUnify(tables, origin, attr, it->second, paramOp.getTypeOpt());
       if (failed(resolved)) {
         return failure();
       }
