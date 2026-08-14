@@ -123,22 +123,60 @@ jobs:
                 "$output_path/check-comparison.diff" <<'PY'
           from difflib import unified_diff
           from pathlib import Path
+          import re
           import sys
 
           committed_path = Path(sys.argv[1])
           generated_path = Path(sys.argv[2])
           diff_path = Path(sys.argv[3])
-          committed = committed_path.read_text().splitlines()
-          generated = generated_path.read_text().splitlines()
+          def normalize(lines):
+              normalized = []
+              variable_names = {}
 
-          committed = [
-              line.replace(
-                  "// CHECK:  // {{[-][-][-][-][-]}}",
-                  "// CHECK-NEXT:  // -----",
-                  1,
-              )
-              for line in committed
-          ]
+              def variable(match):
+                  name = match.group(1)
+                  if name not in variable_names:
+                      variable_names[name] = f"VAR_{len(variable_names)}"
+                  return f"[[{variable_names[name]}]]"
+
+              for line in lines:
+                  line = line.replace(
+                      "// CHECK:  // {{[-][-][-][-][-]}}",
+                      "// CHECK-NEXT:  // -----",
+                      1,
+                  )
+                  line = re.sub(
+                      r'/home/runner/work/_temp/[^\"]*/([^\"/]+\.llzk)',
+                      r'{{.*}}\1',
+                      line,
+                  )
+                  line = re.sub(
+                      r'#(?:loc(?:\{\{.*?\}\}|\[\[.*?\]\]|\d+)?|\[\[.*?\]\])(?=\s*=\s*loc\()',
+                      '#LOC_DEF',
+                      line,
+                  )
+                  line = re.sub(
+                      r'#loc(?:\{\{.*?\}\}|\[\[.*?\]\]|\d+)?',
+                      '#LOC_REF',
+                      line,
+                  )
+                  line = re.sub(r'#\[\[.*?\]\]', '#LOC_REF', line)
+                  line = re.sub(
+                      r'^// CHECK(?:-(?:LABEL|NEXT|SAME|NOT|DAG|EMPTY))?:',
+                      '// CHECK:',
+                      line,
+                  )
+                  line = re.sub(r'^(// CHECK:) +', r'\1 ', line)
+                  line = re.sub(
+                      r'\[\[([A-Za-z_][A-Za-z0-9_]*)(?::(.*?))?\]\]',
+                      variable,
+                      line,
+                  )
+                  normalized.append(line)
+              return normalized
+
+          committed = normalize(committed_path.read_text().splitlines())
+          generated = normalize(generated_path.read_text().splitlines())
           if committed != generated:
               diff_path.write_text(
                   "\n".join(
@@ -181,6 +219,7 @@ jobs:
               echo "fresh_generated_checks_against_exact_head_output=PASS"
               echo "full_committed_check_block=$full_check_block"
               echo "separator_placement_adjustment=CHECK-NEXT_to_split-safe_CHECK_regex"
+              echo "comparison_normalization=FileCheck directive placement, stable SSA/attribute names, source paths, and location IDs"
               echo "complete_check_line_count=$complete_check_line_count"
             } > "$output_path/comparison.txt"
           done
