@@ -124,12 +124,12 @@ def FuseProductControlFlowPass : LLZKPass<"llzk-fuse-product-control-flow"> {
 
     Each fused conditional branch keeps the compute operations before the cloned constrain
     operations. Uses of compute-if results in constrain branches are remapped to the corresponding
-    branch yield values. Only compute-sourced member writes whose value is a direct
-    compute-if result may appear between the pair, along with constrain-side plain member
-    reads that match those writes, have dominating operands, and are used only in the constrain
-    branch; such reads are hoisted before
-    the fused conditional so emitted constraints retain the member signal. Other member reads are
-    neither hoisted nor remapped.
+    branch yield values. Member writes with no source annotation or an explicit compute source may
+    appear between the pair only when their value is a direct compute-if result. Constrain-side
+    plain member reads that match those writes, have dominating operands, and are used only in the
+    constrain branch are hoisted before the fused conditional so emitted constraints retain the
+    member signal. Other member reads and explicitly non-compute-sourced member writes prevent
+    fusion.
 
     Conditional fusion is skipped if moved constrain code reads or writes storage, calls functions,
     allocates, may trap, has unknown effects, or contains unsupported structured control flow such

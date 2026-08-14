@@ -168,7 +168,8 @@ static bool canHoistMemberRead(
   }
 
   bool matchesWrite = llvm::any_of(precedingWrites, [&](MemberWriteOp write) {
-    return hasProductSource(write, FUNC_NAME_COMPUTE) &&
+    std::optional<llvm::StringRef> source = getProductSource(write);
+    return (!source || *source == FUNC_NAME_COMPUTE) &&
            write.getComponent() == read.getComponent() &&
            write.getMemberNameAttr() == read.getMemberNameAttr();
   });
@@ -257,7 +258,8 @@ static bool collectConstrainValueMappings(
   SmallVector<MemberWriteOp> precedingWrites;
   for (Operation *op = computeIf->getNextNode(); op != constrainIf; op = op->getNextNode()) {
     if (auto writeOp = dyn_cast<MemberWriteOp>(op)) {
-      if (!hasProductSource(writeOp, FUNC_NAME_COMPUTE)) {
+      if (std::optional<llvm::StringRef> source = getProductSource(writeOp);
+          source && *source != FUNC_NAME_COMPUTE) {
         return false;
       }
       std::optional<unsigned> resultIndex = getIfResultIndex(computeIf, writeOp.getVal());
