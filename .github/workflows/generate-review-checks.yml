@@ -13,7 +13,7 @@ jobs:
   generate:
     runs-on: ubuntu-24.04
     env:
-      TARGET_HEAD: da9a0b308e8750f749d75c10a2bd3013b194d1eb
+      TARGET_HEAD: da9a0b308677885e8b99a266f98f66ce0eb8ef13
       BASE_HEAD: 0d652966c80f3149aec874cc0572909bf7a61bda
     steps:
       - name: Check out the reviewed head
