@@ -15,9 +15,9 @@ module attributes {llzk.lang = "llzk"} {
         scf.yield %one : !felt.type
       } {product_source = "compute"}
 
-      // The member write is intentionally unmarked; fusion must not infer its provenance from the
-      // SSA value alone.
-      struct.writem %self[@foo] = %0 : <@A>, !felt.type
+      // The member write is intentionally marked as constrain-sourced; fusion must not cross an
+      // explicitly conflicting source annotation, even though its value is a compute-if result.
+      struct.writem %self[@foo] = %0 : <@A>, !felt.type {product_source = "constrain"}
 
       scf.if %b {
         %expected = felt.const 0 {product_source = "constrain"}
@@ -44,7 +44,7 @@ module attributes {llzk.lang = "llzk"} {
 // CHECK-NEXT:          %[[VAL_4:[0-9a-zA-Z_\.]+]] = felt.const  1 {product_source = "compute"}
 // CHECK-NEXT:          scf.yield %[[VAL_4]] : !felt.type
 // CHECK-NEXT:        } {product_source = "compute"}
-// CHECK-NEXT:        struct.writem %[[VAL_1]][@foo] = %[[VAL_2]] : <@A>, !felt.type
+// CHECK-NEXT:        struct.writem %[[VAL_1]][@foo] = %[[VAL_2]] : <@A>, !felt.type {product_source = "constrain"}
 // CHECK-NEXT:        scf.if %[[VAL_0]] {
 // CHECK-NEXT:          %[[VAL_5:[0-9a-zA-Z_\.]+]] = felt.const  0 {product_source = "constrain"}
 // CHECK-NEXT:          constrain.eq %[[VAL_2]], %[[VAL_5]] : !felt.type, !felt.type {product_source = "constrain"}
