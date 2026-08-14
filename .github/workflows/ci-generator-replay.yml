@@ -1,0 +1,221 @@
+name: LLZK PR 484 exact-head replay
+
+on:
+  push:
+    branches:
+      - ci/verify-pr484-final-20260812
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  replay:
+    runs-on: ubuntu-24.04
+    env:
+      BASE_HEAD: 683c6d412922766153a0756362762e29943cc40b
+      TARGET_HEAD: e8d85172abf4d76b5a9899f4e131c7b4079b1812
+      OUTPUT_PATH: /home/runner/work/_temp/llzk-pr484-replay
+
+    steps:
+      - name: Check out validation workflow
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Install Nix
+        uses: cachix/install-nix-action@d1ca217b388ee87b2507a9a93bf01368bde7cec2
+        with:
+          install_url: https://releases.nixos.org/nix/nix-2.23.3/install
+          github_access_token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set Git credentials
+        run: |
+          git config --global 'url.https://api@github.com/'.insteadOf 'https://github.com/'
+          git config --global 'url.https://ssh@github.com/'.insteadOf 'ssh://git@github.com/'
+          git config --global 'url.https://git@github.com/'.insteadOf 'git@github.com:'
+
+      - name: Use project build cache
+        uses: cachix/cachix-action@v17
+        with:
+          name: veridise-public
+          skipPush: true
+
+      - name: Replay complete generated output
+        shell: bash
+        run: |
+          set -euo pipefail
+          tested_path="$RUNNER_TEMP/llzk-pr484"
+          mkdir -p "$OUTPUT_PATH"
+
+          git fetch --no-tags --filter=blob:none \
+            https://github.com/project-llzk/llzk-lib.git "$BASE_HEAD"
+          git fetch --no-tags --filter=blob:none \
+            https://github.com/1sgtpepper/llzk-lib.git "$TARGET_HEAD"
+          git worktree add --detach "$tested_path" "$TARGET_HEAD"
+          test "$(git -C "$tested_path" rev-parse HEAD)" = "$TARGET_HEAD"
+
+          (
+            cd "$tested_path"
+            nix build --impure --print-build-logs --expr \
+              'let flake = builtins.getFlake (toString ./.) ; in flake.packages.x86_64-linux.debugGCC.overrideAttrs (_: { doCheck = false; })'
+          )
+
+          llzk_opt="$tested_path/result/bin/llzk-opt"
+          filecheck=$(find /nix/store -type f -path '*/bin/FileCheck' -executable -print -quit)
+          test -x "$llzk_opt"
+          test -n "$filecheck"
+          "$llzk_opt" --version > "$OUTPUT_PATH/llzk-opt.version"
+          printf '%s\n' "$BASE_HEAD" > "$OUTPUT_PATH/base-head.txt"
+          printf '%s\n' "$TARGET_HEAD" > "$OUTPUT_PATH/target-head.txt"
+
+          mapfile -t test_files < <(
+            git -C "$tested_path" diff --name-only "$BASE_HEAD" "$TARGET_HEAD" -- \
+              'test/Transforms/FuseProductControlFlow/*.llzk'
+          )
+          test "${#test_files[@]}" -eq 16
+          line_count_mismatches=()
+
+          for test_file in "${test_files[@]}"; do
+            name=$(basename "$test_file" .llzk)
+            output_path="$OUTPUT_PATH/$name"
+            mkdir -p "$output_path"
+            cp "$tested_path/$test_file" "$output_path/committed-test.llzk"
+
+            run_line=$(sed -n '1p' "$tested_path/$test_file")
+            pipeline=${run_line#*llzk-opt }
+            pipeline=${pipeline%% %s*}
+            pipeline=${pipeline//\"/}
+            read -r -a producer_args <<< "$pipeline"
+
+            "$llzk_opt" "${producer_args[@]}" "$tested_path/$test_file" \
+              > "$output_path/producer-output.llzk" 2>&1
+            python3 "$tested_path/scripts/generate-test-checks.py" \
+              < "$output_path/producer-output.llzk" \
+              > "$output_path/generated-checks.txt"
+
+            "$filecheck" --enable-var-scope "$tested_path/$test_file" \
+              < "$output_path/producer-output.llzk"
+            "$filecheck" --enable-var-scope "$output_path/generated-checks.txt" \
+              < "$output_path/producer-output.llzk"
+
+            committed_checks=$(grep -c '^// CHECK' "$tested_path/$test_file")
+            generated_checks=$(grep -c '^// CHECK' "$output_path/generated-checks.txt")
+            if test "$committed_checks" -eq "$generated_checks"; then
+              complete_check_line_count=PASS
+            else
+              complete_check_line_count=FAIL
+              line_count_mismatches+=("$test_file")
+            fi
+
+            {
+              echo "head=$TARGET_HEAD"
+              echo "test=$test_file"
+              echo "producer_command=result/bin/llzk-opt $pipeline $test_file"
+              echo "committed_check_lines=$committed_checks"
+              echo "fresh_generated_check_lines=$generated_checks"
+              echo "committed_checks_against_exact_head_output=PASS"
+              echo "fresh_generated_checks_against_exact_head_output=PASS"
+              echo "complete_check_line_count=$complete_check_line_count"
+            } > "$output_path/comparison.txt"
+          done
+
+          if test "${#line_count_mismatches[@]}" -eq 0; then
+            complete_check_line_counts=PASS
+          else
+            complete_check_line_counts=FAIL
+          fi
+
+          generator_path="$OUTPUT_PATH/generator-contract"
+          mkdir -p "$generator_path"
+          generator_test=test/Transforms/generate-test-checks-inline-attributes.llzk
+          awk '
+            /^\/\/--- inline-attributes\.llzk$/ { in_chunk = 1; next }
+            /^\/\/--- / && in_chunk { exit }
+            in_chunk { print }
+          ' "$tested_path/$generator_test" > "$generator_path/inline-attributes.llzk"
+          python3 "$tested_path/scripts/generate-test-checks.py" \
+            "$generator_path/inline-attributes.llzk" \
+            > "$generator_path/generated-checks.txt"
+          "$filecheck" "$tested_path/$generator_test" --check-prefix=SCRIPT \
+            < "$generator_path/generated-checks.txt"
+          {
+            echo "head=$TARGET_HEAD"
+            echo "test=$generator_test"
+            echo "fresh_generator_stdout=PASS"
+            echo "focused_script_contract=PASS"
+          } > "$generator_path/comparison.txt"
+
+          mutation_path="$OUTPUT_PATH/nested-if-recursion-mutation"
+          mkdir -p "$mutation_path"
+          source_path="$tested_path/lib/Transforms/LLZKFuseProductControlFlowPass.cpp"
+          python3 - "$source_path" <<'PY'
+          import pathlib
+          import sys
+
+          path = pathlib.Path(sys.argv[1])
+          source = path.read_text()
+          recursion = '''  fuseMatchingRegionControlFlow(fusedIf.getThenRegion(), context);
+            if (!fusedIf.getElseRegion().empty()) {
+              fuseMatchingRegionControlFlow(fusedIf.getElseRegion(), context);
+            }
+
+          '''
+          if source.count(recursion) != 1:
+              raise SystemExit("expected one nested-if recursion block")
+          path.write_text(source.replace(recursion, ""))
+          PY
+          git -C "$tested_path" diff --check
+
+          (
+            cd "$tested_path"
+            nix build --impure --print-build-logs --out-link result-mutant --expr \
+              'let flake = builtins.getFlake (toString ./.) ; in flake.packages.x86_64-linux.debugGCC.overrideAttrs (_: { doCheck = false; })'
+          )
+
+          mutant_opt="$tested_path/result-mutant/bin/llzk-opt"
+          mutation_test=test/Transforms/FuseProductControlFlow/fuse_if_then_if_positive.llzk
+          mutation_run_line=$(sed -n '1p' "$tested_path/$mutation_test")
+          mutation_pipeline=${mutation_run_line#*llzk-opt }
+          mutation_pipeline=${mutation_pipeline%% %s*}
+          mutation_pipeline=${mutation_pipeline//\"/}
+          read -r -a mutation_args <<< "$mutation_pipeline"
+          "$mutant_opt" "${mutation_args[@]}" "$tested_path/$mutation_test" \
+            > "$mutation_path/producer-output.llzk" 2>&1
+          if "$filecheck" --enable-var-scope "$tested_path/$mutation_test" \
+            < "$mutation_path/producer-output.llzk" \
+            > "$mutation_path/filecheck-output.txt" 2>&1; then
+            echo "nested-if fixture unexpectedly accepted recursion-disabled output" >&2
+            exit 1
+          fi
+          {
+            echo "head=$TARGET_HEAD"
+            echo "test=$mutation_test"
+            echo "removed_behavior=fuseIfPair branch recursion"
+            echo "committed_checks_against_recursion_disabled_output=FAIL_AS_EXPECTED"
+            echo "mutation_test=PASS"
+          } > "$mutation_path/comparison.txt"
+
+          {
+            echo "base=$BASE_HEAD"
+            echo "head=$TARGET_HEAD"
+            echo "transform_fixture_count=${#test_files[@]}"
+            echo "transform_committed_checks=PASS"
+            echo "transform_fresh_generated_checks=PASS"
+            echo "transform_complete_check_line_counts=$complete_check_line_counts"
+            echo "transform_complete_check_line_count_mismatches=${line_count_mismatches[*]}"
+            echo "generator_contract=PASS"
+            echo "nested_if_recursion_mutation=PASS"
+          } > "$OUTPUT_PATH/summary.txt"
+
+          test "${#line_count_mismatches[@]}" -eq 0
+
+      - name: Upload replay evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: pr484-exact-head-replay-${{ github.sha }}
+          path: /home/runner/work/_temp/llzk-pr484-replay
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
