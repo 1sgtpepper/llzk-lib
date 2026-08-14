@@ -1,7 +1,9 @@
 name: Reproduce missing GTest check target
 
 on:
-  workflow_dispatch:
+  push:
+    branches:
+      - audit/contributor-tooling-gtest-repro-20260814
 
 permissions:
   contents: read
