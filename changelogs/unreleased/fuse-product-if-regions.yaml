@@ -1,5 +1,5 @@
 added:
-  - Fusion for matching compute/constrain `scf.if` operations in product programs
+  - Fusion for matching compute/constrain `scf.if` and `scf.for` operations in product programs
 
 changed:
   - Rename `llzk-fuse-product-loops` to `llzk-fuse-product-control-flow` now that the pass fuses loops and conditionals
