@@ -183,6 +183,12 @@ jobs:
                   if line.startswith(f"// {prefix}:") and "affine_map" in line:
                       adjustments.append(f"{source}: affine-map check kept with its defining split")
                       continue
+                  if line in {
+                      "// " + prefix + ":  // {{[-][-][-][-][-]}}",
+                      "// " + prefix + "-NEXT:  // {{[-][-][-][-][-]}}",
+                  }:
+                      adjustments.append(f"{source}: split-safe separator spelling normalized")
+                      line = f"// {prefix}-NEXT:  // -----"
                   if line == f"// {prefix}:  // -----":
                       adjustments.append(f"{source}: separator CHECK-NEXT relaxed across blank output line")
                       line = line.replace(
