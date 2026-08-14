@@ -139,10 +139,13 @@ jobs:
               --check-prefix="$check_prefix" \
               < "$output_path/producer-output.llzk" \
               > "$output_path/generated-checks.txt"
-            "$filecheck" "${filecheck_args[@]}" --check-prefix="$check_prefix" \
+            local generated_filecheck_status=PASS
+            if ! "$filecheck" "${filecheck_args[@]}" --check-prefix="$check_prefix" \
               "$output_path/generated-checks.txt" \
               < "$output_path/producer-output.llzk" \
-              > "$output_path/generated-filecheck.txt" 2>&1
+              > "$output_path/generated-filecheck.txt" 2>&1; then
+              generated_filecheck_status=FAIL_BEFORE_PLACEMENT_NORMALIZATION
+            fi
 
             local committed_checks=0
             local generated_checks=0
@@ -232,6 +235,7 @@ jobs:
               echo "fresh_generated_check_lines=$generated_checks"
               echo "committed_checks_against_exact_head_output=PASS"
               echo "fresh_generated_checks_against_exact_head_output=PASS"
+              echo "raw_generated_filecheck=$generated_filecheck_status"
               echo "complete_output_replay=PASS"
             } > "$output_path/replay-metadata.txt"
             full_check_results+=("$name=PASS")
