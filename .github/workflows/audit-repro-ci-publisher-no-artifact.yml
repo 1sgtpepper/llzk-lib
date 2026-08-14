@@ -1,0 +1,58 @@
+name: Reproduce test publisher missing artifact failure
+
+on:
+  push:
+    branches:
+      - audit/contributor-tooling-repros-20260814
+
+permissions:
+  contents: read
+  checks: write
+  pull-requests: write
+
+jobs:
+  reproduce:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Confirm that no result artifact exists
+        run: |
+          set -euo pipefail
+          if compgen -G 'artifacts/**/*.xml' > /dev/null; then
+            echo 'Unexpected XML artifact exists.'
+            exit 2
+          fi
+          echo 'No XML artifact is present.'
+
+      - name: Publish the empty result set
+        id: publish
+        continue-on-error: true
+        uses: EnricoMi/publish-unit-test-result-action@v2
+        with:
+          files: artifacts/**/*.xml
+          comment_mode: always
+          action_fail: true
+          action_fail_on_inconclusive: true
+
+      - name: Record reproduction
+        if: always()
+        env:
+          PUBLISH_OUTCOME: ${{ steps.publish.outcome }}
+        run: |
+          set -euo pipefail
+          echo "publisher outcome: $PUBLISH_OUTCOME"
+          echo "publisher outcome: $PUBLISH_OUTCOME" >> "$GITHUB_STEP_SUMMARY"
+          if [[ "$PUBLISH_OUTCOME" == "failure" ]]; then
+            echo 'REPRODUCED: the no-artifact result is treated as an inconclusive failure.' >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+          if [[ "$PUBLISH_OUTCOME" == "success" ]]; then
+            echo 'NOT REPRODUCED: the no-artifact result was accepted.' >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          echo 'UNEXPECTED: publisher did not complete normally.' >> "$GITHUB_STEP_SUMMARY"
+          exit 2

@@ -1,0 +1,52 @@
+name: Reproduce bootstrap failure continuation
+
+on:
+  push:
+    branches:
+      - audit/contributor-tooling-repros-20260814
+
+permissions:
+  contents: read
+
+jobs:
+  reproduce:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Fail the clone command in a controlled fixture
+        run: |
+          set -euo pipefail
+          fixture="$RUNNER_TEMP/build-deps-fail-fast"
+          rm -rf "$fixture"
+          mkdir -p "$fixture/bin"
+          printf '%s\n' \
+            '#!/usr/bin/env bash' \
+            'echo "controlled git clone failure" >&2' \
+            'exit 42' > "$fixture/bin/git"
+          printf '%s\n' \
+            '#!/usr/bin/env bash' \
+            'exit 0' > "$fixture/bin/cmake"
+          printf '%s\n' \
+            '#!/usr/bin/env bash' \
+            'exit 0' > "$fixture/bin/ln"
+          chmod +x "$fixture/bin/git" "$fixture/bin/cmake" "$fixture/bin/ln"
+          set +e
+          (cd "$fixture" && PATH="$fixture/bin:$PATH" bash "$GITHUB_WORKSPACE/scripts/build_deps.sh" > "$fixture/run.log" 2>&1)
+          status=$?
+          set -e
+          cat "$fixture/run.log"
+          echo "script status: $status" >> "$GITHUB_STEP_SUMMARY"
+          if [[ "$status" -eq 0 ]] && grep -q 'controlled git clone failure' "$fixture/run.log"; then
+            echo 'REPRODUCED: bootstrap continued after the failed clone and returned success.' >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+          if [[ "$status" -ne 0 ]]; then
+            echo 'NOT REPRODUCED: bootstrap stopped after the failed clone.' >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          echo 'UNEXPECTED: the controlled failure was not observed.' >> "$GITHUB_STEP_SUMMARY"
+          exit 2

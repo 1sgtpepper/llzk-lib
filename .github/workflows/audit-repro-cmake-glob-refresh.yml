@@ -1,0 +1,51 @@
+name: Reproduce stale CMake source glob
+
+on:
+  push:
+    branches:
+      - audit/contributor-tooling-repros-20260814
+
+permissions:
+  contents: read
+
+jobs:
+  reproduce:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Add a source file after configure
+        run: |
+          set -euo pipefail
+          fixture="$RUNNER_TEMP/glob-refresh-repro"
+          rm -rf "$fixture"
+          mkdir -p "$fixture"
+          printf '%s\n' \
+            'cmake_minimum_required(VERSION 3.23)' \
+            'project(glob_refresh C)' \
+            'file(GLOB SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/*.c")' \
+            'add_executable(glob_refresh ${SOURCES})' > "$fixture/CMakeLists.txt"
+          printf '%s\n' 'int main(void) { return 0; }' > "$fixture/main.c"
+          cmake -S "$fixture" -B "$fixture/build" -G Ninja
+          cmake --build "$fixture/build"
+          printf '%s\n' 'int sentinel(void) { return 0; }' > "$fixture/second.c"
+          printf '%s\n' 'int sentinel(void);' 'int main(void) { return sentinel(); }' > "$fixture/main.c"
+          set +e
+          cmake --build "$fixture/build" --verbose > "$fixture/build.log" 2>&1
+          status=$?
+          set -e
+          cat "$fixture/build.log"
+          echo "build status: $status" >> "$GITHUB_STEP_SUMMARY"
+          if [[ "$status" -ne 0 ]] && grep -q 'sentinel' "$fixture/build.log"; then
+            echo 'REPRODUCED: a new source file was omitted until manual reconfigure.' >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+          if [[ "$status" -eq 0 ]]; then
+            echo 'NOT REPRODUCED: the new source file was discovered automatically.' >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          echo 'UNEXPECTED: build failed for a different reason.' >> "$GITHUB_STEP_SUMMARY"
+          exit 2

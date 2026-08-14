@@ -1,0 +1,44 @@
+name: Reproduce lowering evaluator missing binary failure
+
+on:
+  push:
+    branches:
+      - audit/contributor-tooling-repros-20260814
+
+permissions:
+  contents: read
+
+jobs:
+  reproduce:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Run with a missing llzk-opt binary
+        run: |
+          set -euo pipefail
+          log="$RUNNER_TEMP/lowering-missing-binary.log"
+          set +e
+          python3 scripts/lowering_pass_eval.py \
+            --src-dir test/Inputs \
+            --dest-dir "$RUNNER_TEMP/lowering-output" \
+            --llzk-opt-bin "$RUNNER_TEMP/does-not-exist/llzk-opt" \
+            --nthreads 1 \
+            --output-csv "$RUNNER_TEMP/lowering.csv" > "$log" 2>&1
+          status=$?
+          set -e
+          cat "$log"
+          echo "script status: $status" >> "$GITHUB_STEP_SUMMARY"
+          if [[ "$status" -eq 1 ]] && grep -q 'FileNotFoundError' "$log"; then
+            echo 'REPRODUCED: a missing executable escapes as an uncaught traceback.' >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+          if [[ "$status" -eq 0 ]]; then
+            echo 'NOT REPRODUCED: the missing executable was handled cleanly.' >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          echo 'UNEXPECTED: a different failure occurred.' >> "$GITHUB_STEP_SUMMARY"
+          exit 2

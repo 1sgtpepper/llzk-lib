@@ -1,0 +1,49 @@
+name: Reproduce bootstrap wrong-directory cleanup
+
+on:
+  push:
+    branches:
+      - audit/contributor-tooling-repros-20260814
+
+permissions:
+  contents: read
+
+jobs:
+  reproduce:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Invoke bootstrap outside the repository
+        run: |
+          set -euo pipefail
+          fixture="$RUNNER_TEMP/build-deps-cwd"
+          rm -rf "$fixture"
+          mkdir -p "$fixture/bin" "$fixture/third-party" "$fixture/build"
+          printf '%s\n' 'sentinel' > "$fixture/third-party/sentinel.txt"
+          printf '%s\n' 'sentinel' > "$fixture/build/sentinel.txt"
+          printf '%s\n' \
+            '#!/usr/bin/env bash' \
+            'exit 42' > "$fixture/bin/git"
+          printf '%s\n' \
+            '#!/usr/bin/env bash' \
+            'exit 0' > "$fixture/bin/cmake"
+          printf '%s\n' \
+            '#!/usr/bin/env bash' \
+            'exit 0' > "$fixture/bin/ln"
+          chmod +x "$fixture/bin/git" "$fixture/bin/cmake" "$fixture/bin/ln"
+          set +e
+          (cd "$fixture" && PATH="$fixture/bin:$PATH" bash "$GITHUB_WORKSPACE/scripts/build_deps.sh" > "$fixture/run.log" 2>&1)
+          status=$?
+          set -e
+          cat "$fixture/run.log"
+          echo "script status: $status" >> "$GITHUB_STEP_SUMMARY"
+          if [[ ! -e "$fixture/third-party/sentinel.txt" ]] && [[ ! -e "$fixture/build/sentinel.txt" ]]; then
+            echo 'REPRODUCED: invocation outside the repository deleted both sentinel directories.' >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+          echo 'NOT REPRODUCED: sentinel directories were preserved.' >> "$GITHUB_STEP_SUMMARY"
+          exit 0

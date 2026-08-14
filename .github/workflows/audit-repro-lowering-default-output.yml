@@ -1,0 +1,36 @@
+name: Reproduce lowering evaluator unignored output
+
+on:
+  push:
+    branches:
+      - audit/contributor-tooling-repros-20260814
+
+permissions:
+  contents: read
+
+jobs:
+  reproduce:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Run with the default CSV path
+        run: |
+          set -euo pipefail
+          output="$GITHUB_WORKSPACE/llzk_lowering_results.csv"
+          rm -f "$output"
+          python3 scripts/lowering_pass_eval.py \
+            --src-dir test/Inputs \
+            --dest-dir "$RUNNER_TEMP/lowering-output" \
+            --llzk-opt-bin /usr/bin/true \
+            --nthreads 1
+          git status --short -- llzk_lowering_results.csv | tee "$RUNNER_TEMP/status.log"
+          if [[ -f "$output" ]] && ! git check-ignore -q -- llzk_lowering_results.csv; then
+            echo 'REPRODUCED: the default CSV output is an unignored working-tree file.' >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+          echo 'NOT REPRODUCED: the default CSV output is ignored or absent.' >> "$GITHUB_STEP_SUMMARY"
+          exit 0

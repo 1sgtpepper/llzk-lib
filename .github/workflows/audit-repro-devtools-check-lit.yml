@@ -1,0 +1,53 @@
+name: Reproduce disabled devtools check dependency
+
+on:
+  push:
+    branches:
+      - audit/contributor-tooling-repros-20260814
+
+permissions:
+  contents: read
+
+jobs:
+  reproduce:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Configure with developer tools disabled
+        run: |
+          set -euo pipefail
+          fixture="$RUNNER_TEMP/devtools-check-repro"
+          rm -rf "$fixture"
+          mkdir -p "$fixture"
+          printf '%s\n' \
+            'cmake_minimum_required(VERSION 3.23)' \
+            'project(devtools_check NONE)' \
+            'option(BUILD_TESTING "Build tests" ON)' \
+            'option(LLZK_BUILD_DEVTOOLS "Build developer tools" OFF)' \
+            'if(LLZK_BUILD_DEVTOOLS)' \
+            '  add_custom_target(r1cs-opt)' \
+            'endif()' \
+            'if(BUILD_TESTING)' \
+            '  add_custom_target(check-lit DEPENDS r1cs-opt)' \
+            'endif()' > "$fixture/CMakeLists.txt"
+          set +e
+          cmake -S "$fixture" -B "$fixture/build" -G Ninja \
+            -DBUILD_TESTING=ON -DLLZK_BUILD_DEVTOOLS=OFF > "$fixture/configure.log" 2>&1
+          status=$?
+          set -e
+          cat "$fixture/configure.log"
+          echo "configure status: $status" >> "$GITHUB_STEP_SUMMARY"
+          if [[ "$status" -ne 0 ]] && grep -Eq 'r1cs-opt|dependency target' "$fixture/configure.log"; then
+            echo 'REPRODUCED: the test target names a developer tool that was not created.' >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+          if [[ "$status" -eq 0 ]]; then
+            echo 'NOT REPRODUCED: the disabled-tool configuration completed.' >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          echo 'UNEXPECTED: configure failed for a different reason.' >> "$GITHUB_STEP_SUMMARY"
+          exit 2

@@ -1,0 +1,39 @@
+name: Reproduce generator output inplace conflict
+
+on:
+  push:
+    branches:
+      - audit/contributor-tooling-repros-20260814
+
+permissions:
+  contents: read
+
+jobs:
+  reproduce:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Use output and inplace modes together
+        run: |
+          set -euo pipefail
+          log="$RUNNER_TEMP/generator-output-conflict.log"
+          set +e
+          printf 'module {\n}\n' | python3 scripts/generate-test-checks.py --inplace --output "$RUNNER_TEMP/generated.llzk" > "$log" 2>&1
+          status=$?
+          set -e
+          cat "$log"
+          echo "script status: $status" >> "$GITHUB_STEP_SUMMARY"
+          if [[ "$status" -eq 1 ]] && grep -q 'AssertionError' "$log"; then
+            echo 'REPRODUCED: conflicting output modes raise an uncaught AssertionError.' >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+          if [[ "$status" -eq 0 ]]; then
+            echo 'NOT REPRODUCED: conflicting output modes were handled cleanly.' >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          echo 'UNEXPECTED: a different failure occurred.' >> "$GITHUB_STEP_SUMMARY"
+          exit 2

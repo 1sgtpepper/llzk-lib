@@ -1,0 +1,43 @@
+name: Reproduce generator invalid delimiter regex
+
+on:
+  push:
+    branches:
+      - audit/contributor-tooling-repros-20260814
+
+permissions:
+  contents: read
+
+jobs:
+  reproduce:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Use an invalid delimiter regex
+        run: |
+          set -euo pipefail
+          source="$RUNNER_TEMP/generator-source.llzk"
+          log="$RUNNER_TEMP/generator-regex.log"
+          printf 'func @main() {\n}\n' > "$source"
+          set +e
+          printf 'module {\n}\n' | python3 scripts/generate-test-checks.py \
+            --source "$source" \
+            --source_delim_regex '[' > "$log" 2>&1
+          status=$?
+          set -e
+          cat "$log"
+          echo "script status: $status" >> "$GITHUB_STEP_SUMMARY"
+          if [[ "$status" -eq 1 ]] && grep -Eq 're\.error|PatternError|unterminated character set' "$log"; then
+            echo 'REPRODUCED: an invalid delimiter regex escapes as an uncaught regex error.' >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+          if [[ "$status" -eq 0 ]]; then
+            echo 'NOT REPRODUCED: the invalid delimiter regex was handled cleanly.' >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          echo 'UNEXPECTED: a different failure occurred.' >> "$GITHUB_STEP_SUMMARY"
+          exit 2

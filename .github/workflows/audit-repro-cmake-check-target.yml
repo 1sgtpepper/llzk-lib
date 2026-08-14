@@ -1,0 +1,54 @@
+name: Reproduce disabled check target failure
+
+on:
+  push:
+    branches:
+      - audit/contributor-tooling-repros-20260814
+
+permissions:
+  contents: read
+
+jobs:
+  reproduce:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Configure and build the disabled check target
+        run: |
+          set -euo pipefail
+          fixture="$RUNNER_TEMP/check-target-repro"
+          rm -rf "$fixture"
+          mkdir -p "$fixture"
+          printf '%s\n' \
+            'cmake_minimum_required(VERSION 3.23)' \
+            'project(check_target NONE)' \
+            'option(BUILD_TESTING "Build tests" ON)' \
+            'if(BUILD_TESTING)' \
+            '  add_custom_target(check-unit)' \
+            '  add_custom_target(check-lit)' \
+            'endif()' \
+            'add_custom_target(check' \
+            '  DEPENDS' \
+            '    $<$<BOOL:BUILD_TESTING>:check-unit>' \
+            '    $<$<BOOL:BUILD_TESTING>:check-lit>)' > "$fixture/CMakeLists.txt"
+          cmake -S "$fixture" -B "$fixture/build" -G Ninja -DBUILD_TESTING=OFF
+          set +e
+          cmake --build "$fixture/build" --target check > "$fixture/build.log" 2>&1
+          status=$?
+          set -e
+          cat "$fixture/build.log"
+          echo "build status: $status" >> "$GITHUB_STEP_SUMMARY"
+          if [[ "$status" -ne 0 ]] && grep -q 'check-unit' "$fixture/build.log"; then
+            echo 'REPRODUCED: check references a target that was not created.' >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+          if [[ "$status" -eq 0 ]]; then
+            echo 'NOT REPRODUCED: disabled check target completed.' >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          echo 'UNEXPECTED: build failed for a different reason.' >> "$GITHUB_STEP_SUMMARY"
+          exit 2

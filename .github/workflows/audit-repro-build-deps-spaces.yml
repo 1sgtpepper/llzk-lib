@@ -1,0 +1,56 @@
+name: Reproduce bootstrap path splitting
+
+on:
+  push:
+    branches:
+      - audit/contributor-tooling-repros-20260814
+
+permissions:
+  contents: read
+
+jobs:
+  reproduce:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Invoke bootstrap from a path containing spaces
+        run: |
+          set -euo pipefail
+          fixture="$RUNNER_TEMP/build deps spaces"
+          rm -rf "$fixture"
+          mkdir -p "$fixture/bin"
+          printf '%s\n' \
+            '#!/usr/bin/env bash' \
+            'exit 42' > "$fixture/bin/git"
+          printf '%s\n' \
+            '#!/usr/bin/env bash' \
+            'exit 0' > "$fixture/bin/cmake"
+          printf '%s\n' \
+            '#!/usr/bin/env bash' \
+            'printf "%s\\n" "$#" > "$LN_ARGC_FILE"' \
+            'printf "<%s>\\n" "$@" > "$LN_ARGS_FILE"' \
+            'exit 0' > "$fixture/bin/ln"
+          chmod +x "$fixture/bin/git" "$fixture/bin/cmake" "$fixture/bin/ln"
+          set +e
+          (cd "$fixture" && \
+            export PATH="$fixture/bin:$PATH" \
+            LN_ARGC_FILE="$fixture/ln.argc" \
+            LN_ARGS_FILE="$fixture/ln.args" \
+            bash "$GITHUB_WORKSPACE/scripts/build_deps.sh" > "$fixture/run.log" 2>&1)
+          status=$?
+          set -e
+          cat "$fixture/run.log"
+          cat "$fixture/ln.args"
+          echo "script status: $status" >> "$GITHUB_STEP_SUMMARY"
+          argc=$(< "$fixture/ln.argc")
+          echo "ln argument count: $argc" >> "$GITHUB_STEP_SUMMARY"
+          if [[ "$argc" -ne 3 ]]; then
+            echo 'REPRODUCED: the unquoted install path was split into multiple ln arguments.' >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+          echo 'NOT REPRODUCED: the install path stayed a single ln argument.' >> "$GITHUB_STEP_SUMMARY"
+          exit 0

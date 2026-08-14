@@ -1,0 +1,39 @@
+name: Reproduce generator missing source failure
+
+on:
+  push:
+    branches:
+      - audit/contributor-tooling-repros-20260814
+
+permissions:
+  contents: read
+
+jobs:
+  reproduce:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Use a missing source path
+        run: |
+          set -euo pipefail
+          log="$RUNNER_TEMP/generator-missing-source.log"
+          set +e
+          python3 scripts/generate-test-checks.py --source "$RUNNER_TEMP/does-not-exist.llzk" > "$log" 2>&1
+          status=$?
+          set -e
+          cat "$log"
+          echo "script status: $status" >> "$GITHUB_STEP_SUMMARY"
+          if [[ "$status" -eq 1 ]] && grep -q 'FileNotFoundError' "$log"; then
+            echo 'REPRODUCED: a missing source path escapes as an uncaught FileNotFoundError.' >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+          if [[ "$status" -eq 0 ]]; then
+            echo 'NOT REPRODUCED: the missing source path was handled cleanly.' >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          echo 'UNEXPECTED: a different failure occurred.' >> "$GITHUB_STEP_SUMMARY"
+          exit 2
