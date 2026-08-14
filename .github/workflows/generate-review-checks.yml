@@ -1,0 +1,58 @@
+name: Generate review checks
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  generate:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out the reviewed head
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - uses: cachix/install-nix-action@d1ca217b388ee87b2507a9a93bf01368bde7cec2
+        with:
+          install_url: https://releases.nixos.org/nix/nix-2.23.3/install
+          github_access_token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set Git credentials
+        run: |
+          git config --global 'url.https://api@github.com/'.insteadOf 'https://github.com/'
+          git config --global 'url.https://ssh@github.com/'.insteadOf 'ssh://git@github.com/'
+          git config --global 'url.https://git@github.com/'.insteadOf 'git@github.com:'
+
+      - uses: cachix/cachix-action@v17
+        with:
+          name: veridise-public
+          authToken: '${{ secrets.CACHIX_PUBLIC_TOKEN }}'
+
+      - name: Build exact-head tools
+        run: nix --print-build-logs build '.#debugGCC'
+
+      - name: Generate complete check blocks
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts
+          tests=(
+            test/Dialect/Function/call_with_symbolic_felt_restriction_pass.llzk
+            test/Dialect/Struct/struct_params_restrictions_pass.llzk
+            test/Dialect/Struct/struct_params_symbolic_pass.llzk
+            test/Dialect/Verif/include_with_symbolic_felt_restriction_pass.llzk
+          )
+          for test_file in "${tests[@]}"; do
+            name=$(basename "$test_file" .llzk)
+            result/bin/llzk-opt -split-input-file "$test_file" > "artifacts/${name}.producer.llzk"
+            python3 scripts/generate-test-checks.py "artifacts/${name}.producer.llzk" \
+              > "artifacts/${name}.checks"
+          done
+
+      - name: Upload generated checks
+        uses: actions/upload-artifact@v7
+        with:
+          name: review-checks-634-${{ github.sha }}
+          path: artifacts
