@@ -37,10 +37,10 @@ jobs:
           chmod +x "$fixture/bin/git" "$fixture/bin/cmake" "$fixture/bin/ln"
           set +e
           (cd "$fixture" && \
-            export PATH="$fixture/bin:$PATH" \
-            LN_ARGC_FILE="$fixture/ln.argc" \
-            LN_ARGS_FILE="$fixture/ln.args" \
-            bash "$GITHUB_WORKSPACE/scripts/build_deps.sh" > "$fixture/run.log" 2>&1)
+            env PATH="$fixture/bin:$PATH" \
+              LN_ARGC_FILE="$fixture/ln.argc" \
+              LN_ARGS_FILE="$fixture/ln.args" \
+              bash "$GITHUB_WORKSPACE/scripts/build_deps.sh" > "$fixture/run.log" 2>&1)
           status=$?
           set -e
           cat "$fixture/run.log"

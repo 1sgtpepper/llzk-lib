@@ -32,7 +32,8 @@ jobs:
             '  add_custom_target(r1cs-opt)' \
             'endif()' \
             'if(BUILD_TESTING)' \
-            '  add_custom_target(check-lit DEPENDS r1cs-opt)' \
+            '  add_custom_target(check-lit)' \
+            '  add_dependencies(check-lit r1cs-opt)' \
             'endif()' > "$fixture/CMakeLists.txt"
           set +e
           cmake -S "$fixture" -B "$fixture/build" -G Ninja \
