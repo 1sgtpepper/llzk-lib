@@ -1,4 +1,4 @@
-// RUN: llzk-opt -split-input-file %s
+// RUN: llzk-opt -split-input-file %s | FileCheck %s
 
 // Accepted calls cover explicit and inferred symbols, qualified constant globals, fielded and
 // fieldless felt constants, and matching concrete evidence.
@@ -89,3 +89,64 @@ module attributes {llzk.lang} {
     function.return
   }
 }
+
+// CHECK-LABEL: module attributes {llzk.lang} {
+// CHECK-NEXT:    poly.template @BoxTemplate {
+// CHECK-NEXT:      poly.param @P
+// CHECK-NEXT:      struct.def @Box {
+// CHECK-NEXT:        function.def @compute() -> !struct.type<@BoxTemplate::@Box<[@P]>> attributes {function.allow_witness} {
+// CHECK-NEXT:          %[[VAL_0:[0-9a-zA-Z_\.]+]] = struct.new : <@BoxTemplate::@Box<[@P]>>
+// CHECK-NEXT:          function.return %[[VAL_0]] : !struct.type<@BoxTemplate::@Box<[@P]>>
+// CHECK-NEXT:        }
+// CHECK-NEXT:        function.def @constrain(%[[VAL_1:[0-9a-zA-Z_\.]+]]: !struct.type<@BoxTemplate::@Box<[@P]>>) attributes {function.allow_constraint} {
+// CHECK-NEXT:          function.return
+// CHECK-NEXT:        }
+// CHECK-NEXT:      }
+// CHECK-NEXT:    }
+// CHECK-NEXT:    poly.template @Target {
+// CHECK-NEXT:      poly.param @F : !felt.type
+// CHECK-NEXT:      function.def @accept(%[[VAL_2:[0-9a-zA-Z_\.]+]]: !struct.type<@BoxTemplate::@Box<[@F]>>) {
+// CHECK-NEXT:        function.return
+// CHECK-NEXT:      }
+// CHECK-NEXT:    }
+// CHECK-NEXT:    poly.template @Caller {
+// CHECK-NEXT:      poly.param @G : !felt.type<"bn128">
+// CHECK-NEXT:      poly.param @H : !felt.type<"bn128">
+// CHECK-NEXT:      function.def @caller(%[[VAL_3:[0-9a-zA-Z_\.]+]]: !struct.type<@BoxTemplate::@Box<[@G]>>) {
+// CHECK-NEXT:        function.call @Target::@accept<[@G]>(%[[VAL_3]]) : (!struct.type<@BoxTemplate::@Box<[@G]>>) -> ()
+// CHECK-NEXT:        function.call @Target::@accept(%[[VAL_3]]) : (!struct.type<@BoxTemplate::@Box<[@G]>>) -> ()
+// CHECK-NEXT:        function.return
+// CHECK-NEXT:      }
+// CHECK-NEXT:      function.def @concrete(%[[VAL_4:[0-9a-zA-Z_\.]+]]: !struct.type<@BoxTemplate::@Box<[#felt<const 35 : <"bn128">>]>>) {
+// CHECK-NEXT:        function.call @Target::@accept<[@G]>(%[[VAL_4]]) : (!struct.type<@BoxTemplate::@Box<[#felt<const 35 : <"bn128">>]>>) -> ()
+// CHECK-NEXT:        function.return
+// CHECK-NEXT:      }
+// CHECK-NEXT:      function.def @fieldless_concrete(%[[VAL_5:[0-9a-zA-Z_\.]+]]: !struct.type<@BoxTemplate::@Box<[#felt<const 35>]>>) {
+// CHECK-NEXT:        function.call @Target::@accept<[@G]>(%[[VAL_5]]) : (!struct.type<@BoxTemplate::@Box<[#felt<const 35>]>>) -> ()
+// CHECK-NEXT:        function.return
+// CHECK-NEXT:      }
+// CHECK-NEXT:      function.def @concrete_vs_symbol(%[[VAL_6:[0-9a-zA-Z_\.]+]]: !struct.type<@BoxTemplate::@Box<[@G]>>) {
+// CHECK-NEXT:        function.call @Target::@accept<[#felt<const 35 : <"bn128">>]>(%[[VAL_6]]) : (!struct.type<@BoxTemplate::@Box<[@G]>>) -> ()
+// CHECK-NEXT:        function.return
+// CHECK-NEXT:      }
+// CHECK-NEXT:      function.def @symbols_match(%[[VAL_7:[0-9a-zA-Z_\.]+]]: !struct.type<@BoxTemplate::@Box<[@H]>>) {
+// CHECK-NEXT:        function.call @Target::@accept<[@G]>(%[[VAL_7]]) : (!struct.type<@BoxTemplate::@Box<[@H]>>) -> ()
+// CHECK-NEXT:        function.return
+// CHECK-NEXT:      }
+// CHECK-NEXT:    }
+// CHECK-NEXT:    module @globals {
+// CHECK-NEXT:      global.def const @G : !felt.type<"bn128"> =  35
+// CHECK-NEXT:    }
+// CHECK-NEXT:    function.def @qualified(%[[VAL_8:[0-9a-zA-Z_\.]+]]: !struct.type<@BoxTemplate::@Box<[@globals::@G]>>) {
+// CHECK-NEXT:      function.call @Target::@accept<[@globals::@G]>(%[[VAL_8]]) : (!struct.type<@BoxTemplate::@Box<[@globals::@G]>>) -> ()
+// CHECK-NEXT:      function.return
+// CHECK-NEXT:    }
+// CHECK-NEXT:    function.def @qualified_concrete(%[[VAL_9:[0-9a-zA-Z_\.]+]]: !struct.type<@BoxTemplate::@Box<[#felt<const 35 : <"bn128">>]>>) {
+// CHECK-NEXT:      function.call @Target::@accept<[@globals::@G]>(%[[VAL_9]]) : (!struct.type<@BoxTemplate::@Box<[#felt<const 35 : <"bn128">>]>>) -> ()
+// CHECK-NEXT:      function.return
+// CHECK-NEXT:    }
+// CHECK-NEXT:    function.def @qualified_fieldless_concrete(%[[VAL_10:[0-9a-zA-Z_\.]+]]: !struct.type<@BoxTemplate::@Box<[#felt<const 35>]>>) {
+// CHECK-NEXT:      function.call @Target::@accept<[@globals::@G]>(%[[VAL_10]]) : (!struct.type<@BoxTemplate::@Box<[#felt<const 35>]>>) -> ()
+// CHECK-NEXT:      function.return
+// CHECK-NEXT:    }
+// CHECK-NEXT:  }

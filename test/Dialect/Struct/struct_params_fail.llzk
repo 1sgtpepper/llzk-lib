@@ -703,7 +703,7 @@ module attributes {llzk.lang, llzk.main = !struct.type<@T::@S<[#felt<const 35 : 
 // -----
 
 // A TypeAttr cannot instantiate a felt value parameter.
-// expected-error@+1 {{is not compatible with parameter "@N" type restriction '!felt.type<"bn128">'}}
+// expected-error@+1 {{instantiation value 'index' is not compatible with parameter "@N" type restriction '!felt.type<"bn128">'}}
 module attributes {llzk.lang, llzk.main = !struct.type<@T::@S<[index]>>} {
   poly.template @T {
     poly.param @N : !felt.type<"bn128">
@@ -721,7 +721,7 @@ module attributes {llzk.lang, llzk.main = !struct.type<@T::@S<[index]>>} {
 // -----
 
 // An IntegerAttr cannot instantiate a type-variable parameter.
-// expected-error@+1 {{is not compatible with parameter "@Ty" type restriction '!poly.tvar<@Ty>'}}
+// expected-error@+1 {{instantiation value '35 : index' is not compatible with parameter "@Ty" type restriction '!poly.tvar<@Ty>'}}
 module attributes {llzk.lang, llzk.main = !struct.type<@T::@S<[35]>>} {
   poly.template @T {
     poly.param @Ty : !poly.tvar<@Ty>
@@ -739,7 +739,7 @@ module attributes {llzk.lang, llzk.main = !struct.type<@T::@S<[35]>>} {
 // -----
 
 // A TypeAttr cannot instantiate an index parameter.
-// expected-error@+1 {{is not compatible with parameter "@N" type restriction 'index'}}
+// expected-error@+1 {{instantiation value '!felt.type' is not compatible with parameter "@N" type restriction 'index'}}
 module attributes {llzk.lang, llzk.main = !struct.type<@T::@S<[!felt.type]>>} {
   poly.template @T {
     poly.param @N : index
@@ -756,8 +756,8 @@ module attributes {llzk.lang, llzk.main = !struct.type<@T::@S<[!felt.type]>>} {
 
 // -----
 
-#map = affine_map<(i) -> (i)>
 // An affine map is deferred only for an integer-like restriction, not a felt restriction.
+#map = affine_map<(i) -> (i)>
 module attributes {llzk.lang} {
   poly.template @T {
     poly.param @N : !felt.type<"bn128">
@@ -772,7 +772,7 @@ module attributes {llzk.lang} {
   }
 
   struct.def @Use {
-    // expected-error@+1 {{is not compatible with parameter "@N" type restriction '!felt.type<"bn128">'}}
+    // expected-error@+1 {{instantiation value 'affine_map<(d0) -> (d0)>' is not compatible with parameter "@N" type restriction '!felt.type<"bn128">'}}
     struct.member @value : !struct.type<@T::@S<[#map]>>
 
     function.def @compute() -> !struct.type<@Use> {

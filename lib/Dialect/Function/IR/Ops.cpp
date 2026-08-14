@@ -616,81 +616,7 @@ void CallOp::build(
 
 LogicalResult
 CallOp::verifyTemplateParamCompatibility(Attribute paramFromCallOp, TemplateParamOp targetParam) {
-  // A wildcard `?` (represented as kDynamic) defers inference to a later pass.
-  // It is only valid for parameters with a `!poly.tvar` type restriction.
-  if (auto intAttr = llvm::dyn_cast<IntegerAttr>(paramFromCallOp)) {
-    if (isDynamic(intAttr)) {
-      std::optional<Type> declaredType = targetParam.getTypeOpt();
-      if (!declaredType || !llvm::isa<TypeVarType>(*declaredType)) {
-        auto diag = this->emitOpError().append(
-            "wildcard `?` can only be used for template parameters with `!poly.tvar` "
-            "type restriction, but parameter \"@",
-            targetParam.getName(), "\" has "
-        );
-        if (declaredType) {
-          diag.append("type restriction ", *declaredType);
-        } else {
-          diag.append("no type restriction");
-        }
-        return diag;
-      }
-      return success();
-    }
-  }
-  std::optional<Type> declaredType = targetParam.getTypeOpt();
-  bool compatible = !declaredType;
-  if (auto sym = llvm::dyn_cast<SymbolRefAttr>(paramFromCallOp)) {
-    bool resolvedLocal = false;
-    if (sym.getNestedReferences().empty()) {
-      SymbolTableCollection tables;
-      FailureOr<TemplateOp> parentTemplate = getConstResolutionTemplate(tables, *this);
-      if (failed(parentTemplate)) {
-        return failure();
-      }
-      if (TemplateOp p = *parentTemplate) {
-        auto binding = p.getConstNamed<TemplateSymbolBindingOpInterface>(sym.getRootReference());
-        if (binding) {
-          resolvedLocal = true;
-          if (declaredType) {
-            compatible = isTemplateParamTypeCompatible(binding.getTypeOpt(), *declaredType);
-          }
-        }
-      }
-    }
-    if (!resolvedLocal) {
-      SymbolTableCollection tables;
-      auto lookup = lookupTopLevelSymbol(tables, sym, *this);
-      if (failed(lookup)) {
-        return failure();
-      }
-      auto global = llvm::dyn_cast<global::GlobalDefOp>(lookup->get());
-      if (!global) {
-        return this->emitOpError().append(
-            "instantiation value '", paramFromCallOp, "' refers to a '", lookup->get()->getName(),
-            "' which is not allowed"
-        );
-      }
-      if (!global.isConstant()) {
-        return this->emitOpError().append(
-            "instantiation value '", paramFromCallOp,
-            "' refers to a global that is not marked as 'const'"
-        );
-      }
-      if (declaredType) {
-        compatible = isTemplateParamTypeCompatible(global.getType(), *declaredType);
-      }
-    }
-  } else if (declaredType) {
-    compatible = succeeded(materializeTemplateParamValue(paramFromCallOp, declaredType));
-  }
-  if (declaredType && !compatible) {
-    // Tested in call_with_template_params_fail.llzk
-    return this->emitOpError().append(
-        "instantiation value '", paramFromCallOp, "' is not compatible with parameter \"@",
-        targetParam.getName(), "\" type restriction ", *declaredType
-    );
-  }
-  return success();
+  return llzk::verifyTemplateParamValueCompatibility(getOperation(), paramFromCallOp, targetParam);
 }
 
 LogicalResult CallOp::verifyTemplateParamCompatibility(
@@ -712,69 +638,10 @@ LogicalResult CallOp::verifyTemplateParamsMatchInferred(
     llvm::iterator_range<Region::op_iterator<TemplateParamOp>> targetParamDefs,
     const UnificationMap &unifications
 ) {
-  ArrayAttr callParams = this->getTemplateParamsAttr();
-  if (isNullOrEmpty(callParams)) {
-    for (TemplateParamOp paramOp : targetParamDefs) {
-      if (std::optional<Type> declaredType = paramOp.getTypeOpt();
-          declaredType && llvm::isa<TypeVarType>(*declaredType)) {
-        continue;
-      }
-      auto it = unifications.find({FlatSymbolRefAttr::get(paramOp.getNameAttr()), Side::RHS});
-      if (it == unifications.end()) {
-        // No inferred value means the signature did not expose this parameter to this call.
-        continue;
-      }
-      if (!it->second) {
-        return this->emitOpError().append(
-            "cannot infer template instantiation value for parameter \"@", paramOp.getName(),
-            "\" from function type signature"
-        );
-      }
-      if (failed(verifyTemplateParamCompatibility(it->second, paramOp))) {
-        return failure();
-      }
-    }
-    return success();
-  }
-  assert(!isNullOrEmpty(callParams) && "pre-condition");
-  assert((callParams.size() == llvm::range_size(targetParamDefs)) && "pre-condition");
-
-  for (auto [paramOp, attr] : llvm::zip_equal(targetParamDefs, callParams.getValue())) {
-    // Skip wildcards (`?` / kDynamic) - their value will be resolved by a later inference pass.
-    if (auto intAttr = llvm::dyn_cast<IntegerAttr>(attr)) {
-      if (isDynamic(intAttr)) {
-        continue;
-      }
-    }
-    auto it = unifications.find({FlatSymbolRefAttr::get(paramOp.getNameAttr()), Side::RHS});
-    if (it != unifications.end() && !it->second) {
-      return this->emitOpError().append(
-          "cannot infer a unique template instantiation value for parameter \"@", paramOp.getName(),
-          "\" from function type signature"
-      );
-    }
-    if (it != unifications.end() && failed(verifyTemplateParamCompatibility(it->second, paramOp))) {
-      return failure();
-    }
-    bool valuesUnify = true;
-    if (it != unifications.end()) {
-      SymbolTableCollection tables;
-      FailureOr<bool> resolved =
-          resolvedTemplateParamValuesUnify(tables, *this, attr, it->second, paramOp.getTypeOpt());
-      if (failed(resolved)) {
-        return failure();
-      }
-      valuesUnify = *resolved;
-    }
-    if (!valuesUnify) {
-      // Tested in call_with_template_params_fail.llzk
-      return this->emitOpError().append(
-          "template instantiation value '", attr, "' for parameter \"@", paramOp.getName(),
-          "\" conflicts with value '", it->second, "' inferred from function type signature"
-      );
-    }
-  }
-  return success();
+  return llzk::verifyTemplateParamsMatchInferred(
+      getOperation(), getTemplateParamsAttr(), targetParamDefs, unifications,
+      llzk::TemplateParamSignatureKind::Function
+  );
 }
 
 namespace {

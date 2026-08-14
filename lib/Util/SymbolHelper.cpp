@@ -30,6 +30,7 @@
 
 #include <llvm/ADT/TypeSwitch.h>
 #include <llvm/Support/Debug.h>
+#include <llvm/Support/ErrorHandling.h>
 
 #define DEBUG_TYPE "llzk-symbol-helpers"
 
@@ -214,21 +215,32 @@ public:
 
 LogicalResult verifyTemplateSymbolType(
     TemplateSymbolBindingOpInterface binding, SymbolRefAttr param, Type parameterizedType,
-    Operation *origin, std::optional<Type> requiredParamType
+    Operation *origin, std::optional<Type> requiredParamType,
+    std::optional<Location> requiredParamLoc
 ) {
   if (requiredParamType) {
     std::optional<Type> actualType = binding.getTypeOpt();
     if (!isTemplateParamTypeCompatible(actualType, *requiredParamType)) {
       if (!actualType) {
-        return origin->emitError().append(
+        auto diag = origin->emitError().append(
             "ref \"", param, "\" in type ", parameterizedType, " refers to a '", binding->getName(),
             "' that must have type ", *requiredParamType
         );
+        diag.attachNote(binding->getLoc()).append("template parameter declared here");
+        if (requiredParamLoc) {
+          diag.attachNote(*requiredParamLoc).append("template parameter declared here");
+        }
+        return diag;
       }
-      return origin->emitError().append(
+      auto diag = origin->emitError().append(
           "ref \"", param, "\" in type ", parameterizedType, " refers to a '", binding->getName(),
           "' with type ", *actualType, " but expected ", *requiredParamType
       );
+      diag.attachNote(binding->getLoc()).append("template parameter declared here");
+      if (requiredParamLoc) {
+        diag.attachNote(*requiredParamLoc).append("template parameter declared here");
+      }
+      return diag;
     }
   }
   return success();
@@ -389,9 +401,172 @@ FailureOr<TemplateOp> getConstResolutionTemplate(SymbolTableCollection &tables, 
   return getParentOfType<TemplateOp>(origin);
 }
 
+LogicalResult verifyTemplateParamValueCompatibility(
+    Operation *origin, Attribute value, TemplateParamOp targetParam
+) {
+  // A wildcard `?` (represented as kDynamic) defers inference to a later pass. It is only valid
+  // for parameters with a `!poly.tvar` type restriction.
+  if (auto intAttr = llvm::dyn_cast<IntegerAttr>(value)) {
+    if (isDynamic(intAttr)) {
+      std::optional<Type> declaredType = targetParam.getTypeOpt();
+      if (!declaredType || !llvm::isa<TypeVarType>(*declaredType)) {
+        auto diag = origin->emitOpError().append(
+            "wildcard `?` can only be used for template parameters with `!poly.tvar` "
+            "type restriction, but parameter \"@",
+            targetParam.getName(), "\" has "
+        );
+        if (declaredType) {
+          diag.append("type restriction ", *declaredType);
+        } else {
+          diag.append("no type restriction");
+        }
+        return diag;
+      }
+      return success();
+    }
+  }
+
+  std::optional<Type> declaredType = targetParam.getTypeOpt();
+  bool compatible = !declaredType;
+  if (auto sym = llvm::dyn_cast<SymbolRefAttr>(value)) {
+    bool resolvedLocal = false;
+    if (sym.getNestedReferences().empty()) {
+      SymbolTableCollection tables;
+      FailureOr<TemplateOp> parentTemplate = getConstResolutionTemplate(tables, origin);
+      if (failed(parentTemplate)) {
+        return failure();
+      }
+      if (TemplateOp p = *parentTemplate) {
+        auto binding = p.getConstNamed<TemplateSymbolBindingOpInterface>(sym.getRootReference());
+        if (binding) {
+          resolvedLocal = true;
+          if (declaredType) {
+            compatible = isTemplateParamTypeCompatible(binding.getTypeOpt(), *declaredType);
+          }
+        }
+      }
+    }
+    if (!resolvedLocal) {
+      SymbolTableCollection tables;
+      auto lookup = lookupTopLevelSymbol(tables, sym, origin);
+      if (failed(lookup)) {
+        return failure();
+      }
+      auto global = llvm::dyn_cast<GlobalDefOp>(lookup->get());
+      if (!global) {
+        return origin->emitOpError().append(
+            "instantiation value '", value, "' refers to a '", lookup->get()->getName(),
+            "' which is not allowed"
+        );
+      }
+      if (!global.isConstant()) {
+        auto diag = origin->emitOpError().append(
+            "instantiation value '", value, "' refers to a global that is not marked as 'const'"
+        );
+        diag.attachNote(global.getLoc()).append("global defined here");
+        return diag;
+      }
+      if (declaredType) {
+        compatible = isTemplateParamTypeCompatible(global.getType(), *declaredType);
+      }
+    }
+  } else if (declaredType) {
+    compatible = succeeded(materializeTemplateParamValue(value, declaredType));
+  }
+
+  if (declaredType && !compatible) {
+    return origin->emitOpError().append(
+        "instantiation value '", value, "' is not compatible with parameter \"@",
+        targetParam.getName(), "\" type restriction ", *declaredType
+    );
+  }
+  return success();
+}
+
+LogicalResult verifyTemplateParamsMatchInferred(
+    Operation *origin, ArrayAttr explicitParams,
+    llvm::iterator_range<Region::op_iterator<TemplateParamOp>> targetParamDefs,
+    const UnificationMap &unifications, TemplateParamSignatureKind signatureKind
+) {
+  StringRef signatureDescription = [&] {
+    switch (signatureKind) {
+    case TemplateParamSignatureKind::Function:
+      return StringRef("function");
+    case TemplateParamSignatureKind::Contract:
+      return StringRef("contract");
+    }
+    llvm_unreachable("unknown template parameter signature kind");
+  }();
+
+  if (isNullOrEmpty(explicitParams)) {
+    for (TemplateParamOp paramOp : targetParamDefs) {
+      if (std::optional<Type> declaredType = paramOp.getTypeOpt();
+          declaredType && llvm::isa<TypeVarType>(*declaredType)) {
+        continue;
+      }
+      auto it = unifications.find({FlatSymbolRefAttr::get(paramOp.getNameAttr()), Side::RHS});
+      if (it == unifications.end()) {
+        // No inferred value means the signature did not expose this parameter to the operation.
+        continue;
+      }
+      if (!it->second) {
+        return origin->emitOpError().append(
+            "cannot infer template instantiation value for parameter \"@", paramOp.getName(),
+            "\" from ", signatureDescription, " type signature"
+        );
+      }
+      if (failed(verifyTemplateParamValueCompatibility(origin, it->second, paramOp))) {
+        return failure();
+      }
+    }
+    return success();
+  }
+
+  assert(!isNullOrEmpty(explicitParams) && "pre-condition");
+  assert((explicitParams.size() == llvm::range_size(targetParamDefs)) && "pre-condition");
+
+  for (auto [paramOp, attr] : llvm::zip_equal(targetParamDefs, explicitParams.getValue())) {
+    // Skip wildcards (`?` / kDynamic) - their value will be resolved by a later inference pass.
+    if (auto intAttr = llvm::dyn_cast<IntegerAttr>(attr)) {
+      if (isDynamic(intAttr)) {
+        continue;
+      }
+    }
+    auto it = unifications.find({FlatSymbolRefAttr::get(paramOp.getNameAttr()), Side::RHS});
+    if (it != unifications.end() && !it->second) {
+      return origin->emitOpError().append(
+          "cannot infer a unique template instantiation value for parameter \"@", paramOp.getName(),
+          "\" from ", signatureDescription, " type signature"
+      );
+    }
+    if (it != unifications.end() &&
+        failed(verifyTemplateParamValueCompatibility(origin, it->second, paramOp))) {
+      return failure();
+    }
+    bool valuesUnify = true;
+    if (it != unifications.end()) {
+      SymbolTableCollection tables;
+      FailureOr<bool> resolved =
+          resolvedTemplateParamValuesUnify(tables, origin, attr, it->second, paramOp.getTypeOpt());
+      if (failed(resolved)) {
+        return failure();
+      }
+      valuesUnify = *resolved;
+    }
+    if (!valuesUnify) {
+      return origin->emitOpError().append(
+          "template instantiation value '", attr, "' for parameter \"@", paramOp.getName(),
+          "\" conflicts with value '", it->second, "' inferred from ", signatureDescription,
+          " type signature"
+      );
+    }
+  }
+  return success();
+}
+
 LogicalResult verifyParamOfType(
     SymbolTableCollection &tables, SymbolRefAttr param, Type parameterizedType, Operation *origin,
-    std::optional<Type> requiredParamType
+    std::optional<Type> requiredParamType, std::optional<Location> requiredParamLoc
 ) {
   // Most often, StructType and ArrayType SymbolRefAttr parameters will be defined as parameters of
   // the template that the current Operation is nested within. These are always flat references
@@ -405,7 +580,9 @@ LogicalResult verifyParamOfType(
     if (*parent) {
       if (auto b =
               parent->getConstNamed<TemplateSymbolBindingOpInterface>(param.getRootReference())) {
-        return verifyTemplateSymbolType(b, param, parameterizedType, origin, requiredParamType);
+        return verifyTemplateSymbolType(
+            b, param, parameterizedType, origin, requiredParamType, requiredParamLoc
+        );
       }
     }
   }
@@ -422,13 +599,23 @@ LogicalResult verifyParamOfType(
                                << "' which is not allowed";
   }
   if (!global.isConstant()) {
-    return origin->emitError() << "ref \"" << param << "\" in type " << parameterizedType
-                               << " refers to a global that is not marked as 'const'";
+    auto diag = origin->emitError() << "ref \"" << param << "\" in type " << parameterizedType
+                                    << " refers to a global that is not marked as 'const'";
+    diag.attachNote(global.getLoc()).append("global defined here");
+    if (requiredParamLoc) {
+      diag.attachNote(*requiredParamLoc).append("template parameter declared here");
+    }
+    return diag;
   }
   if (requiredParamType && !isTemplateParamTypeCompatible(global.getType(), *requiredParamType)) {
-    return origin->emitError() << "ref \"" << param << "\" in type " << parameterizedType
-                               << " refers to a global with type " << global.getType()
-                               << " but expected type " << *requiredParamType;
+    auto diag = origin->emitError() << "ref \"" << param << "\" in type " << parameterizedType
+                                    << " refers to a global with type " << global.getType()
+                                    << " but expected " << *requiredParamType;
+    diag.attachNote(global.getLoc()).append("global defined here");
+    if (requiredParamLoc) {
+      diag.attachNote(*requiredParamLoc).append("template parameter declared here");
+    }
+    return diag;
   }
   return success();
 }
@@ -629,19 +816,21 @@ verifyStructTypeResolution(SymbolTableCollection &tables, StructType ty, Operati
   }
   // If there are any SymbolRefAttr parameters on the StructType, ensure those refs are valid.
   if (ArrayAttr tyParams = ty.getParams()) {
-    if (failed(verifyParamsOfType(tables, tyParams.getValue(), ty, origin))) {
-      return failure(); // verifyParamsOfType() already emits a sufficient error message
-    }
     if (TemplateOp parent = getParentOfType<TemplateOp>(defForType.getOperation())) {
       for (auto [paramOp, value] :
            llvm::zip_equal(parent.getConstOps<TemplateParamOp>(), tyParams.getValue())) {
         std::optional<Type> restriction = paramOp.getTypeOpt();
         if (auto symbolValue = llvm::dyn_cast<SymbolRefAttr>(value);
             symbolValue && restriction &&
-            failed(verifyParamOfType(tables, symbolValue, ty, origin, restriction))) {
+            failed(
+                verifyParamOfType(tables, symbolValue, ty, origin, restriction, paramOp.getLoc())
+            )) {
           return failure();
         }
       }
+    }
+    if (failed(verifyParamsOfType(tables, tyParams.getValue(), ty, origin))) {
+      return failure(); // verifyParamsOfType() already emits a sufficient error message
     }
   }
   return defForType;
