@@ -780,68 +780,10 @@ LogicalResult IncludeOp::verifyTemplateParamsMatchInferred(
     llvm::iterator_range<Region::op_iterator<TemplateParamOp>> targetParamDefs,
     const UnificationMap &unifications
 ) {
-  ArrayAttr callParams = this->getTemplateParamsAttr();
-  if (isNullOrEmpty(callParams)) {
-    for (TemplateParamOp paramOp : targetParamDefs) {
-      if (std::optional<Type> declaredType = paramOp.getTypeOpt();
-          declaredType && llvm::isa<TypeVarType>(*declaredType)) {
-        continue;
-      }
-      auto it = unifications.find({FlatSymbolRefAttr::get(paramOp.getNameAttr()), Side::RHS});
-      if (it == unifications.end()) {
-        // No inferred value means the signature did not expose this parameter to this include.
-        continue;
-      }
-      if (!it->second) {
-        return this->emitOpError().append(
-            "cannot infer template instantiation value for parameter \"@", paramOp.getName(),
-            "\" from contract type signature"
-        );
-      }
-      if (failed(verifyTemplateParamCompatibility(it->second, paramOp))) {
-        return failure();
-      }
-    }
-    return success();
-  }
-  assert(!isNullOrEmpty(callParams) && "pre-condition");
-  assert((callParams.size() == llvm::range_size(targetParamDefs)) && "pre-condition");
-
-  for (auto [paramOp, attr] : llvm::zip_equal(targetParamDefs, callParams.getValue())) {
-    // Skip wildcards (`?` / kDynamic) - their value will be resolved by a later inference pass.
-    if (auto intAttr = llvm::dyn_cast<IntegerAttr>(attr)) {
-      if (isDynamic(intAttr)) {
-        continue;
-      }
-    }
-    auto it = unifications.find({FlatSymbolRefAttr::get(paramOp.getNameAttr()), Side::RHS});
-    if (it != unifications.end() && !it->second) {
-      return this->emitOpError().append(
-          "cannot infer a unique template instantiation value for parameter \"@", paramOp.getName(),
-          "\" from contract type signature"
-      );
-    }
-    if (it != unifications.end() && failed(verifyTemplateParamCompatibility(it->second, paramOp))) {
-      return failure();
-    }
-    bool valuesUnify = true;
-    if (it != unifications.end()) {
-      SymbolTableCollection tables;
-      FailureOr<bool> resolved =
-          resolvedTemplateParamValuesUnify(tables, *this, attr, it->second, paramOp.getTypeOpt());
-      if (failed(resolved)) {
-        return failure();
-      }
-      valuesUnify = *resolved;
-    }
-    if (!valuesUnify) {
-      return this->emitOpError().append(
-          "template instantiation value '", attr, "' for parameter \"@", paramOp.getName(),
-          "\" conflicts with value '", it->second, "' inferred from contract type signature"
-      );
-    }
-  }
-  return success();
+  return llzk::verifyTemplateParamsMatchInferred(
+      getOperation(), getTemplateParamsAttr(), targetParamDefs, unifications,
+      llzk::TemplateParamSignatureKind::Contract
+  );
 }
 
 namespace {

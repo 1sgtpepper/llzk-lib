@@ -42,6 +42,7 @@ module attributes {llzk.lang} {
 // CHECK-NEXT:      }
 // CHECK-NEXT:    }
 // CHECK-NEXT:  }
+// CHECK-NEXT:  // -----
 
 // -----
 
@@ -87,6 +88,7 @@ module attributes {llzk.lang} {
 // CHECK-NEXT:      function.return
 // CHECK-NEXT:    }
 // CHECK-NEXT:  }
+// CHECK-NEXT:  // -----
 
 // -----
 
