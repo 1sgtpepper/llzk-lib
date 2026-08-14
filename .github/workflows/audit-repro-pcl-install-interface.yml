@@ -37,7 +37,7 @@ jobs:
             'install(TARGETS PCLDialectHeaders EXPORT LLZKTargets)' \
             'install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/include/" TYPE INCLUDE FILES_MATCHING PATTERN "*.h")' \
             'install(EXPORT LLZKTargets FILE LLZKTargets.cmake NAMESPACE LLZK:: DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/LLZK)' \
-            'file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/LLZKConfig.cmake" "include(\\"\\${CMAKE_CURRENT_LIST_DIR}/LLZKTargets.cmake\\")\\n")' \
+            'file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/LLZKConfig.cmake" "include(\\${CMAKE_CURRENT_LIST_DIR}/LLZKTargets.cmake)\\n")' \
             'install(FILES "${CMAKE_CURRENT_BINARY_DIR}/LLZKConfig.cmake" DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/LLZK)' \
             > "$tmp/producer/CMakeLists.txt"
           printf '%s\n' \
