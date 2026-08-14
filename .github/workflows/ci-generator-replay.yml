@@ -80,8 +80,9 @@ jobs:
           for test_file in "${test_files[@]}"; do
             name=$(basename "$test_file" .llzk)
             output_path="$OUTPUT_PATH/$name"
-            clean_input="$RUNNER_TEMP/$name-input.llzk"
+            clean_input="$RUNNER_TEMP/$name/$name.llzk"
             mkdir -p "$output_path"
+            mkdir -p "$(dirname "$clean_input")"
             cp "$tested_path/$test_file" "$output_path/committed-test.llzk"
 
             python3 - "$tested_path/$test_file" "$clean_input" <<'PY'
