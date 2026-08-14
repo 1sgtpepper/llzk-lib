@@ -3,7 +3,7 @@ name: LLZK validation evidence
 on:
   push:
     branches:
-      - ci/verify-pr635-output-20260810
+      - ci/verify-final-output-heads-20260814
 
 permissions:
   contents: read
@@ -45,8 +45,11 @@ jobs:
           rm -rf "$OUTPUT_PATH"
           mkdir -p "$OUTPUT_PATH"
 
+          pr484_head=955a29c4940820ebcf3b4b1497d39454f17bb706
+          pr634_head=93d17eb4e5f14e2d3c447d2b4eeaa6467d29e646
           pr635_head=6784ba5f586ada5587f058663aa722a6286d7340
           pr637_head=9ad02ae3c01a98765e7dd8ce9b005655396c4f25
+          pr675_head=e8c663ecb0ba86ceb59a351d2deeb7aa89c5da28
           filecheck=
           full_check_results=()
 
@@ -210,6 +213,13 @@ jobs:
                           f"// {prefix}-NEXT:  // -----",
                           1,
                       )
+                  if "fuse_if_preserves_locations.llzk" in line:
+                      adjustments.append(f"{source}: checkout path normalized in location checks")
+                      line = re.sub(
+                          r'loc\("[^"]*fuse_if_preserves_locations\.llzk":',
+                          'loc("__SOURCE__.llzk":',
+                          line,
+                      )
                   normalized.append(line)
               return normalized
 
@@ -341,6 +351,86 @@ jobs:
               CHECK --enable-var-scope -split-input-file -llzk-flatten -verify-diagnostics
           }
 
+          replay_pr484_suite() {
+            local source_root="$1"
+            local name_prefix="$2"
+            replay_test "${name_prefix}-if-compute-constrain" "$source_root" \
+              test/Transforms/FuseProductControlFlow/fuse_if_compute_constrain.llzk \
+              CHECK --enable-var-scope -split-input-file \
+              --llzk-compute-constrain-to-product=root-struct=A --llzk-fuse-product-control-flow
+            replay_test "${name_prefix}-if-positive" "$source_root" \
+              test/Transforms/FuseProductControlFlow/fuse_if_positive.llzk \
+              CHECK --enable-var-scope -split-input-file --llzk-fuse-product-control-flow
+            replay_test "${name_prefix}-if-locations" "$source_root" \
+              test/Transforms/FuseProductControlFlow/fuse_if_preserves_locations.llzk \
+              CHECK --enable-var-scope --llzk-fuse-product-control-flow -mlir-print-debuginfo
+            replay_test "${name_prefix}-outer" "$source_root" \
+              test/Transforms/FuseProductControlFlow/fuse_outer.llzk \
+              CHECK --enable-var-scope --llzk-compute-constrain-to-product=root-struct=A \
+              --llzk-fuse-product-control-flow
+            replay_test "${name_prefix}-outer-inner" "$source_root" \
+              test/Transforms/FuseProductControlFlow/fuse_outer_inner.llzk \
+              CHECK --enable-var-scope --llzk-compute-constrain-to-product=root-struct=A \
+              --llzk-fuse-product-control-flow
+            replay_test "${name_prefix}-single" "$source_root" \
+              test/Transforms/FuseProductControlFlow/fuse_single.llzk \
+              CHECK --enable-var-scope --llzk-compute-constrain-to-product=root-struct=A \
+              --llzk-fuse-product-control-flow
+            replay_test "${name_prefix}-structured-movement" "$source_root" \
+              test/Transforms/FuseProductControlFlow/fuse_structured_control_movement.llzk \
+              CHECK --enable-var-scope --llzk-fuse-product-control-flow
+            replay_test "${name_prefix}-compute-suffix" "$source_root" \
+              test/Transforms/FuseProductControlFlow/fuse_with_compute_suffix.llzk \
+              CHECK --enable-var-scope --llzk-compute-constrain-to-product=root-struct=A \
+              --llzk-fuse-product-control-flow
+            replay_test "${name_prefix}-if-effects" "$source_root" \
+              test/Transforms/FuseProductControlFlow/no_fuse_if_effects.llzk \
+              CHECK --enable-var-scope -split-input-file --llzk-fuse-product-control-flow
+            replay_test "${name_prefix}-if-unknown-effect" "$source_root" \
+              test/Transforms/FuseProductControlFlow/no_fuse_if_internal_unknown_effect_in_product.llzk \
+              CHECK --enable-var-scope --allow-unregistered-dialect --llzk-fuse-product-control-flow
+            replay_test "${name_prefix}-if-structure" "$source_root" \
+              test/Transforms/FuseProductControlFlow/no_fuse_if_structure.llzk \
+              CHECK --enable-var-scope -split-input-file --llzk-fuse-product-control-flow
+            replay_test "${name_prefix}-inner" "$source_root" \
+              test/Transforms/FuseProductControlFlow/no_fuse_inner.llzk \
+              CHECK --enable-var-scope --llzk-compute-constrain-to-product=root-struct=A \
+              --llzk-fuse-product-control-flow
+            replay_test "${name_prefix}-product-source" "$source_root" \
+              test/Transforms/FuseProductControlFlow/no_fuse_product_source.llzk \
+              CHECK --enable-var-scope -split-input-file --llzk-fuse-product-control-flow
+            replay_test "${name_prefix}-region-mismatch" "$source_root" \
+              test/Transforms/FuseProductControlFlow/no_fuse_region_mismatch.llzk \
+              CHECK --enable-var-scope --llzk-compute-constrain-to-product=root-struct=A \
+              --llzk-fuse-product-control-flow
+            replay_test "${name_prefix}-single-negative" "$source_root" \
+              test/Transforms/FuseProductControlFlow/no_fuse_single.llzk \
+              CHECK --enable-var-scope --llzk-compute-constrain-to-product=root-struct=A \
+              --llzk-fuse-product-control-flow
+            replay_test "${name_prefix}-sink" "$source_root" \
+              test/Transforms/FuseProductControlFlow/no_fuse_sink.llzk \
+              CHECK --enable-var-scope --llzk-fuse-product-control-flow
+          }
+
+          prepare_head pr484 "$pr484_head"
+          pr484_path="$tested_path"
+          replay_pr484_suite "$pr484_path" pr484
+
+          prepare_head pr634 "$pr634_head"
+          pr634_path="$tested_path"
+          replay_test pr634-call-symbolic-felt "$pr634_path" \
+            test/Dialect/Function/call_with_symbolic_felt_restriction_pass.llzk \
+            CHECK -split-input-file
+          replay_test pr634-struct-restrictions "$pr634_path" \
+            test/Dialect/Struct/struct_params_restrictions_pass.llzk \
+            CHECK -split-input-file
+          replay_test pr634-struct-symbolic "$pr634_path" \
+            test/Dialect/Struct/struct_params_symbolic_pass.llzk \
+            CHECK -split-input-file
+          replay_test pr634-include-symbolic-felt "$pr634_path" \
+            test/Dialect/Verif/include_with_symbolic_felt_restriction_pass.llzk \
+            CHECK -split-input-file
+
           replay_pr635_suite "$pr635_path" pr635
 
           prepare_head pr637 "$pr637_head"
@@ -353,7 +443,13 @@ jobs:
             test/Transforms/Flattening/instantiate_function_reuse.llzk \
             CHECK -split-input-file -llzk-flatten=cleanup=disabled
 
-          if test "${#full_check_results[@]}" -eq 34; then
+          prepare_head pr675 "$pr675_head"
+          pr675_path="$tested_path"
+          replay_test pr675-array-alias "$pr675_path" \
+            test/Transforms/RedundantAndUnusedElim/array_dynamic_alias.llzk \
+            CHECK --enable-var-scope -split-input-file -llzk-duplicate-read-write-elim
+
+          if test "${#full_check_results[@]}" -eq 55; then
             full_check_blocks=PASS
           else
             full_check_blocks=FAIL
@@ -361,15 +457,21 @@ jobs:
           {
             echo "pr635_head=$pr635_head"
             echo "pr637_head=$pr637_head"
+            echo "pr484_head=$pr484_head"
+            echo "pr634_head=$pr634_head"
+            echo "pr675_head=$pr675_head"
+            echo "pr484_output_replays=16"
+            echo "pr634_output_replays=4"
             echo "pr635_output_replays=16"
             echo "pr637_output_replays=18"
-            echo "full_output_replays=34"
+            echo "pr675_output_replays=1"
+            echo "full_output_replays=55"
             echo "full_committed_check_blocks=$full_check_blocks"
             echo "full_check_results=${full_check_results[*]}"
             echo "result=$full_check_blocks"
           } > "$OUTPUT_PATH/summary.txt"
 
-          test "${#full_check_results[@]}" -eq 34
+          test "${#full_check_results[@]}" -eq 55
 
       - name: Upload validation evidence
         if: always()
