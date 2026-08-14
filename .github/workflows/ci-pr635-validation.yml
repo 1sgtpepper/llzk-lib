@@ -193,8 +193,24 @@ jobs:
                   normalized.append(line)
               return normalized
 
+          def normalize_variable_names(lines):
+              variable_names = {}
+
+              def variable(match):
+                  name = match.group(1)
+                  if name not in variable_names:
+                      variable_names[name] = f"VAR_{len(variable_names)}"
+                  return f"[[{variable_names[name]}]]"
+
+              variable_re = re.compile(
+                  r"\[\[([A-Za-z_][A-Za-z0-9_]*)(?::(.*?))?\]\]"
+              )
+              return [variable_re.sub(variable, line) for line in lines]
+
           committed_normalized = normalize(committed, "committed")
           generated_normalized = normalize(generated, "generated")
+          committed_normalized = normalize_variable_names(committed_normalized)
+          generated_normalized = normalize_variable_names(generated_normalized)
           comparison = [
               f"check_prefix={prefix}",
               f"committed_check_lines={len(committed)}",
