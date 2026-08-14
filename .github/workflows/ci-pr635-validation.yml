@@ -98,7 +98,7 @@ jobs:
             done
             local output_path="$OUTPUT_PATH/$name"
             local llzk_opt="$source_root/result/bin/llzk-opt"
-            local clean_input="$output_path/clean-input.llzk"
+            local clean_input="$output_path/$(basename "$test_file")"
             mkdir -p "$output_path"
             if [[ -z "$filecheck" ]]; then
               filecheck="$(find /nix/store -type f -path '*/bin/FileCheck' -executable -print -quit)"
