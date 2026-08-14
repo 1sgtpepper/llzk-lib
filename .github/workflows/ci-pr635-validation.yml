@@ -45,8 +45,8 @@ jobs:
           rm -rf "$OUTPUT_PATH"
           mkdir -p "$OUTPUT_PATH"
 
-          pr635_head=f88f3d8f0384b5201f418fd699343a5af2ce5153
-          pr637_head=5dcadabf20208d5325dc5883a80abebe74d263f8
+          pr635_head=199e2d690b5662a34411ea39e6afcfa3903df823
+          pr637_head=c2505d4de39dae5ce56915272641a6efb7550c5c
           filecheck=
           full_check_results=()
 
