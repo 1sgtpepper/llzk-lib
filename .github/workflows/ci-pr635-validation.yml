@@ -45,10 +45,10 @@ jobs:
           rm -rf "$OUTPUT_PATH"
           mkdir -p "$OUTPUT_PATH"
 
-          pr484_head=83e9daadfbfceb4ab7bc4e480dab2b67e42f51ad
-          pr634_head=356f206bf5c729aff80135629c5b8ba47f94ae33
-          pr635_head=739357c4a957b15b59cd13a97318918fc23ab19f
-          pr637_head=ff31c8f4079fdefb30ae49f8be557108e16f5f80
+          pr484_head=36dafb59780b7f23ee5d46f10a276f61340d93f7
+          pr634_head=a1162541c20edab7a211d4db8cdcf1fe220c1727
+          pr635_head=520bc7cea85406802865807802c39afd0e0faa08
+          pr637_head=88b42e5f3daa3e6110e634e7ddbbd8212cd6d405
           pr675_head=e8c663ecb0ba86ceb59a351d2deeb7aa89c5da28
           filecheck=
           full_check_results=()
