@@ -1,0 +1,41 @@
+name: Audit repro - generator check-prefix data loss
+
+on:
+  push:
+    branches:
+      - audit/contributor-tooling-repros-round2-20260814
+
+jobs:
+  reproduce:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Preserve a legitimate source occurrence of CHECK
+        shell: bash
+        run: |
+          set -euo pipefail
+          tmp="${RUNNER_TEMP}/generate-prefix"
+          mkdir -p "$tmp"
+          printf '%s\n' \
+            'module {' \
+            '  func.func @CHECK() {' \
+            '  }' \
+            '}' \
+            > "$tmp/source.mlir"
+          cp "$tmp/source.mlir" "$tmp/source.before.mlir"
+          printf '%s\n' \
+            'module {' \
+            '}' \
+            > "$tmp/input.mlir"
+          python3 "$GITHUB_WORKSPACE/scripts/generate-test-checks.py" \
+            --source "$tmp/source.mlir" --source_delim_regex='^module ' -i "$tmp/input.mlir"
+          if grep -q 'func.func @CHECK' "$tmp/source.mlir"; then
+            echo "The legitimate CHECK occurrence was preserved."
+            exit 0
+          fi
+          echo 'Source before generation:'
+          cat "$tmp/source.before.mlir"
+          echo 'Source after generation:'
+          cat "$tmp/source.mlir"
+          echo "REPRODUCED: source filtering removed a non-generated line containing CHECK."
+          exit 1

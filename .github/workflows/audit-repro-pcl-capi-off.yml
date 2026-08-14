@@ -1,0 +1,79 @@
+name: Audit repro - disabled PCL C API symbol
+
+on:
+  push:
+    branches:
+      - audit/contributor-tooling-repros-round2-20260814
+
+jobs:
+  reproduce:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compile disabled-backend implementation and enabled caller
+        shell: bash
+        run: |
+          set -euo pipefail
+          tmp="${RUNNER_TEMP}/pcl-capi-off"
+          mkdir -p "$tmp/stubs/llzk/CAPI" "$tmp/stubs/llzk/Config" \
+            "$tmp/stubs/mlir-c" "$tmp/stubs/mlir/CAPI" "$tmp/stubs/mlir/Support" \
+            "$tmp/stubs/pcl/Conversion"
+
+          printf '%s\n' \
+            '#pragma once' \
+            'struct MlirOperation { void *ptr; };' \
+            > "$tmp/stubs/mlir-c/IR.h"
+          printf '%s\n' \
+            '#pragma once' \
+            '#include <cstddef>' \
+            '#define MLIR_CAPI_EXPORTED' \
+            'struct MlirLogicalResult { int value; };' \
+            'using MlirStringCallback = void (*)(const char *, std::size_t, void *);' \
+            > "$tmp/stubs/mlir-c/Support.h"
+          printf '%s\n' \
+            '#pragma once' \
+            '#include "mlir-c/Support.h"' \
+            'namespace mlir {' \
+            'inline bool failure() { return false; }' \
+            '}' \
+            'inline MlirLogicalResult wrap(bool) { return {0}; }' \
+            > "$tmp/stubs/llzk/CAPI/Support.h"
+          printf '%s\n' \
+            '#pragma once' \
+            '#define LLZK_WITH_PCL 0' \
+            > "$tmp/stubs/llzk/Config/Config.h"
+          : > "$tmp/stubs/mlir/CAPI/Support.h"
+          : > "$tmp/stubs/mlir/Support/LogicalResult.h"
+          : > "$tmp/stubs/pcl/Conversion/ConversionPasses.capi.h.inc"
+
+          c++ -std=c++20 -I "$tmp/stubs" -I "$GITHUB_WORKSPACE/include" \
+            -fPIC -c "$GITHUB_WORKSPACE/lib/CAPI/Target/PCL.cpp" \
+            -o "$tmp/pcl.o"
+
+          printf '%s\n' \
+            '#include "llzk-c/Target/PCL.h"' \
+            'void callback(const char *, std::size_t, void *) {}' \
+            'int main() {' \
+            '  MlirOperation operation{};' \
+            '  return llzkTranslateModuleToPCL(operation, callback, nullptr).value;' \
+            '}' \
+            > "$tmp/caller.cpp"
+          c++ -std=c++20 -I "$tmp/stubs" -I "$GITHUB_WORKSPACE/include" \
+            -c "$tmp/caller.cpp" -o "$tmp/caller.o"
+
+          set +e
+          c++ "$tmp/caller.o" "$tmp/pcl.o" -o "$tmp/caller" 2> "$tmp/link.log"
+          link_status=$?
+          set -e
+
+          if [[ "$link_status" -eq 0 ]]; then
+            echo "The declared disabled-backend C API symbol linked successfully."
+            exit 0
+          fi
+          cat "$tmp/link.log"
+          if ! grep -q 'llzkTranslateModuleToPCL' "$tmp/link.log"; then
+            echo "The link failed for an unrelated reason; reproduction not established."
+            exit 0
+          fi
+          echo "REPRODUCED: the public disabled-backend C API declaration has no definition."
+          exit 1

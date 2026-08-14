@@ -1,0 +1,44 @@
+name: Audit repro - shallow GitVersion checkout
+
+on:
+  push:
+    branches:
+      - audit/contributor-tooling-repros-round2-20260814
+
+jobs:
+  reproduce:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure a shallow checkout
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -q 'git describe --tags' "$GITHUB_WORKSPACE/cmake/GitVersion.cmake"
+          tmp="${RUNNER_TEMP}/gitversion-shallow"
+          git clone --quiet --depth 1 https://github.com/project-llzk/llzk-lib.git "$tmp"
+          cp "$GITHUB_WORKSPACE/cmake/GitVersion.cmake" "$tmp/cmake/GitVersion.cmake"
+          printf '%s\n' \
+            'cmake_minimum_required(VERSION 3.23)' \
+            'project(shallow-version NONE)' \
+            'include("${CMAKE_SOURCE_DIR}/cmake/GitVersion.cmake")' \
+            'get_git_version(VERSION)' \
+            'message(STATUS "VERSION=${VERSION}")' \
+            > "$tmp/CMakeLists.txt"
+          if git -C "$tmp" describe --tags > "$tmp/describe.log" 2> "$tmp/describe.err"; then
+            echo "The shallow checkout unexpectedly has a describable tag."
+            exit 0
+          fi
+          set +e
+          cmake -S "$tmp" -B "${RUNNER_TEMP}/gitversion-shallow-build" > "$tmp/cmake.log" 2>&1
+          cmake_status=$?
+          set -e
+          cat "$tmp/describe.err"
+          cat "$tmp/cmake.log"
+          if [[ "$cmake_status" -eq 0 ]] || \
+             ! grep -q 'Could not find git version tag' "$tmp/cmake.log"; then
+            echo "The shallow checkout failed for an unrelated reason or configured successfully."
+            exit 0
+          fi
+          echo "REPRODUCED: a normal depth-1 checkout cannot configure without a version override."
+          exit 1

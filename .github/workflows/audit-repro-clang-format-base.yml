@@ -1,0 +1,63 @@
+name: Audit repro - clang-format base selection
+
+on:
+  push:
+    branches:
+      - audit/contributor-tooling-repros-round2-20260814
+
+jobs:
+  reproduce:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compare ancestry arithmetic with the merge base
+        shell: bash
+        run: |
+          set -euo pipefail
+          workflow="$GITHUB_WORKSPACE/.github/workflows/clang-format.yaml"
+          grep -q 'BASE_COMMIT=.*PR_COMMIT_COUNT' "$workflow"
+
+          tmp="${RUNNER_TEMP}/clang-format-base"
+          mkdir -p "$tmp"
+          git -C "$tmp" init -q
+          git -C "$tmp" config user.name audit
+          git -C "$tmp" config user.email audit@example.invalid
+          printf 'base\n' > "$tmp/base.txt"
+          git -C "$tmp" add base.txt
+          git -C "$tmp" commit -q -m base
+          base="$(git -C "$tmp" rev-parse HEAD)"
+          printf 'unrelated base-branch change\n' > "$tmp/upstream.txt"
+          git -C "$tmp" add upstream.txt
+          git -C "$tmp" commit -q -m upstream
+          upstream="$(git -C "$tmp" rev-parse HEAD)"
+          git -C "$tmp" switch -q -c feature "$base"
+          printf 'feature change\n' > "$tmp/feature.txt"
+          git -C "$tmp" add feature.txt
+          git -C "$tmp" commit -q -m feature
+          git -C "$tmp" merge --no-ff --no-edit "$upstream" >/dev/null
+          printf 'pull request change\n' > "$tmp/pr.txt"
+          git -C "$tmp" add pr.txt
+          git -C "$tmp" commit -q -m pr
+          head="$(git -C "$tmp" rev-parse HEAD)"
+
+          pr_commit_count=3
+          computed_base="$(git -C "$tmp" rev-parse "$head~$pr_commit_count")"
+          actual_base="$(git -C "$tmp" merge-base "$upstream" "$head")"
+          printf 'computed base: %s\nactual merge base: %s\n' "$computed_base" "$actual_base"
+          if [[ "$computed_base" == "$actual_base" ]]; then
+            echo "The ancestry calculation happened to equal the merge base."
+            exit 0
+          fi
+          git -C "$tmp" diff --name-only "$computed_base" "$head" > "$tmp/computed.files"
+          git -C "$tmp" diff --name-only "$actual_base" "$head" > "$tmp/merge-base.files"
+          echo 'Files selected by the workflow arithmetic:'
+          cat "$tmp/computed.files"
+          echo 'Files selected from the real merge base:'
+          cat "$tmp/merge-base.files"
+          if ! grep -qx 'upstream.txt' "$tmp/computed.files" || \
+             grep -qx 'upstream.txt' "$tmp/merge-base.files"; then
+            echo "The fixture did not isolate the unrelated base-branch file."
+            exit 0
+          fi
+          echo "REPRODUCED: the workflow's HEAD~commit-count base includes unrelated base-branch changes."
+          exit 1

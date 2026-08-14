@@ -1,0 +1,31 @@
+name: Audit repro - GitVersion release candidate tag
+
+on:
+  push:
+    branches:
+      - audit/contributor-tooling-repros-round2-20260814
+
+jobs:
+  reproduce:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure the existing release candidate tag
+        shell: bash
+        run: |
+          set -euo pipefail
+          tmp="${RUNNER_TEMP}/gitversion-rc"
+          git clone --quiet --depth 1 --branch v1.0.0-rc1 \
+            https://github.com/project-llzk/llzk-lib.git "$tmp"
+          set +e
+          cmake -S "$tmp" -B "${RUNNER_TEMP}/gitversion-rc-build" -G Ninja > "$tmp/cmake.log" 2>&1
+          cmake_status=$?
+          set -e
+          cat "$tmp/cmake.log"
+          if [[ "$cmake_status" -eq 0 ]] || \
+             ! grep -q 'VERSION "1.0.0-rc1" format invalid' "$tmp/cmake.log"; then
+            echo "The release candidate configured successfully or failed for another reason."
+            exit 0
+          fi
+          echo "REPRODUCED: the existing v1.0.0-rc1 tag produces an invalid CMake project version."
+          exit 1

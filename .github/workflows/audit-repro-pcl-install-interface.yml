@@ -1,0 +1,75 @@
+name: Audit repro - installed PCL headers
+
+on:
+  push:
+    branches:
+      - audit/contributor-tooling-repros-round2-20260814
+
+jobs:
+  reproduce:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Consume the exported PCL header target
+        shell: bash
+        run: |
+          set -euo pipefail
+          source_cmake="$GITHUB_WORKSPACE/backends/pcl/include/CMakeLists.txt"
+          if grep -q 'INSTALL_INTERFACE' "$source_cmake"; then
+            echo "The PCL header target already has an install interface."
+            exit 0
+          fi
+
+          tmp="${RUNNER_TEMP}/pcl-install-interface"
+          mkdir -p "$tmp/producer/include/pcl" "$tmp/consumer"
+          printf '%s\n' \
+            '#pragma once' \
+            'struct PCLDialectMarker {};' \
+            > "$tmp/producer/include/pcl/Dialect.h"
+          printf '%s\n' \
+            'cmake_minimum_required(VERSION 3.23)' \
+            'project(pcl-producer LANGUAGES CXX)' \
+            'include(GNUInstallDirs)' \
+            'add_library(PCLDialectHeaders INTERFACE)' \
+            'add_library(LLZK::PCLDialectHeaders ALIAS PCLDialectHeaders)' \
+            'target_include_directories(PCLDialectHeaders INTERFACE' \
+            '  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>)' \
+            'install(TARGETS PCLDialectHeaders EXPORT LLZKTargets)' \
+            'install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/include/" TYPE INCLUDE FILES_MATCHING PATTERN "*.h")' \
+            'install(EXPORT LLZKTargets FILE LLZKTargets.cmake NAMESPACE LLZK:: DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/LLZK)' \
+            'file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/LLZKConfig.cmake" "include(\\"\\${CMAKE_CURRENT_LIST_DIR}/LLZKTargets.cmake\\")\\n")' \
+            'install(FILES "${CMAKE_CURRENT_BINARY_DIR}/LLZKConfig.cmake" DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/LLZK)' \
+            > "$tmp/producer/CMakeLists.txt"
+          printf '%s\n' \
+            '#include <pcl/Dialect.h>' \
+            'int main() { PCLDialectMarker marker; (void)marker; }' \
+            > "$tmp/consumer/main.cpp"
+          printf '%s\n' \
+            'cmake_minimum_required(VERSION 3.23)' \
+            'project(pcl-consumer LANGUAGES CXX)' \
+            'find_package(LLZK CONFIG REQUIRED)' \
+            'add_executable(consumer main.cpp)' \
+            'target_link_libraries(consumer PRIVATE LLZK::PCLDialectHeaders)' \
+            > "$tmp/consumer/CMakeLists.txt"
+
+          cmake -S "$tmp/producer" -B "$tmp/producer-build" \
+            -DCMAKE_INSTALL_PREFIX="$tmp/install" -G Ninja
+          cmake --build "$tmp/producer-build" --target install
+          cmake -S "$tmp/consumer" -B "$tmp/consumer-build" -G Ninja \
+            -DCMAKE_PREFIX_PATH="$tmp/install"
+
+          set +e
+          cmake --build "$tmp/consumer-build" 2> "$tmp/build.log"
+          build_status=$?
+          set -e
+          cat "$tmp/build.log"
+          if [[ "$build_status" -eq 0 ]]; then
+            echo "The exported PCL target provided usable installed include paths."
+            exit 0
+          fi
+          if ! grep -q 'pcl/Dialect.h' "$tmp/build.log"; then
+            echo "The consumer failed for an unrelated reason; reproduction not established."
+            exit 0
+          fi
+          echo "REPRODUCED: the installed PCL header target has no usable include path."
+          exit 1

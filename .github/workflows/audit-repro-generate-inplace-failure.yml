@@ -1,0 +1,55 @@
+name: Audit repro - generator failure truncation
+
+on:
+  push:
+    branches:
+      - audit/contributor-tooling-repros-round2-20260814
+
+jobs:
+  reproduce:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Keep the source intact when generation fails
+        shell: bash
+        run: |
+          set -euo pipefail
+          tmp="${RUNNER_TEMP}/generate-inplace-failure"
+          mkdir -p "$tmp"
+          printf '%s\n' \
+            'module {' \
+            '  func.func @main() {' \
+            '  }' \
+            '}' \
+            > "$tmp/source.mlir"
+          cp "$tmp/source.mlir" "$tmp/source.before.mlir"
+          printf '%s\n' \
+            'module {' \
+            '  func.func @main() {' \
+            '    %0 = "test.op"() : () -> i32' \
+            '    %1 = "test.op"() : () -> i32' \
+            '  }' \
+            '}' \
+            > "$tmp/input.mlir"
+          set +e
+          python3 "$GITHUB_WORKSPACE/scripts/generate-test-checks.py" \
+            --source "$tmp/source.mlir" --source_delim_regex='^module ' \
+            --variable_names='X,X' -i "$tmp/input.mlir" > "$tmp/stdout.log" 2> "$tmp/stderr.log"
+          generator_status=$?
+          set -e
+          cat "$tmp/stderr.log"
+          if [[ "$generator_status" -eq 0 ]] || \
+             ! grep -q 'duplicate variable name' "$tmp/stderr.log"; then
+            echo "The intended generator error was not reproduced."
+            exit 0
+          fi
+          if cmp -s "$tmp/source.before.mlir" "$tmp/source.mlir"; then
+            echo "The source survived the generator failure."
+            exit 0
+          fi
+          echo 'Source before failure:'
+          cat "$tmp/source.before.mlir"
+          echo 'Source after failure:'
+          cat "$tmp/source.mlir"
+          echo "REPRODUCED: an in-place generator error truncates the source file."
+          exit 1
