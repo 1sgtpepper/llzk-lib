@@ -10,10 +10,13 @@
 #pragma once
 
 #include "llzk/Util/SymbolLookup.h"
+#include "llzk/Util/TypeHelper.h"
 
+#include <mlir/IR/Region.h>
 #include <mlir/Interfaces/CallInterfaces.h>
 
 #include <cassert>
+#include <cstdint>
 #include <optional>
 #include <ranges>
 
@@ -215,6 +218,19 @@ getConstResolutionTemplate(mlir::SymbolTableCollection &tables, mlir::Operation 
 /// Symbol references are resolved in the context of `origin`; diagnostics are emitted on it.
 mlir::LogicalResult verifyTemplateParamValueCompatibility(
     mlir::Operation *origin, mlir::Attribute value, polymorphic::TemplateParamOp targetParam
+);
+
+/// Identify the signature whose inferred template values are being checked so shared verification
+/// can preserve the operation-specific diagnostic wording.
+enum class TemplateParamSignatureKind : std::uint8_t { Function, Contract };
+
+/// Verify explicit template values against the values inferred from a call-like operation's target
+/// signature. The operation-specific entry points delegate here so value compatibility and
+/// conflict handling stay identical for function calls and contract includes.
+mlir::LogicalResult verifyTemplateParamsMatchInferred(
+    mlir::Operation *origin, mlir::ArrayAttr explicitParams,
+    llvm::iterator_range<mlir::Region::op_iterator<polymorphic::TemplateParamOp>> targetParamDefs,
+    const UnificationMap &unifications, TemplateParamSignatureKind signatureKind
 );
 
 /// Ensure that the given symbol (that is used as a parameter of the given type) can be resolved.

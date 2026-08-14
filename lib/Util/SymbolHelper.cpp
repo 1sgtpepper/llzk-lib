@@ -30,6 +30,7 @@
 
 #include <llvm/ADT/TypeSwitch.h>
 #include <llvm/Support/Debug.h>
+#include <llvm/Support/ErrorHandling.h>
 
 #define DEBUG_TYPE "llzk-symbol-helpers"
 
@@ -478,6 +479,88 @@ LogicalResult verifyTemplateParamValueCompatibility(
         "instantiation value '", value, "' is not compatible with parameter \"@",
         targetParam.getName(), "\" type restriction ", *declaredType
     );
+  }
+  return success();
+}
+
+LogicalResult verifyTemplateParamsMatchInferred(
+    Operation *origin, ArrayAttr explicitParams,
+    llvm::iterator_range<Region::op_iterator<TemplateParamOp>> targetParamDefs,
+    const UnificationMap &unifications, TemplateParamSignatureKind signatureKind
+) {
+  StringRef signatureDescription = [&] {
+    switch (signatureKind) {
+    case TemplateParamSignatureKind::Function:
+      return StringRef("function");
+    case TemplateParamSignatureKind::Contract:
+      return StringRef("contract");
+    }
+    llvm_unreachable("unknown template parameter signature kind");
+  }();
+
+  if (isNullOrEmpty(explicitParams)) {
+    for (TemplateParamOp paramOp : targetParamDefs) {
+      if (std::optional<Type> declaredType = paramOp.getTypeOpt();
+          declaredType && llvm::isa<TypeVarType>(*declaredType)) {
+        continue;
+      }
+      auto it = unifications.find({FlatSymbolRefAttr::get(paramOp.getNameAttr()), Side::RHS});
+      if (it == unifications.end()) {
+        // No inferred value means the signature did not expose this parameter to the operation.
+        continue;
+      }
+      if (!it->second) {
+        return origin->emitOpError().append(
+            "cannot infer template instantiation value for parameter \"@", paramOp.getName(),
+            "\" from ", signatureDescription, " type signature"
+        );
+      }
+      if (failed(verifyTemplateParamValueCompatibility(origin, it->second, paramOp))) {
+        return failure();
+      }
+    }
+    return success();
+  }
+
+  assert(!isNullOrEmpty(explicitParams) && "pre-condition");
+  assert((explicitParams.size() == llvm::range_size(targetParamDefs)) && "pre-condition");
+
+  for (auto [paramOp, attr] : llvm::zip_equal(targetParamDefs, explicitParams.getValue())) {
+    // Skip wildcards (`?` / kDynamic) - their value will be resolved by a later inference pass.
+    if (auto intAttr = llvm::dyn_cast<IntegerAttr>(attr)) {
+      if (isDynamic(intAttr)) {
+        continue;
+      }
+    }
+    auto it = unifications.find({FlatSymbolRefAttr::get(paramOp.getNameAttr()), Side::RHS});
+    if (it != unifications.end() && !it->second) {
+      return origin->emitOpError().append(
+          "cannot infer a unique template instantiation value for parameter \"@",
+          paramOp.getName(), "\" from ", signatureDescription, " type signature"
+      );
+    }
+    if (it != unifications.end() &&
+        failed(verifyTemplateParamValueCompatibility(origin, it->second, paramOp))) {
+      return failure();
+    }
+    bool valuesUnify = true;
+    if (it != unifications.end()) {
+      SymbolTableCollection tables;
+      FailureOr<bool> resolved = resolvedTemplateParamValuesUnify(
+          tables, origin, attr, it->second, paramOp.getTypeOpt()
+      );
+      if (failed(resolved)) {
+        return failure();
+      }
+      valuesUnify = *resolved;
+    }
+    if (!valuesUnify) {
+      return origin->emitOpError().append(
+          "template instantiation value '", attr, "' for parameter \"@", paramOp.getName(),
+          "\" conflicts with value '", it->second, "' inferred from ", signatureDescription,
+          " type signature"
+      );
+    }
   }
   return success();
 }
