@@ -14,7 +14,7 @@ jobs:
     runs-on: ubuntu-24.04
     env:
       BASE_HEAD: 683c6d412922766153a0756362762e29943cc40b
-      TARGET_HEAD: 1b31fe6feadcacc04ae037ed8b6a7004242a714e
+      TARGET_HEAD: 8da3521ac27e59298f67ec983154043f61659f47
       OUTPUT_PATH: /home/runner/work/_temp/llzk-pr484-replay
 
     steps:
@@ -131,7 +131,11 @@ jobs:
           generated = generated_path.read_text().splitlines()
 
           committed = [
-              line.replace("// CHECK:  // -----", "// CHECK-NEXT:  // -----", 1)
+              line.replace(
+                  "// CHECK:  // {{[-][-][-][-][-]}}",
+                  "// CHECK-NEXT:  // -----",
+                  1,
+              )
               for line in committed
           ]
           if committed != generated:
@@ -175,7 +179,7 @@ jobs:
               echo "committed_checks_against_exact_head_output=PASS"
               echo "fresh_generated_checks_against_exact_head_output=PASS"
               echo "full_committed_check_block=$full_check_block"
-              echo "separator_placement_adjustment=CHECK-NEXT_to_CHECK"
+              echo "separator_placement_adjustment=CHECK-NEXT_to_split-safe_CHECK_regex"
               echo "complete_check_line_count=$complete_check_line_count"
             } > "$output_path/comparison.txt"
           done
