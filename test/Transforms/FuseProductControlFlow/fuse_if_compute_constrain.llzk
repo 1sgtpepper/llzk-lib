@@ -76,7 +76,7 @@ module attributes {llzk.lang = "llzk"} {
 // CHECK-NEXT:      }
 // CHECK-NEXT:    }
 // CHECK-NEXT:  }
-// CHECK:  // -----
+// CHECK:  // {{[-][-][-][-][-]}}
 
 // -----
 
@@ -170,7 +170,7 @@ module attributes {llzk.lang = "llzk"} {
 // CHECK-NEXT:      function.return
 // CHECK-NEXT:    }
 // CHECK-NEXT:  }
-// CHECK:  // -----
+// CHECK:  // {{[-][-][-][-][-]}}
 
 // -----
 
@@ -259,7 +259,7 @@ module attributes {llzk.lang = "llzk"} {
 // CHECK-NEXT:      }
 // CHECK-NEXT:    }
 // CHECK-NEXT:  }
-// CHECK:  // -----
+// CHECK:  // {{[-][-][-][-][-]}}
 
 // -----
 
@@ -345,7 +345,7 @@ module attributes {llzk.lang = "llzk"} {
 // CHECK-NEXT:      }
 // CHECK-NEXT:    }
 // CHECK-NEXT:  }
-// CHECK:  // -----
+// CHECK:  // {{[-][-][-][-][-]}}
 
 // -----
 
