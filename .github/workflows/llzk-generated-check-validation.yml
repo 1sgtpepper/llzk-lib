@@ -1,0 +1,486 @@
+name: LLZK generated check validation
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_head:
+        description: Reviewed fork commit to validate
+        required: true
+        type: string
+      base_head:
+        description: Exact PR base commit
+        required: true
+        type: string
+      pr_number:
+        description: Draft PR number
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    env:
+      BASE_HEAD: ${{ inputs.base_head }}
+      TARGET_HEAD: ${{ inputs.target_head }}
+      PR_NUMBER: ${{ inputs.pr_number }}
+      OUTPUT_PATH: /home/runner/work/_temp/llzk-generated-check-validation
+
+    steps:
+      - name: Check out validation workflow
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Install Nix
+        uses: cachix/install-nix-action@d1ca217b388ee87b2507a9a93bf01368bde7cec2
+        with:
+          install_url: https://releases.nixos.org/nix/nix-2.23.3/install
+          github_access_token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set Git credentials
+        run: |
+          git config --global 'url.https://api@github.com/'.insteadOf 'https://github.com/'
+          git config --global 'url.https://ssh@github.com/'.insteadOf 'ssh://git@github.com/'
+          git config --global 'url.https://git@github.com/'.insteadOf 'git@github.com:'
+
+      - name: Use project build cache
+        uses: cachix/cachix-action@v17
+        with:
+          name: veridise-public
+          skipPush: true
+
+      - name: Replay exact-head producer and generator output
+        shell: bash
+        run: |
+          set -euo pipefail
+          tested_path="$RUNNER_TEMP/llzk-tested"
+          mkdir -p "$OUTPUT_PATH"
+
+          git fetch --no-tags --filter=blob:none \
+            https://github.com/project-llzk/llzk-lib.git "$BASE_HEAD"
+          git fetch --no-tags --filter=blob:none \
+            https://github.com/1sgtpepper/llzk-lib.git "$TARGET_HEAD"
+          git worktree add --detach "$tested_path" "$TARGET_HEAD"
+          test "$(git -C "$tested_path" rev-parse HEAD)" = "$TARGET_HEAD"
+
+          (
+            cd "$tested_path"
+            nix build --impure --print-build-logs --expr \
+              'let flake = builtins.getFlake (toString ./.) ; in flake.packages.x86_64-linux.debugGCC.overrideAttrs (_: { doCheck = false; })'
+          )
+
+          llzk_opt="$tested_path/result/bin/llzk-opt"
+          filecheck=$(find /nix/store -type f -path '*/bin/FileCheck' -executable -print -quit)
+          test -x "$llzk_opt"
+          test -n "$filecheck"
+          "$llzk_opt" --version > "$OUTPUT_PATH/llzk-opt.version"
+          printf '%s\n' "$BASE_HEAD" > "$OUTPUT_PATH/base-head.txt"
+          printf '%s\n' "$TARGET_HEAD" > "$OUTPUT_PATH/target-head.txt"
+          printf '%s\n' "$GITHUB_SHA" > "$OUTPUT_PATH/workflow-head.txt"
+
+          python3 - "$tested_path" "$llzk_opt" "$filecheck" "$OUTPUT_PATH" \
+              "$PR_NUMBER" "$BASE_HEAD" "$TARGET_HEAD" <<'PY'
+          from __future__ import annotations
+
+          from difflib import unified_diff
+          import os
+          from pathlib import Path
+          import re
+          import shlex
+          import subprocess
+          import sys
+
+          tested_path = Path(sys.argv[1])
+          llzk_opt = Path(sys.argv[2])
+          filecheck = Path(sys.argv[3])
+          output_path = Path(sys.argv[4])
+          pr_number = sys.argv[5]
+          base_head = sys.argv[6]
+          target_head = sys.argv[7]
+
+          full_tests = {
+              "634": [
+                  "test/Dialect/Function/call_with_symbolic_felt_restriction_pass.llzk",
+                  "test/Dialect/Struct/struct_params_restrictions_pass.llzk",
+                  "test/Dialect/Struct/struct_params_symbolic_pass.llzk",
+                  "test/Dialect/Verif/include_with_symbolic_felt_restriction_pass.llzk",
+              ],
+              "635": [
+                  "test/Transforms/Flattening/instantiate_expr_blocked.llzk",
+                  "test/Transforms/Flattening/instantiate_expr_felt_typevar_completion.llzk",
+                  "test/Transforms/Flattening/instantiate_expr_only.llzk",
+                  "test/Transforms/Flattening/instantiate_expr_partial.llzk",
+                  "test/Transforms/Flattening/instantiate_expr_target_local.llzk",
+                  "test/Transforms/Flattening/instantiate_expr_typevar_completion.llzk",
+                  "test/Transforms/Flattening/instantiate_func_felt_normalization.llzk",
+                  "test/Transforms/Flattening/instantiate_func_rollback.llzk",
+                  "test/Transforms/Flattening/instantiate_funcs_pass.llzk",
+                  "test/Transforms/Flattening/instantiate_nested_call_template_params.llzk",
+                  "test/Transforms/Flattening/instantiate_structs_pass_3.llzk",
+              ],
+              "637": [
+                  "test/Transforms/Flattening/instantiate_function_order.llzk",
+                  "test/Transforms/Flattening/instantiate_function_reuse.llzk",
+              ],
+          }
+          focused_tests = {
+              "634": [],
+              "635": [
+                  "test/Transforms/Flattening/instantiate_expr_blocked_order.llzk",
+                  "test/Transforms/Flattening/instantiate_expr_fail.llzk",
+                  "test/Transforms/Flattening/instantiate_expr_func_fail.llzk",
+                  "test/Transforms/Flattening/instantiate_func_felt_normalization_fail.llzk",
+                  "test/Transforms/Flattening/instantiate_funcs_fail.llzk",
+                  "test/Transforms/Flattening/instantiate_struct_rollback.llzk",
+              ],
+              "637": [],
+          }
+          if pr_number not in full_tests:
+              raise SystemExit(f"unsupported PR number: {pr_number}")
+
+          def run_lines(source: Path) -> list[str]:
+              return [
+                  line.removeprefix("// RUN:").strip()
+                  for line in source.read_text().splitlines()
+                  if line.startswith("// RUN:")
+              ]
+
+          def check_prefixes(filecheck_command: str) -> list[str]:
+              match = re.search(
+                  r"--check-prefix(?:=|\\s+)([A-Za-z0-9_,]+)",
+                  filecheck_command,
+              )
+              return match.group(1).split(",") if match else ["CHECK"]
+
+          def command_for_run(run_line: str, source_path: Path) -> tuple[str, bool]:
+              producer = run_line.split("| FileCheck", 1)[0].strip()
+              expect_failure = producer.startswith("not ")
+              if expect_failure:
+                  producer = producer[4:].lstrip()
+              producer = producer.replace("llzk-opt", shlex.quote(str(llzk_opt)), 1)
+              producer = producer.replace("%s", shlex.quote(str(source_path)))
+              producer = producer.replace("%S", shlex.quote(str(source_path.parent)))
+              return producer, expect_failure
+
+          def clean_source(source: Path, destination: Path) -> None:
+              lines = []
+              for line in source.read_text().splitlines():
+                  if line.startswith("// CHECK"):
+                      continue
+                  if line.startswith("// DEFAULT") or line.startswith("// DISABLED"):
+                      continue
+                  if line.startswith("// NOTE: Assertions have been autogenerated"):
+                      continue
+                  lines.append(line)
+              destination.write_text("\n".join(lines).strip() + "\n")
+
+          def committed_lines(source: Path, prefix: str) -> list[str]:
+              pattern = re.compile(
+                  rf"^// {re.escape(prefix)}(?:-(?:LABEL|NEXT|SAME|NOT|DAG|EMPTY))?:"
+              )
+              return [
+                  line
+                  for line in source.read_text().splitlines()
+                  if pattern.match(line)
+              ]
+
+          def generated_lines(generated: Path, prefix: str) -> list[str]:
+              pattern = re.compile(
+                  rf"^// {re.escape(prefix)}(?:-(?:LABEL|NEXT|SAME|NOT|DAG|EMPTY))?:"
+              )
+              return [
+                  line
+                  for line in generated.read_text().splitlines()
+                  if pattern.match(line)
+              ]
+
+          def normalize(lines: list[str], prefix: str) -> list[str]:
+              normalized = []
+              variable_names = {}
+              directive = re.compile(
+                  rf"^// {re.escape(prefix)}(?:-(?:LABEL|NEXT|SAME|NOT|DAG|EMPTY))?:"
+              )
+
+              def variable(match: re.Match[str]) -> str:
+                  name = match.group(1)
+                  if name not in variable_names:
+                      variable_names[name] = f"VAR_{len(variable_names)}"
+                  return f"[[{variable_names[name]}]]"
+
+              for line in lines:
+                  if re.search(rf"^// {re.escape(prefix)}-NOT:", line):
+                      continue
+                  line = line.replace(
+                      f"// {prefix}:  // {{{{[-][-][-][-][-]}}}}",
+                      f"// {prefix}-NEXT:  // -----",
+                      1,
+                  )
+                  line = re.sub(
+                      r"/home/runner/work/_temp/[^\"]*/([^\"/]+\.llzk)",
+                      r"{{.*}}\1",
+                      line,
+                  )
+                  line = re.sub(
+                      r"#(?:loc(?:\{\{.*?\}\}|\[\[.*?\]\]|\d+)?|\[\[.*?\]\])(?=\s*=\s*loc\()",
+                      "#LOC_DEF",
+                      line,
+                  )
+                  line = re.sub(r"#loc(?:\{\{.*?\}\}|\[\[.*?\]\]|\d+)?", "#LOC_REF", line)
+                  line = re.sub(r"#\[\[.*?\]\]", "#LOC_REF", line)
+                  line = directive.sub(f"// {prefix}:", line)
+                  line = re.sub(rf"^(// {re.escape(prefix)}:) +", r"\1 ", line)
+                  line = re.sub(
+                      r"\[\[([A-Za-z_][A-Za-z0-9_]*)(?::(.*?))?\]\]",
+                      variable,
+                      line,
+                  )
+                  normalized.append(line)
+              return normalized
+
+          def record(path: Path, text: str) -> None:
+              path.write_text(text.rstrip() + "\n")
+
+          full_failures = []
+          focused_failures = []
+          full_case_count = 0
+          focused_case_count = 0
+          full_run_count = 0
+          focused_run_count = 0
+
+          all_files = full_tests[pr_number] + focused_tests[pr_number]
+          for relative in all_files:
+              source = tested_path / relative
+              if not source.is_file():
+                  raise SystemExit(f"missing listed test: {relative}")
+              if relative not in subprocess.check_output(
+                  ["git", "-C", str(tested_path), "diff", "--name-only", base_head, target_head, "--", "*.llzk"],
+                  text=True,
+              ).splitlines():
+                  raise SystemExit(f"test is not changed by target diff: {relative}")
+
+          for relative in full_tests[pr_number]:
+              source = tested_path / relative
+              name = source.stem
+              case_output = output_path / "full" / name
+              case_output.mkdir(parents=True, exist_ok=True)
+              raw_source = case_output / "clean-input.llzk"
+              clean_source(source, raw_source)
+              boundaries = [
+                  index + 1
+                  for index, line in enumerate(source.read_text().splitlines())
+                  if line.strip() == "// -----"
+              ]
+              record(case_output / "split-boundaries.txt", f"delimiter_lines={boundaries}\nsplit_count={len(boundaries) + 1}")
+              record(case_output / "committed-test.llzk", source.read_text())
+
+              for run_index, run_line in enumerate(run_lines(source)):
+                  if "| FileCheck" not in run_line:
+                      continue
+                  full_run_count += 1
+                  producer, expect_failure = command_for_run(run_line, raw_source)
+                  if expect_failure:
+                      raise SystemExit(f"unexpected not pipeline in full-output test: {relative}")
+                  run_output = case_output / f"run{run_index + 1}.producer-output.llzk"
+                  result = subprocess.run(
+                      producer,
+                      shell=True,
+                      executable="/bin/bash",
+                      stdout=subprocess.PIPE,
+                      stderr=subprocess.STDOUT,
+                      text=True,
+                  )
+                  run_output.write_text(result.stdout)
+                  if result.returncode != 0:
+                      raise SystemExit(f"producer failed for {relative} RUN {run_index + 1}: {producer}")
+
+                  filecheck_command = run_line.split("| FileCheck", 1)[1].strip()
+                  check_command = (
+                      shlex.quote(str(filecheck)) + " " + filecheck_command
+                  ).replace("%s", shlex.quote(str(source)))
+                  checked = subprocess.run(
+                      check_command,
+                      shell=True,
+                      executable="/bin/bash",
+                      input=result.stdout,
+                      stdout=subprocess.PIPE,
+                      stderr=subprocess.STDOUT,
+                      text=True,
+                  )
+                  record(case_output / f"run{run_index + 1}.filecheck.txt", checked.stdout)
+                  if checked.returncode != 0:
+                      raise SystemExit(f"FileCheck failed for {relative} RUN {run_index + 1}")
+
+                  generator_input = run_output
+                  if "-mlir-print-ir-after-failure" in producer:
+                      filtered = case_output / f"run{run_index + 1}.ir-only.llzk"
+                      lines = result.stdout.splitlines()
+                      started = False
+                      selected = []
+                      for line in lines:
+                          if line.startswith("module ") or line.strip() == "// -----":
+                              started = True
+                          if started:
+                              selected.append(line)
+                      if not selected:
+                          raise SystemExit(f"no emitted IR found for {relative} RUN {run_index + 1}")
+                      filtered.write_text("\n".join(selected) + "\n")
+                      generator_input = filtered
+
+                  for prefix in check_prefixes(filecheck_command):
+                      generated = case_output / f"run{run_index + 1}.{prefix}.generated.txt"
+                      generator = subprocess.run(
+                          [
+                              sys.executable,
+                              str(tested_path / "scripts/generate-test-checks.py"),
+                              "--check-prefix",
+                              prefix,
+                          ],
+                          stdin=generator_input.open(),
+                          stdout=subprocess.PIPE,
+                          stderr=subprocess.PIPE,
+                          text=True,
+                      )
+                      generated.write_text(generator.stdout)
+                      record(case_output / f"run{run_index + 1}.{prefix}.generator.stderr.txt", generator.stderr)
+                      if generator.returncode != 0:
+                          raise SystemExit(f"generator failed for {relative} RUN {run_index + 1} {prefix}")
+
+                      committed = committed_lines(source, prefix)
+                      fresh = generated_lines(generated, prefix)
+                      (case_output / f"run{run_index + 1}.{prefix}.committed-checks.txt").write_text(
+                          "\n".join(committed) + ("\n" if committed else "")
+                      )
+                      (case_output / f"run{run_index + 1}.{prefix}.generated-checks-only.txt").write_text(
+                          "\n".join(fresh) + ("\n" if fresh else "")
+                      )
+                      diff = list(
+                          unified_diff(
+                              normalize(committed, prefix),
+                              normalize(fresh, prefix),
+                              fromfile="committed",
+                              tofile="fresh-generated",
+                              lineterm="",
+                          )
+                      )
+                      (case_output / f"run{run_index + 1}.{prefix}.check-comparison.diff").write_text(
+                          "\n".join(diff) + ("\n" if diff else "")
+                      )
+                      comparison = "PASS" if not diff else "FAIL"
+                      record(
+                          case_output / f"run{run_index + 1}.{prefix}.comparison.txt",
+                          "\n".join(
+                              [
+                                  f"workflow_head={os.environ.get('GITHUB_SHA', '')}",
+                                  f"base_head={base_head}",
+                                  f"target_head={target_head}",
+                                  f"test={relative}",
+                                  f"producer_command={producer}",
+                                  f"generator_command=python3 scripts/generate-test-checks.py --check-prefix {prefix} < {generator_input.name}",
+                                  f"split_boundary_lines={boundaries}",
+                                  f"committed_check_lines={len(committed)}",
+                                  f"fresh_generated_check_lines={len(fresh)}",
+                                  f"full_committed_check_block={comparison}",
+                                  "comparison_normalization=FileCheck directive placement, stable SSA/attribute names, source paths, location IDs, and explicitly bounded CHECK-NOT lines",
+                                  f"verdict={'PROVEN' if not diff else 'BLOCKED'}",
+                              ]
+                          ),
+                      )
+                      if diff:
+                          full_failures.append(f"{relative} RUN {run_index + 1} {prefix}")
+              full_case_count += 1
+
+          for relative in focused_tests[pr_number]:
+              source = tested_path / relative
+              name = source.stem
+              case_output = output_path / "focused" / name
+              case_output.mkdir(parents=True, exist_ok=True)
+              raw_source = case_output / "clean-input.llzk"
+              clean_source(source, raw_source)
+              record(case_output / "committed-test.llzk", source.read_text())
+              for run_index, run_line in enumerate(run_lines(source)):
+                  focused_run_count += 1
+                  producer, expect_failure = command_for_run(run_line, raw_source)
+                  output = case_output / f"run{run_index + 1}.producer-output.txt"
+                  result = subprocess.run(
+                      producer,
+                      shell=True,
+                      executable="/bin/bash",
+                      stdout=subprocess.PIPE,
+                      stderr=subprocess.STDOUT,
+                      text=True,
+                  )
+                  output.write_text(result.stdout)
+                  failed_as_expected = expect_failure and result.returncode != 0
+                  succeeded_as_expected = not expect_failure and result.returncode == 0
+                  if not (failed_as_expected or succeeded_as_expected):
+                      focused_failures.append(f"{relative} RUN {run_index + 1}")
+                      continue
+                  if "| FileCheck" in run_line:
+                      filecheck_command = run_line.split("| FileCheck", 1)[1].strip()
+                      check_command = (
+                          shlex.quote(str(filecheck)) + " " + filecheck_command
+                      ).replace("%s", shlex.quote(str(source)))
+                      checked = subprocess.run(
+                          check_command,
+                          shell=True,
+                          executable="/bin/bash",
+                          input=result.stdout,
+                          stdout=subprocess.PIPE,
+                          stderr=subprocess.STDOUT,
+                          text=True,
+                      )
+                      record(case_output / f"run{run_index + 1}.filecheck.txt", checked.stdout)
+                      if checked.returncode != 0:
+                          focused_failures.append(f"{relative} RUN {run_index + 1} FileCheck")
+                  record(
+                      case_output / f"run{run_index + 1}.comparison.txt",
+                      "\n".join(
+                          [
+                              f"workflow_head={os.environ.get('GITHUB_SHA', '')}",
+                              f"base_head={base_head}",
+                              f"target_head={target_head}",
+                              f"test={relative}",
+                              f"producer_command={producer}",
+                              "contract=focused diagnostic or cleanup property; complete emitted IR is not the assertion contract",
+                              f"expected_failure={expect_failure}",
+                              f"producer_exit={result.returncode}",
+                              "verdict=PROVEN",
+                          ]
+                      ),
+                  )
+              focused_case_count += 1
+
+          summary = [
+              f"workflow_head={os.environ.get('GITHUB_SHA', '')}",
+              f"base_head={base_head}",
+              f"target_head={target_head}",
+              f"pr_number={pr_number}",
+              f"full_fixture_count={full_case_count}",
+              f"full_run_count={full_run_count}",
+              f"full_committed_check_blocks={'PASS' if not full_failures else 'FAIL'}",
+              f"full_check_block_mismatches={' '.join(full_failures)}",
+              f"focused_fixture_count={focused_case_count}",
+              f"focused_run_count={focused_run_count}",
+              f"focused_oracles={'PASS' if not focused_failures else 'FAIL'}",
+              f"focused_oracle_mismatches={' '.join(focused_failures)}",
+              "actual_split_boundaries=recorded per fixture under full/ and focused/",
+              "generator_stdout=recorded per full fixture and FileCheck prefix",
+              "complete_committed_check_comparison=full output blocks compared after bounded normalization",
+          ]
+          record(output_path / "summary.txt", "\n".join(summary))
+          if full_failures or focused_failures:
+              raise SystemExit("validation evidence mismatch")
+          PY
+
+      - name: Upload generator evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: llzk-generated-check-validation-${{ inputs.pr_number }}-${{ github.sha }}
+          path: /home/runner/work/_temp/llzk-generated-check-validation
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
