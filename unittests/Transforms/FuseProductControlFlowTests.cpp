@@ -104,9 +104,9 @@ TEST_F(FuseProductControlFlowTests, HoistedMemberReadsPreserveSourceOrder) {
   ASSERT_TRUE(fusedIf);
   EXPECT_EQ(reads[0].getMemberName(), "left");
   EXPECT_EQ(reads[1].getMemberName(), "right");
-  EXPECT_TRUE(reads[0]->isBefore(reads[1]));
-  EXPECT_TRUE(reads[0]->isBefore(fusedIf));
-  EXPECT_TRUE(reads[1]->isBefore(fusedIf));
+  EXPECT_TRUE(reads[0]->isBeforeInBlock(reads[1]));
+  EXPECT_TRUE(reads[0]->isBeforeInBlock(fusedIf));
+  EXPECT_TRUE(reads[1]->isBeforeInBlock(fusedIf));
 }
 
 } // namespace
