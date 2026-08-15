@@ -72,7 +72,13 @@ jobs:
             '  }' \
             '}' > "$root/failure/source.mlir"
           cp "$root/failure/source.mlir" "$root/failure/source.before.mlir"
-          printf '%s\n' 'module {' '}' > "$root/failure/input.mlir"
+          printf '%s\n' \
+            'module {' \
+            '  func.func @main() {' \
+            '    %0 = "test.op"() : () -> i32' \
+            '    %1 = "test.op"() : () -> i32' \
+            '  }' \
+            '}' > "$root/failure/input.mlir"
           set +e
           python3 "$script" \
             --source "$root/failure/source.mlir" \
