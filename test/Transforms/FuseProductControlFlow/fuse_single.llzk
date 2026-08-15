@@ -92,7 +92,6 @@ module attributes {llzk.lang = "llzk"} {
 // CHECK-NEXT:      }
 // CHECK-NEXT:    }
 // CHECK-NEXT:  }
-// CHECK-NEXT:  // -----
 // -----
 module attributes {llzk.lang = "llzk"} {
     poly.template @TA {
@@ -217,7 +216,6 @@ module attributes {llzk.lang = "llzk"} {
 // CHECK-NEXT:      }
 // CHECK-NEXT:    }
 // CHECK-NEXT:  }
-// CHECK-NEXT:  // -----
 // -----
 module attributes {llzk.lang = "llzk"} {
     poly.template @TA {

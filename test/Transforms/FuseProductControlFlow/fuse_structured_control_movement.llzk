@@ -244,7 +244,6 @@ module attributes {llzk.lang = "llzk"} {
 // CHECK-NEXT:      }
 // CHECK-NEXT:    }
 // CHECK-NEXT:  }
-// CHECK-NEXT:  // -----
 // -----
 !F = !felt.type
 !A = !array.type<8 x !F>
