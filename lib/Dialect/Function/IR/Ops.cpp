@@ -788,9 +788,11 @@ struct KnownTargetVerifier : public CallOpVerifier {
       }
 
       // Check type compatibility of each provided value with the declared parameter type (if any).
-      if (failed(llzk::verifyTemplateParamValuesCompatibility(
-              callOp->getOperation(), callParams, realParams
-          ))) {
+      if (failed(
+              llzk::verifyTemplateParamValuesCompatibility(
+                  callOp->getOperation(), callParams, realParams
+              )
+          )) {
         return failure();
       }
 
