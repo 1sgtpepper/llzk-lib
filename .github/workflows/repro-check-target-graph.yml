@@ -53,6 +53,9 @@ jobs:
                 'if(BUILD_TESTING AND GTest_FOUND)' \
                 '  add_custom_target(check-unit)' \
                 'endif()' \
+                'if(BUILD_TESTING)' \
+                '  add_custom_target(check-lit)' \
+                'endif()' \
                 'add_custom_target(check' \
                 '  DEPENDS $<$<BOOL:BUILD_TESTING>:check-unit>)' \
                 > "$fixture/CMakeLists.txt"
