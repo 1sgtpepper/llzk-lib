@@ -238,6 +238,8 @@ jobs:
                       line,
                   )
                   normalized.append(line)
+                  if "// -----" in line:
+                      variable_names.clear()
               return normalized
 
           def record(path: Path, text: str) -> None:
