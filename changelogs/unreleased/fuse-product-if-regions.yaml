@@ -2,5 +2,5 @@ added:
   - Fusion for matching compute/constrain `scf.if` operations in product programs
 
 changed:
-  - Preserve matching constrain-side member reads when fusing compute/constrain `scf.if` operations; skip fusion for offset or otherwise unsafe reads and for explicitly non-compute-sourced member writes
+  - Preserve matching constrain-side member reads in source order when fusing compute/constrain `scf.if` operations; skip fusion for offset or otherwise unsafe reads and for explicitly non-compute-sourced member writes
   - Preserve matching non-`product_source` attributes and combine source locations on fused `scf.if` and `scf.yield` operations; leave attribute conflicts unfused
