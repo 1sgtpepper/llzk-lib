@@ -302,9 +302,7 @@ static bool collectConstrainValueMappings(
 }
 
 /// Return whether two marked sibling `scf.if` ops satisfy the conservative fusion contract.
-static bool canIfsBeFused(
-    scf::IfOp a, scf::IfOp b, SymbolTableCollection &symbolTables
-) {
+static bool canIfsBeFused(scf::IfOp a, scf::IfOp b, SymbolTableCollection &symbolTables) {
   if (a->getBlock() != b->getBlock()) {
     return false;
   }
@@ -403,10 +401,9 @@ static void fuseIfPair(
 
   llvm::DenseMap<Value, unsigned> valueToResult;
   SmallVector<MemberReadOp> readsToHoist;
-  [[maybe_unused]] bool canMap =
-      collectConstrainValueMappings(
-          computeIf, constrainIf, valueToResult, readsToHoist, symbolTables
-      );
+  [[maybe_unused]] bool canMap = collectConstrainValueMappings(
+      computeIf, constrainIf, valueToResult, readsToHoist, symbolTables
+  );
   assert(canMap && "fusion candidates must have already been checked");
 
   // Preserve the signal member used by the constrain branch. Insert reads in source order before
@@ -446,9 +443,8 @@ static void fuseIfPair(
 
 /// Fuse uniquely matchable marked compute/constrain `scf.if` pairs in `body`; leave unmatched pairs
 /// unchanged.
-static void fuseMatchingIfPairs(
-    Region &body, MLIRContext *context, SymbolTableCollection &symbolTables
-) {
+static void
+fuseMatchingIfPairs(Region &body, MLIRContext *context, SymbolTableCollection &symbolTables) {
   llvm::SmallVector<scf::IfOp> computeIfs, constrainIfs;
   body.walk<WalkOrder::PreOrder>([&](scf::IfOp ifOp) {
     std::optional<llvm::StringRef> productSource = getProductSource(ifOp);
@@ -464,8 +460,7 @@ static void fuseMatchingIfPairs(
   });
 
   auto fusionCandidates = *alignmentHelpers::getMatchingPairs<scf::IfOp>(
-      computeIfs,
-      constrainIfs,
+      computeIfs, constrainIfs,
       [&](scf::IfOp a, scf::IfOp b) { return canIfsBeFused(a, b, symbolTables); },
       /*allowPartial=*/true
   );
@@ -517,9 +512,8 @@ prepareForFusion(scf::ForOp computeLoop, scf::ForOp constrainLoop, IRRewriter &r
 
 /// Fuse uniquely matchable marked compute/constrain `scf.for` pairs in `body`; leave unmatched or
 /// unpreparable pairs unchanged.
-static void fuseMatchingLoopPairs(
-    Region &body, MLIRContext *context, SymbolTableCollection &symbolTables
-) {
+static void
+fuseMatchingLoopPairs(Region &body, MLIRContext *context, SymbolTableCollection &symbolTables) {
   // Collect marked loops before matching unique compute/constrain pairs.
   llvm::SmallVector<scf::ForOp> computeLoops, constrainLoops;
   body.walk<WalkOrder::PreOrder>([&computeLoops, &constrainLoops](scf::ForOp forOp) {
