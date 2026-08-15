@@ -27,6 +27,7 @@
 #include <mlir/IR/BuiltinAttributes.h>
 #include <mlir/IR/IRMapping.h>
 #include <mlir/IR/PatternMatch.h>
+#include <mlir/IR/SymbolTable.h>
 #include <mlir/Interfaces/SideEffectInterfaces.h>
 
 #include <llvm/ADT/DenseMap.h>
@@ -49,7 +50,9 @@ using namespace mlir;
 using namespace llzk;
 using namespace llzk::component;
 
-static void fuseMatchingRegionControlFlow(Region &body, MLIRContext *context);
+static void fuseMatchingRegionControlFlow(
+    Region &body, MLIRContext *context, SymbolTableCollection &symbolTables
+);
 static inline bool areOppositeProductSources(Operation *a, Operation *b);
 
 // Bitwidth of `index` for instantiating SMT variables
@@ -154,16 +157,21 @@ static bool operandsDominateInsertion(Operation *op, Operation *insertionPoint) 
   return true;
 }
 
-/// Return whether a plain member read can be hoisted before `computeIf` without changing the
-/// constraint's signal identity. The read must match a preceding direct compute-if-result write,
-/// have no table offset, have operands available before the compute if, and be used only inside the
-/// paired constrain if.
+/// Return whether a signal member read can be hoisted before `computeIf` without changing the
+/// constraint's signal identity. The referenced member must resolve to an explicit signal
+/// definition, match a preceding direct compute-if-result write, have no table offset, have
+/// operands available before the compute if, and be used only inside the paired constrain if.
 static bool canHoistMemberRead(
     MemberReadOp read, scf::IfOp computeIf, scf::IfOp constrainIf,
-    ArrayRef<MemberWriteOp> precedingWrites
+    ArrayRef<MemberWriteOp> precedingWrites, SymbolTableCollection &symbolTables
 ) {
   if (!hasProductSource(read, FUNC_NAME_CONSTRAIN) || read.getTableOffset().has_value() ||
       read.getVal().use_empty() || !operandsDominateInsertion(read, computeIf)) {
+    return false;
+  }
+
+  FailureOr<SymbolLookupResult<MemberDefOp>> memberDef = read.getMemberDefOp(symbolTables);
+  if (failed(memberDef) || !memberDef->get().getSignal()) {
     return false;
   }
 
@@ -250,10 +258,10 @@ static bool hasUnsafeMovedConstrainOp(scf::IfOp constrainIf) {
 ///
 /// The mapping lets cloned constrain operands use branch-local compute values; return false when
 /// intervening definitions or effects would make the move observable. Matching constrain-side
-/// member reads are returned in `readsToHoist` for movement before `computeIf`.
+/// signal member reads are returned in `readsToHoist` for movement before `computeIf`.
 static bool collectConstrainValueMappings(
     scf::IfOp computeIf, scf::IfOp constrainIf, llvm::DenseMap<Value, unsigned> &valueToResult,
-    SmallVector<MemberReadOp> &readsToHoist
+    SmallVector<MemberReadOp> &readsToHoist, SymbolTableCollection &symbolTables
 ) {
   SmallVector<MemberWriteOp> precedingWrites;
   for (Operation *op = computeIf->getNextNode(); op != constrainIf; op = op->getNextNode()) {
@@ -271,14 +279,14 @@ static bool collectConstrainValueMappings(
     }
 
     if (auto readOp = dyn_cast<MemberReadOp>(op)) {
-      if (!canHoistMemberRead(readOp, computeIf, constrainIf, precedingWrites)) {
+      if (!canHoistMemberRead(readOp, computeIf, constrainIf, precedingWrites, symbolTables)) {
         return false;
       }
       readsToHoist.push_back(readOp);
       continue;
     }
 
-    // Only direct member writes and matching plain member reads are currently proven safe to
+    // Only direct member writes and matching signal member reads are currently proven safe to
     // cross. Unknown storage operations, calls, and other intervening definitions are rejected.
     return false;
   }
@@ -294,7 +302,9 @@ static bool collectConstrainValueMappings(
 }
 
 /// Return whether two marked sibling `scf.if` ops satisfy the conservative fusion contract.
-static bool canIfsBeFused(scf::IfOp a, scf::IfOp b) {
+static bool canIfsBeFused(
+    scf::IfOp a, scf::IfOp b, SymbolTableCollection &symbolTables
+) {
   if (a->getBlock() != b->getBlock()) {
     return false;
   }
@@ -333,7 +343,9 @@ static bool canIfsBeFused(scf::IfOp a, scf::IfOp b) {
 
   llvm::DenseMap<Value, unsigned> valueToResult;
   SmallVector<MemberReadOp> readsToHoist;
-  return collectConstrainValueMappings(computeIf, constrainIf, valueToResult, readsToHoist);
+  return collectConstrainValueMappings(
+      computeIf, constrainIf, valueToResult, readsToHoist, symbolTables
+  );
 }
 
 /// Remove the destination block's existing `scf.yield` before appending a cloned branch.
@@ -382,17 +394,22 @@ static void cloneIfBranch(
 }
 
 /// Replace a checked compute/constrain `scf.if` pair with one fused `scf.if`.
-static void fuseIfPair(scf::IfOp a, scf::IfOp b, MLIRContext *context, IRRewriter &rewriter) {
+static void fuseIfPair(
+    scf::IfOp a, scf::IfOp b, MLIRContext *context, SymbolTableCollection &symbolTables,
+    IRRewriter &rewriter
+) {
   scf::IfOp computeIf = hasProductSource(a, FUNC_NAME_COMPUTE) ? a : b;
   scf::IfOp constrainIf = computeIf == a ? b : a;
 
   llvm::DenseMap<Value, unsigned> valueToResult;
   SmallVector<MemberReadOp> readsToHoist;
   [[maybe_unused]] bool canMap =
-      collectConstrainValueMappings(computeIf, constrainIf, valueToResult, readsToHoist);
+      collectConstrainValueMappings(
+          computeIf, constrainIf, valueToResult, readsToHoist, symbolTables
+      );
   assert(canMap && "fusion candidates must have already been checked");
 
-  // Preserve the member signal used by the constrain branch. Insert reads in source order before
+  // Preserve the signal member used by the constrain branch. Insert reads in source order before
   // the fused conditional; the matching writes stay after it.
   for (MemberReadOp read : readsToHoist) {
     rewriter.moveOpBefore(read, computeIf);
@@ -417,9 +434,9 @@ static void fuseIfPair(scf::IfOp a, scf::IfOp b, MLIRContext *context, IRRewrite
     );
   }
 
-  fuseMatchingRegionControlFlow(fusedIf.getThenRegion(), context);
+  fuseMatchingRegionControlFlow(fusedIf.getThenRegion(), context, symbolTables);
   if (!fusedIf.getElseRegion().empty()) {
-    fuseMatchingRegionControlFlow(fusedIf.getElseRegion(), context);
+    fuseMatchingRegionControlFlow(fusedIf.getElseRegion(), context, symbolTables);
   }
 
   computeIf->replaceAllUsesWith(fusedIf->getResults());
@@ -429,7 +446,9 @@ static void fuseIfPair(scf::IfOp a, scf::IfOp b, MLIRContext *context, IRRewrite
 
 /// Fuse uniquely matchable marked compute/constrain `scf.if` pairs in `body`; leave unmatched pairs
 /// unchanged.
-static void fuseMatchingIfPairs(Region &body, MLIRContext *context) {
+static void fuseMatchingIfPairs(
+    Region &body, MLIRContext *context, SymbolTableCollection &symbolTables
+) {
   llvm::SmallVector<scf::IfOp> computeIfs, constrainIfs;
   body.walk<WalkOrder::PreOrder>([&](scf::IfOp ifOp) {
     std::optional<llvm::StringRef> productSource = getProductSource(ifOp);
@@ -445,12 +464,15 @@ static void fuseMatchingIfPairs(Region &body, MLIRContext *context) {
   });
 
   auto fusionCandidates = *alignmentHelpers::getMatchingPairs<scf::IfOp>(
-      computeIfs, constrainIfs, canIfsBeFused, /*allowPartial=*/true
+      computeIfs,
+      constrainIfs,
+      [&](scf::IfOp a, scf::IfOp b) { return canIfsBeFused(a, b, symbolTables); },
+      /*allowPartial=*/true
   );
 
   IRRewriter rewriter {context};
   for (auto [computeIf, constrainIf] : fusionCandidates) {
-    fuseIfPair(computeIf, constrainIf, context, rewriter);
+    fuseIfPair(computeIf, constrainIf, context, symbolTables, rewriter);
   }
 }
 
@@ -495,7 +517,9 @@ prepareForFusion(scf::ForOp computeLoop, scf::ForOp constrainLoop, IRRewriter &r
 
 /// Fuse uniquely matchable marked compute/constrain `scf.for` pairs in `body`; leave unmatched or
 /// unpreparable pairs unchanged.
-static void fuseMatchingLoopPairs(Region &body, MLIRContext *context) {
+static void fuseMatchingLoopPairs(
+    Region &body, MLIRContext *context, SymbolTableCollection &symbolTables
+) {
   // Collect marked loops before matching unique compute/constrain pairs.
   llvm::SmallVector<scf::ForOp> computeLoops, constrainLoops;
   body.walk<WalkOrder::PreOrder>([&computeLoops, &constrainLoops](scf::ForOp forOp) {
@@ -526,14 +550,16 @@ static void fuseMatchingLoopPairs(Region &body, MLIRContext *context) {
     auto fusedLoop = fuseIndependentSiblingForLoops(computeLoop, constrainLoop, rewriter);
     setProductSource(fusedLoop, "fused");
     // Recurse so nested if/loop pairs become eligible after loop fusion.
-    fuseMatchingRegionControlFlow(fusedLoop.getBodyRegion(), context);
+    fuseMatchingRegionControlFlow(fusedLoop.getBodyRegion(), context, symbolTables);
   }
 }
 
 /// Fuse marked `scf.if` pairs and then `scf.for` pairs in `body`.
-static void fuseMatchingRegionControlFlow(Region &body, MLIRContext *context) {
-  fuseMatchingIfPairs(body, context);
-  fuseMatchingLoopPairs(body, context);
+static void fuseMatchingRegionControlFlow(
+    Region &body, MLIRContext *context, SymbolTableCollection &symbolTables
+) {
+  fuseMatchingIfPairs(body, context, symbolTables);
+  fuseMatchingLoopPairs(body, context, symbolTables);
 }
 
 class PassImpl : public llzk::impl::FuseProductControlFlowPassBase<PassImpl> {
@@ -542,9 +568,10 @@ class PassImpl : public llzk::impl::FuseProductControlFlowPassBase<PassImpl> {
 
   void runOnOperation() override {
     ModuleOp mod = getOperation();
-    mod.walk([this](function::FuncDefOp funcDef) {
+    SymbolTableCollection symbolTables;
+    mod.walk([this, &symbolTables](function::FuncDefOp funcDef) {
       if (funcDef.isStructProduct()) {
-        fuseMatchingRegionControlFlow(funcDef.getFunctionBody(), &getContext());
+        fuseMatchingRegionControlFlow(funcDef.getFunctionBody(), &getContext(), symbolTables);
       }
     });
   }
