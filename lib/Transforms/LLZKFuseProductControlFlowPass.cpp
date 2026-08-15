@@ -392,10 +392,10 @@ static void fuseIfPair(scf::IfOp a, scf::IfOp b, MLIRContext *context, IRRewrite
       collectConstrainValueMappings(computeIf, constrainIf, valueToResult, readsToHoist);
   assert(canMap && "fusion candidates must have already been checked");
 
-  // Preserve the member signal used by the constrain branch. Move reads in reverse order so the
-  // original order remains stable before the fused conditional; the matching writes stay after it.
-  for (auto it = readsToHoist.rbegin(); it != readsToHoist.rend(); ++it) {
-    rewriter.moveOpBefore(*it, computeIf);
+  // Preserve the member signal used by the constrain branch. Insert reads in source order before
+  // the fused conditional; the matching writes stay after it.
+  for (MemberReadOp read : readsToHoist) {
+    rewriter.moveOpBefore(read, computeIf);
   }
 
   rewriter.setInsertionPoint(computeIf);
