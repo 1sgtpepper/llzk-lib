@@ -267,7 +267,7 @@ module attributes {llzk.lang = "llzk"} {
 // the emitted constraints continue to refer to the member signal.
 module attributes {llzk.lang = "llzk"} {
   struct.def @A {
-    struct.member @foo : !felt.type
+    struct.member @foo : !felt.type {signal}
 
     function.def @compute(%b: i1) -> !struct.type<@A> {
       %self = struct.new : <@A>
@@ -301,7 +301,7 @@ module attributes {llzk.lang = "llzk"} {
 
 // CHECK-LABEL: module attributes {llzk.lang = "llzk"} {
 // CHECK-NEXT:    struct.def @A {
-// CHECK-NEXT:      struct.member @foo : !felt.type
+// CHECK-NEXT:      struct.member @foo : !felt.type {signal}
 // CHECK-NEXT:      function.def @product(%[[VAL_0:[0-9a-zA-Z_\.]+]]: i1) -> !struct.type<@A> attributes {function.allow_constraint, function.allow_witness, llzk.derived} {
 // CHECK-NEXT:        %[[VAL_1:[0-9a-zA-Z_\.]+]] = struct.new : <@A> {product_source = "compute"}
 // CHECK-NEXT:        %[[VAL_2:[0-9a-zA-Z_\.]+]] = struct.readm %[[VAL_1]][@foo] : <@A>, !felt.type {product_source = "constrain"}
