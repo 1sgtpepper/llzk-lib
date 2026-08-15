@@ -1,0 +1,80 @@
+name: Reproduce malformed solver output acceptance
+
+on:
+  push:
+    branches:
+      - audit/contributor-tooling-one-job-repros-20260815
+
+permissions:
+  contents: read
+
+jobs:
+  reproduce:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Install Nix
+        uses: cachix/install-nix-action@d1ca217b388ee87b2507a9a93bf01368bde7cec2
+        with:
+          install_url: https://releases.nixos.org/nix/nix-2.23.3/install
+          github_access_token: "${{ secrets.GITHUB_TOKEN }}"
+
+      - name: Build the checker and run a malformed solver
+        shell: bash
+        run: |
+          set -euo pipefail
+          script="$RUNNER_TEMP/run-smt-check-repro.sh"
+          cat > "$script" <<'EOF'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          build="$RUNNER_TEMP/llzk-smt-check-build"
+          cmake -S "$GITHUB_WORKSPACE" -B "$build" -G Ninja \
+            -DLLZK_VERSION_OVERRIDE=3.0.0 \
+            -DLLZK_BUILD_DEVTOOLS=ON \
+            -DBUILD_TESTING=OFF \
+            -DLLZK_WITH_PCL=OFF
+          cmake --build "$build" --target llzk-smt-check
+
+          tmp="$RUNNER_TEMP/smt-check-input"
+          rm -rf "$tmp"
+          mkdir -p "$tmp"
+          printf '%s\n' \
+            '#!/bin/sh' \
+            "printf '%s\\n' sat this-is-not-a-solver-result" \
+            > "$tmp/solver.sh"
+          chmod +x "$tmp/solver.sh"
+          printf '%s\n' '(set-logic ALL)' '(check-sat)' > "$tmp/input.smt2"
+
+          tool="$build/bin/llzk-smt-check"
+          test -x "$tool"
+          set +e
+          "$tool" "$tmp/input.smt2" \
+            --solver-binary="$tmp/solver.sh" \
+            --dump-raw-output > "$tmp/stdout.log" 2> "$tmp/stderr.log"
+          status=$?
+          set -e
+          cat "$tmp/stdout.log"
+          cat "$tmp/stderr.log" >&2
+
+          if [[ "$status" -eq 0 ]] && \
+             grep -Fq 'this-is-not-a-solver-result' "$tmp/stdout.log" && \
+             grep -Fq 'check[0]: sat' "$tmp/stdout.log"; then
+            {
+              echo '## Reproduction: malformed solver output acceptance'
+              echo '- Fake solver returned one valid result and one unexpected nonempty line.'
+              echo '- --dump-raw-output returned exit status 0.'
+              echo '- The raw invalid line and successful check summary were both printed.'
+              echo '- Root cause isolated to the validation guard that skips extraLines when dumping raw output.'
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          echo 'NOT REPRODUCED: malformed solver output was rejected as expected.'
+          exit 1
+          EOF
+          chmod +x "$script"
+          nix develop --command bash "$script"

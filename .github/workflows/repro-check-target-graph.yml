@@ -1,0 +1,96 @@
+name: Reproduce check target graph failure
+
+on:
+  push:
+    branches:
+      - audit/contributor-tooling-one-job-repros-20260815
+
+permissions:
+  contents: read
+
+jobs:
+  reproduce:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Reproduce both missing-target configurations
+        shell: bash
+        run: |
+          set -euo pipefail
+          root="$RUNNER_TEMP/check-target-repros"
+          rm -rf "$root"
+          mkdir -p "$root"
+
+          make_fixture() {
+            local fixture="$1"
+            local gtest_found="$2"
+            mkdir -p "$fixture"
+            if [[ "$gtest_found" == "yes" ]]; then
+              printf '%s\n' \
+                'cmake_minimum_required(VERSION 3.23)' \
+                'project(check_target NONE)' \
+                'option(BUILD_TESTING "Build tests" ON)' \
+                'set(GTest_FOUND TRUE)' \
+                'if(BUILD_TESTING AND GTest_FOUND)' \
+                '  add_custom_target(check-unit)' \
+                '  add_custom_target(check-lit)' \
+                'endif()' \
+                'add_custom_target(check' \
+                '  DEPENDS' \
+                '    $<$<BOOL:BUILD_TESTING>:check-unit>' \
+                '    $<$<BOOL:BUILD_TESTING>:check-lit>)' \
+                > "$fixture/CMakeLists.txt"
+            else
+              printf '%s\n' \
+                'cmake_minimum_required(VERSION 3.23)' \
+                'project(check_gtest NONE)' \
+                'option(BUILD_TESTING "Build tests" ON)' \
+                'set(GTest_FOUND FALSE)' \
+                'if(BUILD_TESTING AND GTest_FOUND)' \
+                '  add_custom_target(check-unit)' \
+                'endif()' \
+                'add_custom_target(check' \
+                '  DEPENDS $<$<BOOL:BUILD_TESTING>:check-unit>)' \
+                > "$fixture/CMakeLists.txt"
+            fi
+          }
+
+          run_case() {
+            local name="$1"
+            local fixture="$2"
+            local build="$root/$name-build"
+            cmake -S "$fixture" -B "$build" -G Ninja \
+              "-DBUILD_TESTING=$([[ "$name" == "disabled" ]] && echo OFF || echo ON)" \
+              > "$root/$name-configure.log" 2>&1
+            set +e
+            cmake --build "$build" --target check > "$root/$name-build.log" 2>&1
+            local status=$?
+            set -e
+            cat "$root/$name-build.log"
+            if [[ "$status" -eq 0 ]]; then
+              echo "NOT REPRODUCED: $name check target completed."
+              return 1
+            fi
+            if ! grep -Eq 'check-unit|check-lit' "$root/$name-build.log"; then
+              echo "UNEXPECTED: $name failed without naming the missing test target."
+              return 1
+            fi
+            echo "REPRODUCED: $name check depends on a target that was not created."
+          }
+
+          make_fixture "$root/disabled" yes
+          run_case disabled "$root/disabled"
+
+          make_fixture "$root/no-gtest" no
+          run_case no-gtest "$root/no-gtest"
+
+          {
+            echo '## Reproduction: check target graph'
+            echo '- BUILD_TESTING=OFF: reproduced missing test dependency.'
+            echo '- BUILD_TESTING=ON with GTest unavailable: reproduced missing check-unit dependency.'
+            echo '- Root cause isolated to the aggregate target naming conditionally absent targets.'
+          } >> "$GITHUB_STEP_SUMMARY"

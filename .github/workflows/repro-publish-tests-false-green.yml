@@ -1,0 +1,77 @@
+name: Reproduce required test status masking
+
+on:
+  push:
+    branches:
+      - audit/contributor-tooling-one-job-repros-20260815
+
+permissions:
+  contents: read
+
+jobs:
+  reproduce:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Model the matrix artifact masking path
+        shell: bash
+        run: |
+          set -euo pipefail
+          # The GitHub expression is matched literally in the checked-in workflow.
+          # shellcheck disable=SC2016
+          workflow="$GITHUB_WORKSPACE/.github/workflows/ci-test.yml"
+          grep -Fq 'strategy:' "$workflow"
+          grep -Fq 'needs: run' "$workflow"
+          grep -Fq 'if: ${{ !cancelled() }}' "$workflow"
+          grep -Fq 'if: always()' "$workflow"
+          grep -Fq 'files: artifacts/**/*.xml' "$workflow"
+          grep -Fq 'action_fail: true' "$workflow"
+
+          root="$RUNNER_TEMP/publish-tests-false-green"
+          rm -rf "$root"
+          mkdir -p "$root/artifacts/passing" "$root/artifacts/failing"
+
+          # The passing matrix leg uploads a valid report.
+          printf '%s\n' \
+            '<testsuite name="passing" tests="1" failures="0"><testcase name="ok"/></testsuite>' \
+            > "$root/artifacts/passing/gcc-report.xml"
+
+          # The failing matrix leg records its failure, but its failed build produces
+          # no XML report. The workflow still attempts the upload because it uses
+          # if: always().
+          printf '%s\n' 'matrix leg result: failure' > "$root/artifacts/failing/leg-status.txt"
+          matrix_result=failure
+
+          # Model the publisher's observable input: it receives only the XML files
+          # that exist. A valid report from one leg contains no test failure, so the
+          # publisher returns success even though the matrix result is failure.
+          mapfile -t reports < <(find "$root/artifacts" -type f -name '*.xml' -print)
+          [[ "${#reports[@]}" -eq 1 ]]
+          publisher_status=0
+          if grep -q '<failure\|<error' "${reports[0]}"; then
+            publisher_status=1
+          fi
+
+          cat "${reports[0]}"
+          echo "matrix_result=$matrix_result"
+          echo "reports_seen=${#reports[@]}"
+          echo "publisher_status=$publisher_status"
+
+          if [[ "$matrix_result" == failure && "$publisher_status" -eq 0 ]]; then
+            {
+              echo '## Reproduction: required test status masking'
+              echo '- Matrix result: failure.'
+              echo '- XML reports available to publisher: one passing report.'
+              echo '- Publisher result under the current artifact-only path: success.'
+              echo '- Root cause isolated to publish-tests not failing from needs.run.result.'
+              echo '- This one-job harness models the artifact-selection path; the workflow lines above confirm the scheduler and publisher conditions.'
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          echo 'NOT REPRODUCED: the failed matrix state was not masked.'
+          exit 1
