@@ -25,12 +25,17 @@ jobs:
           # shellcheck disable=SC2016
           workflow="$GITHUB_WORKSPACE/.github/workflows/ci-test.yml"
           grep -Fq 'strategy:' "$workflow"
-          grep -Fq 'needs: run' "$workflow"
-          grep -Fq 'if: ' "$workflow"
-          grep -Fq 'cancelled()' "$workflow"
           grep -Fq 'if: always()' "$workflow"
-          grep -Fq 'files: artifacts/**/*.xml' "$workflow"
-          grep -Fq 'action_fail: true' "$workflow"
+          publisher_block="$RUNNER_TEMP/publish-tests-job.yml"
+          awk '
+            /^  publish-tests:/ { in_publisher=1 }
+            in_publisher && /^  [[:alnum:]_-]+:/ && $0 !~ /^  publish-tests:/ { exit }
+            in_publisher { print }
+          ' "$workflow" > "$publisher_block"
+          grep -Fq 'needs: run' "$publisher_block"
+          grep -Fq 'cancelled()' "$publisher_block"
+          grep -Fq 'files: artifacts/**/*.xml' "$publisher_block"
+          grep -Fq 'action_fail: true' "$publisher_block"
 
           root="$RUNNER_TEMP/publish-tests-false-green"
           rm -rf "$root"
