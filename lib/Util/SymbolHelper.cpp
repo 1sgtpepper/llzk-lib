@@ -483,6 +483,21 @@ LogicalResult verifyTemplateParamValueCompatibility(
   return success();
 }
 
+LogicalResult verifyTemplateParamValuesCompatibility(
+    Operation *origin, ArrayAttr explicitParams,
+    llvm::iterator_range<Region::op_iterator<TemplateParamOp>> targetParamDefs
+) {
+  assert(!isNullOrEmpty(explicitParams) && "pre-condition");
+  assert((explicitParams.size() == llvm::range_size(targetParamDefs)) && "pre-condition");
+
+  for (auto [paramOp, attr] : llvm::zip_equal(targetParamDefs, explicitParams.getValue())) {
+    if (failed(verifyTemplateParamValueCompatibility(origin, attr, paramOp))) {
+      return failure();
+    }
+  }
+  return success();
+}
+
 LogicalResult verifyTemplateParamsMatchInferred(
     Operation *origin, ArrayAttr explicitParams,
     llvm::iterator_range<Region::op_iterator<TemplateParamOp>> targetParamDefs,

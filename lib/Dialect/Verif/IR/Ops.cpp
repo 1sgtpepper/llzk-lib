@@ -753,29 +753,6 @@ void IncludeOp::build(
   addTemplateParams<IncludeOp>(odsBuilder, props, templateParams);
 }
 
-LogicalResult IncludeOp::verifyTemplateParamCompatibility(
-    Attribute paramFromIncludeOp, TemplateParamOp targetParam
-) {
-  return llzk::verifyTemplateParamValueCompatibility(
-      getOperation(), paramFromIncludeOp, targetParam
-  );
-}
-
-LogicalResult IncludeOp::verifyTemplateParamCompatibility(
-    llvm::iterator_range<Region::op_iterator<TemplateParamOp>> targetParamDefs
-) {
-  ArrayAttr callParams = this->getTemplateParamsAttr();
-  assert(!isNullOrEmpty(callParams) && "pre-condition");
-  assert((callParams.size() == llvm::range_size(targetParamDefs)) && "pre-condition");
-
-  for (auto [paramOp, attr] : llvm::zip_equal(targetParamDefs, callParams.getValue())) {
-    if (failed(verifyTemplateParamCompatibility(attr, paramOp))) {
-      return failure();
-    }
-  }
-  return success();
-}
-
 LogicalResult IncludeOp::verifyTemplateParamsMatchInferred(
     llvm::iterator_range<Region::op_iterator<TemplateParamOp>> targetParamDefs,
     const UnificationMap &unifications
@@ -884,7 +861,9 @@ struct KnownTargetVerifier : public IncludeOpVerifier {
       }
 
       // Check type compatibility of each provided value with the declared parameter type (if any).
-      if (failed(includeOp->verifyTemplateParamCompatibility(realParams))) {
+      if (failed(llzk::verifyTemplateParamValuesCompatibility(
+              includeOp->getOperation(), callParams, realParams
+          ))) {
         return failure();
       }
 

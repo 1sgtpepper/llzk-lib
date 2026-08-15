@@ -220,6 +220,14 @@ mlir::LogicalResult verifyTemplateParamValueCompatibility(
     mlir::Operation *origin, mlir::Attribute value, polymorphic::TemplateParamOp targetParam
 );
 
+/// Verify each explicit template value against the corresponding declared parameter restriction.
+/// The values and declarations must be non-empty and have the same size. Diagnostics are emitted
+/// on `origin`.
+mlir::LogicalResult verifyTemplateParamValuesCompatibility(
+    mlir::Operation *origin, mlir::ArrayAttr explicitParams,
+    llvm::iterator_range<mlir::Region::op_iterator<polymorphic::TemplateParamOp>> targetParamDefs
+);
+
 /// Identify the signature whose inferred template values are being checked so shared verification
 /// can preserve the operation-specific diagnostic wording.
 enum class TemplateParamSignatureKind : std::uint8_t { Function, Contract };

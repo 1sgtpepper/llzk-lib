@@ -1479,7 +1479,9 @@ private:
 
     auto recordConcreteParam = [&](FlatSymbolRefAttr paramName, TemplateParamOp paramOp,
                                    Attribute concreteValue) {
-      if (failed(op.verifyTemplateParamCompatibility(concreteValue, paramOp))) {
+      if (failed(llzk::verifyTemplateParamValueCompatibility(
+              op.getOperation(), concreteValue, paramOp
+          ))) {
         return failIncompatibleInferredParam(op, rewriter, paramName, paramOp);
       }
       paramNameToConcrete[paramName] = concreteValue;
@@ -1519,7 +1521,9 @@ private:
     // As stated earlier, need to run the verification checks again to ensure the
     // instantiation is valid, except for the size check because that cannot change.
     assert((callParams.size() == llvm::range_size(realParams)) && "per CallOpVerifier");
-    if (failed(op.verifyTemplateParamCompatibility(realParams))) {
+    if (failed(llzk::verifyTemplateParamValuesCompatibility(
+            op.getOperation(), callParams, realParams
+        ))) {
       return rewriter.notifyMatchFailure(op, [&](Diagnostic &diag) {
         diag.append("incompatible with specified param type(s)");
       });
