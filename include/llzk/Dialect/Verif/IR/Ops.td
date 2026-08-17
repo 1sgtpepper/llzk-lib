@@ -409,8 +409,6 @@ def IncludeOp
     custom<AttrDictWithWarnings>(attr-dict, prop-dict)
   }];
 
-  let hasVerifier = 1;
-
   // Define builders manually so inference of operand layout attributes is not
   // circumvented.
   let skipDefaultBuilders = 1;

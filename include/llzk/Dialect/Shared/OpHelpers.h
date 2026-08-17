@@ -23,7 +23,6 @@
 
 #include <llvm/ADT/SmallString.h>
 #include <llvm/ADT/StringRef.h>
-#include <llvm/Support/raw_ostream.h>
 
 namespace llzk {
 
@@ -130,15 +129,9 @@ template <int OperandSegmentIndex> struct VerifySizesForMultiAffineOps {
   template <typename TypeClass> class Impl : public mlir::OpTrait::TraitBase<TypeClass, Impl> {
     inline static mlir::LogicalResult verifyHelper(mlir::Operation *op, int32_t segmentSize) {
       TypeClass c = llvm::cast<TypeClass>(op);
-      mlir::LogicalResult result = affineMapHelpers::verifySizesForMultiAffineOps(
+      return affineMapHelpers::verifySizesForMultiAffineOps(
           op, segmentSize, c.getMapOpGroupSizesAttr(), c.getMapOperands(), c.getNumDimsPerMapAttr()
       );
-      llvm::errs() << "[trace] affine sizes op=" << op->getName()
-                   << " segments=" << segmentSize
-                   << " maps=" << c.getMapOpGroupSizesAttr()
-                   << " dims=" << c.getNumDimsPerMapAttr()
-                   << " result=" << mlir::succeeded(result) << "\n";
-      return result;
     }
 
   public:

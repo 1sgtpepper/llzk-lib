@@ -393,8 +393,6 @@ SymbolRefAttr ContractOp::getFullyQualifiedName(bool requireParent) {
 }
 
 LogicalResult ContractOp::verifySymbolUses(SymbolTableCollection &tables) {
-  llvm::errs() << "[trace] contract symbol uses @" << getName() << " target=" << getTargetAttr()
-               << "\n";
   // Verify the target of the contract
   FailureOr<ModuleOp> rootRes = getRootModule(getOperation());
   if (failed(rootRes)) {
@@ -729,11 +727,6 @@ FailureOr<Value> ContractOp::getSelfValue() {
 // IncludeOp
 //===------------------------------------------------------------------===//
 
-LogicalResult IncludeOp::verify() {
-  llvm::errs() << "[trace] include op verify params=" << getTemplateParamsAttr() << "\n";
-  return success();
-}
-
 void IncludeOp::build(
     OpBuilder &odsBuilder, OperationState &odsState, SymbolRefAttr callee, ValueRange argOperands,
     ArrayRef<Attribute> templateParams
@@ -816,9 +809,6 @@ struct KnownTargetVerifier : public IncludeOpVerifier {
 
   LogicalResult verifyTemplateParams() override {
     Operation *tgtOp = tgt.getOperation();
-    llvm::errs() << "[trace] include template verification target=@" << tgt.getName()
-                 << " has-parent-template=" << static_cast<bool>(getParentOfType<TemplateOp>(tgtOp))
-                 << " params=" << includeOp->getTemplateParamsAttr() << "\n";
     if (TemplateOp tgtOpParent = getParentOfType<TemplateOp>(tgtOp)) {
       // When the target contract is within a TemplateOp, the IncludeOp may have
       // template parameter instantiations that must be checked against the template parameters.
@@ -840,8 +830,6 @@ struct KnownTargetVerifier : public IncludeOpVerifier {
         bool allParamsReferenced = llvm::all_of(realParams, [&](TemplateParamOp p) {
           return referencedInSignature.contains(FlatSymbolRefAttr::get(p.getNameAttr()));
         });
-        llvm::errs() << "[trace] include omitted target=@" << tgt.getName()
-                     << " all-params-referenced=" << allParamsReferenced << "\n";
         if (allParamsReferenced) {
           FailureOr<UnificationMap> unifyResult = includeOp->unifyTypeSignature(tgtType);
           if (failed(unifyResult)) {
@@ -926,8 +914,6 @@ private:
 } // namespace
 
 LogicalResult IncludeOp::verifySymbolUses(SymbolTableCollection &tables) {
-  llvm::errs() << "[trace] include symbol uses callee=" << getCalleeAttr()
-               << " params=" << getTemplateParamsAttr() << "\n";
   // First, verify symbol resolution in all input and output types.
   if (failed(verifyTypeResolution(tables, *this, getTypeSignature()))) {
     return failure(); // verifyTypeResolution() already emits a sufficient error message

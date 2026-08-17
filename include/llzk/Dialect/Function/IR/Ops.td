@@ -387,8 +387,6 @@ def CallOp : FunctionDialectOp<
   }];
 
   let useCustomPropertiesEncoding = 1;
-  let hasVerifier = 1;
-
   // NOTE: In CreateArrayOp, the `verify()` function is declared in order to
   // call `verifyAffineMapInstantiations()`. However, in this op that check must
   // happen within `verifySymbolUses()` instead because the target FuncDefOp

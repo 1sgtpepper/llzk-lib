@@ -449,7 +449,6 @@ verifyFuncTypeConstrain(FuncDefOp &origin, SymbolTableCollection &tables, Struct
 } // namespace
 
 LogicalResult FuncDefOp::verifySymbolUses(SymbolTableCollection &tables) {
-  llvm::errs() << "[trace] function symbol uses @" << getName() << "\n";
   // Additional checks for the compute/constrain/product functions within a struct
   if (StructDefOp parentStructOpt = getParentOfType<StructDefOp>(*this)) {
     // Verify return type restrictions for functions within a StructDefOp
@@ -520,15 +519,6 @@ LogicalResult ReturnOp::verify() {
     }
   }
 
-  return success();
-}
-
-//===----------------------------------------------------------------------===//
-// CallOp
-//===----------------------------------------------------------------------===//
-
-LogicalResult CallOp::verify() {
-  llvm::errs() << "[trace] call op verify params=" << getTemplateParamsAttr() << "\n";
   return success();
 }
 
@@ -737,10 +727,6 @@ struct KnownTargetVerifier : public CallOpVerifier {
 
   LogicalResult verifyTemplateParams() override {
     Operation *tgtOp = tgt.getOperation();
-    llvm::errs() << "[trace] call template verification target=@" << tgt.getName()
-                 << " in-struct=" << isInStruct(tgtOp)
-                 << " has-parent-template=" << static_cast<bool>(getParentOfType<TemplateOp>(tgtOp))
-                 << " params=" << callOp->getTemplateParamsAttr() << "\n";
     if (isInStruct(tgtOp)) {
       // Struct function calls cannot contain template parameter instantiations.
       return verifyNoTemplateInstantiations();
@@ -765,8 +751,6 @@ struct KnownTargetVerifier : public CallOpVerifier {
         bool allParamsReferenced = llvm::all_of(realParams, [&](TemplateParamOp p) {
           return referencedInSignature.contains(FlatSymbolRefAttr::get(p.getNameAttr()));
         });
-        llvm::errs() << "[trace] call omitted target=@" << tgt.getName()
-                     << " all-params-referenced=" << allParamsReferenced << "\n";
         if (allParamsReferenced) {
           FailureOr<UnificationMap> unifyResult = callOp->unifyTypeSignature(tgtType);
           if (failed(unifyResult)) {
@@ -1016,8 +1000,6 @@ private:
 } // namespace
 
 LogicalResult CallOp::verifySymbolUses(SymbolTableCollection &tables) {
-  llvm::errs() << "[trace] call symbol uses callee=" << getCalleeAttr()
-               << " params=" << getTemplateParamsAttr() << "\n";
   // First, verify symbol resolution in all input and output types.
   if (failed(verifyTypeResolution(tables, *this, getTypeSignature()))) {
     return failure(); // verifyTypeResolution() already emits a sufficient error message
