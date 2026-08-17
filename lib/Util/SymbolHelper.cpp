@@ -514,30 +514,12 @@ LogicalResult verifyTemplateParamsMatchInferred(
   }();
 
   if (isNullOrEmpty(explicitParams)) {
-    LLVM_DEBUG({
-      llvm::dbgs() << "[verifyTemplateParamsMatchInferred] origin="
-                   << origin->getName() << " unifications:\n";
-      for (const auto &entry : unifications) {
-        llvm::dbgs() << "  key=" << entry.first.first << " side=" << entry.first.second
-                     << " value=";
-        if (entry.second) {
-          llvm::dbgs() << entry.second;
-        } else {
-          llvm::dbgs() << "<conflict>";
-        }
-        llvm::dbgs() << "\n";
-      }
-    });
     for (TemplateParamOp paramOp : targetParamDefs) {
       if (std::optional<Type> declaredType = paramOp.getTypeOpt();
           declaredType && llvm::isa<TypeVarType>(*declaredType)) {
         continue;
       }
       auto it = unifications.find({FlatSymbolRefAttr::get(paramOp.getNameAttr()), Side::RHS});
-      LLVM_DEBUG({
-        llvm::dbgs() << "  target=@" << paramOp.getName() << " lookup="
-                     << (it == unifications.end() ? "miss" : "hit") << "\n";
-      });
       if (it == unifications.end()) {
         // No inferred value means the signature did not expose this parameter to the operation.
         continue;
