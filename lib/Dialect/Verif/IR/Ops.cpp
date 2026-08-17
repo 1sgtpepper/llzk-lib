@@ -44,7 +44,7 @@
 
 #include <memory>
 
-#define DEBUG_TYPE "llzk-verif-ops"
+#define DEBUG_TYPE "llzk-template-verifier"
 
 // TableGen'd implementation files
 #include "llzk/Dialect/Verif/IR/OpInterfaces.cpp.inc"

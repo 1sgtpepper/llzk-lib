@@ -38,7 +38,7 @@
 #include <llvm/ADT/MapVector.h>
 #include <llvm/Support/Debug.h>
 
-#define DEBUG_TYPE "llzk-function-ops"
+#define DEBUG_TYPE "llzk-template-verifier"
 
 // TableGen'd implementation files
 #define GET_OP_CLASSES
