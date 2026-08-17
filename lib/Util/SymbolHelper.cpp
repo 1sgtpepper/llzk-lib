@@ -520,6 +520,9 @@ LogicalResult verifyTemplateParamsMatchInferred(
         continue;
       }
       auto it = unifications.find({FlatSymbolRefAttr::get(paramOp.getNameAttr()), Side::RHS});
+      llvm::errs() << "[trace] inferred parameter @" << paramOp.getName()
+                   << " lookup=" << (it == unifications.end() ? "miss" : "hit")
+                   << " map-size=" << unifications.size() << "\n";
       if (it == unifications.end()) {
         // No inferred value means the signature did not expose this parameter to the operation.
         continue;

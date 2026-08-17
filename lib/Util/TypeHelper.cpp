@@ -718,6 +718,9 @@ struct UnifierImpl {
 
   bool typesUnify(Type lhs, Type rhs) {
     if (lhs == rhs) {
+      if (unifications && llvm::isa<StructType>(lhs)) {
+        llvm::errs() << "[trace] equal struct type with unification map: " << lhs << "\n";
+      }
       // Structural equality does not prove that equal flat symbols have the same template owner.
       // Revisit parameterized types while collecting unifications so that callers can reconcile
       // those bindings in their respective scopes.
@@ -829,6 +832,9 @@ private:
     assertValidAttrForParamOfType(rhsAttr);
     // Straightforward equality check.
     if (lhsAttr == rhsAttr) {
+      if (unifications && llvm::isa<SymbolRefAttr>(lhsAttr)) {
+        llvm::errs() << "[trace] equal symbol parameter: " << lhsAttr << "\n";
+      }
       if (unifications) {
         if (llvm::isa<FlatSymbolRefAttr>(lhsAttr)) {
           // Equal flat references may belong to different template scopes. Record the RHS-to-LHS

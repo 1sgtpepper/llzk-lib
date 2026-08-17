@@ -830,6 +830,8 @@ struct KnownTargetVerifier : public IncludeOpVerifier {
         bool allParamsReferenced = llvm::all_of(realParams, [&](TemplateParamOp p) {
           return referencedInSignature.contains(FlatSymbolRefAttr::get(p.getNameAttr()));
         });
+        llvm::errs() << "[trace] include omitted target=@" << tgt.getName()
+                     << " all-params-referenced=" << allParamsReferenced << "\n";
         if (allParamsReferenced) {
           FailureOr<UnificationMap> unifyResult = includeOp->unifyTypeSignature(tgtType);
           if (failed(unifyResult)) {

@@ -755,6 +755,8 @@ struct KnownTargetVerifier : public CallOpVerifier {
         bool allParamsReferenced = llvm::all_of(realParams, [&](TemplateParamOp p) {
           return referencedInSignature.contains(FlatSymbolRefAttr::get(p.getNameAttr()));
         });
+        llvm::errs() << "[trace] call omitted target=@" << tgt.getName()
+                     << " all-params-referenced=" << allParamsReferenced << "\n";
         if (allParamsReferenced) {
           FailureOr<UnificationMap> unifyResult = callOp->unifyTypeSignature(tgtType);
           if (failed(unifyResult)) {
