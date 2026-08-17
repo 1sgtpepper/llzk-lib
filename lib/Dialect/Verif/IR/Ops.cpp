@@ -809,6 +809,9 @@ struct KnownTargetVerifier : public IncludeOpVerifier {
 
   LogicalResult verifyTemplateParams() override {
     Operation *tgtOp = tgt.getOperation();
+    llvm::errs() << "[trace] include template verification target=@" << tgt.getName()
+                 << " has-parent-template=" << static_cast<bool>(getParentOfType<TemplateOp>(tgtOp))
+                 << " params=" << includeOp->getTemplateParamsAttr() << "\n";
     if (TemplateOp tgtOpParent = getParentOfType<TemplateOp>(tgtOp)) {
       // When the target contract is within a TemplateOp, the IncludeOp may have
       // template parameter instantiations that must be checked against the template parameters.
@@ -916,6 +919,8 @@ private:
 } // namespace
 
 LogicalResult IncludeOp::verifySymbolUses(SymbolTableCollection &tables) {
+  llvm::errs() << "[trace] include symbol uses callee=" << getCalleeAttr()
+               << " params=" << getTemplateParamsAttr() << "\n";
   // First, verify symbol resolution in all input and output types.
   if (failed(verifyTypeResolution(tables, *this, getTypeSignature()))) {
     return failure(); // verifyTypeResolution() already emits a sufficient error message

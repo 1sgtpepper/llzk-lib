@@ -731,6 +731,10 @@ struct KnownTargetVerifier : public CallOpVerifier {
 
   LogicalResult verifyTemplateParams() override {
     Operation *tgtOp = tgt.getOperation();
+    llvm::errs() << "[trace] call template verification target=@" << tgt.getName()
+                 << " in-struct=" << isInStruct(tgtOp)
+                 << " has-parent-template=" << static_cast<bool>(getParentOfType<TemplateOp>(tgtOp))
+                 << " params=" << callOp->getTemplateParamsAttr() << "\n";
     if (isInStruct(tgtOp)) {
       // Struct function calls cannot contain template parameter instantiations.
       return verifyNoTemplateInstantiations();
@@ -1006,6 +1010,8 @@ private:
 } // namespace
 
 LogicalResult CallOp::verifySymbolUses(SymbolTableCollection &tables) {
+  llvm::errs() << "[trace] call symbol uses callee=" << getCalleeAttr()
+               << " params=" << getTemplateParamsAttr() << "\n";
   // First, verify symbol resolution in all input and output types.
   if (failed(verifyTypeResolution(tables, *this, getTypeSignature()))) {
     return failure(); // verifyTypeResolution() already emits a sufficient error message
