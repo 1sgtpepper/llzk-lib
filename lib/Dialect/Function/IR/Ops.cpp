@@ -449,6 +449,7 @@ verifyFuncTypeConstrain(FuncDefOp &origin, SymbolTableCollection &tables, Struct
 } // namespace
 
 LogicalResult FuncDefOp::verifySymbolUses(SymbolTableCollection &tables) {
+  llvm::errs() << "[trace] function symbol uses @" << getName() << "\n";
   // Additional checks for the compute/constrain/product functions within a struct
   if (StructDefOp parentStructOpt = getParentOfType<StructDefOp>(*this)) {
     // Verify return type restrictions for functions within a StructDefOp

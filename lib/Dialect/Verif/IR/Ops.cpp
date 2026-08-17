@@ -393,6 +393,8 @@ SymbolRefAttr ContractOp::getFullyQualifiedName(bool requireParent) {
 }
 
 LogicalResult ContractOp::verifySymbolUses(SymbolTableCollection &tables) {
+  llvm::errs() << "[trace] contract symbol uses @" << getName() << " target=" << getTargetAttr()
+               << "\n";
   // Verify the target of the contract
   FailureOr<ModuleOp> rootRes = getRootModule(getOperation());
   if (failed(rootRes)) {
