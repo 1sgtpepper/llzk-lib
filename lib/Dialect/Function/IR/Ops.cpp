@@ -527,6 +527,11 @@ LogicalResult ReturnOp::verify() {
 // CallOp
 //===----------------------------------------------------------------------===//
 
+LogicalResult CallOp::verify() {
+  llvm::errs() << "[trace] call op verify params=" << getTemplateParamsAttr() << "\n";
+  return success();
+}
+
 // Custom implementation to deserialize bytecode produced prior to version 2 which added optional
 // `OptionalAttr<ArrayAttr>:$templateParams`.
 LogicalResult CallOp::readProperties(DialectBytecodeReader &reader, OperationState &state) {

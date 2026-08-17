@@ -729,6 +729,11 @@ FailureOr<Value> ContractOp::getSelfValue() {
 // IncludeOp
 //===------------------------------------------------------------------===//
 
+LogicalResult IncludeOp::verify() {
+  llvm::errs() << "[trace] include op verify params=" << getTemplateParamsAttr() << "\n";
+  return success();
+}
+
 void IncludeOp::build(
     OpBuilder &odsBuilder, OperationState &odsState, SymbolRefAttr callee, ValueRange argOperands,
     ArrayRef<Attribute> templateParams
