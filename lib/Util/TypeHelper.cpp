@@ -718,6 +718,25 @@ struct UnifierImpl {
 
   bool typesUnify(Type lhs, Type rhs) {
     if (lhs == rhs) {
+      // Structural equality does not prove that equal flat symbols have the same template owner.
+      // Revisit parameterized types while collecting unifications so that callers can reconcile
+      // those bindings in their respective scopes.
+      if (unifications) {
+        if (StructType lhsStruct = llvm::dyn_cast<StructType>(lhs)) {
+          return typeParamsUnify(
+              lhsStruct.getParams(), llvm::cast<StructType>(rhs).getParams()
+          );
+        }
+        if (ArrayType lhsArray = llvm::dyn_cast<ArrayType>(lhs)) {
+          return arrayTypesUnify(lhsArray, llvm::cast<ArrayType>(rhs));
+        }
+        if (PodType lhsPod = llvm::dyn_cast<PodType>(lhs)) {
+          return podTypesUnify(lhsPod, llvm::cast<PodType>(rhs));
+        }
+        if (FunctionType lhsFunction = llvm::dyn_cast<FunctionType>(lhs)) {
+          return functionTypesUnify(lhsFunction, llvm::cast<FunctionType>(rhs));
+        }
+      }
       return true;
     }
     if (overrideSuccess && overrideSuccess(lhs, rhs)) {
@@ -810,6 +829,16 @@ private:
     assertValidAttrForParamOfType(rhsAttr);
     // Straightforward equality check.
     if (lhsAttr == rhsAttr) {
+      if (unifications) {
+        if (FlatSymbolRefAttr lhsSymRef = llvm::dyn_cast<FlatSymbolRefAttr>(lhsAttr)) {
+          // Equal flat references may belong to different template scopes. Record the RHS-to-LHS
+          // mapping so callers can resolve the mapped symbol in the operation's scope instead of
+          // treating the missing entry as evidence that the parameter was not exposed.
+          track(Side::LHS, lhsSymRef, rhsAttr);
+        } else if (TypeAttr lhsTy = llvm::dyn_cast<TypeAttr>(lhsAttr)) {
+          return typesUnify(lhsTy.getValue(), llvm::cast<TypeAttr>(rhsAttr).getValue());
+        }
+      }
       return true;
     }
     // AffineMapAttr can unify with IntegerAttr (other than kDynamic) because struct parameter
