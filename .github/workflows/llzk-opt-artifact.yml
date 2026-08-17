@@ -53,7 +53,7 @@ jobs:
       BASE_REPOSITORY: ${{ inputs.base_repository || github.event.pull_request.base.repo.full_name || 'project-llzk/llzk-lib' }}
       BASE_HEAD: ${{ inputs.base_head || github.event.pull_request.base.sha || github.event.before }}
       PR_NUMBER: ${{ inputs.pr_number || github.event.pull_request.number || 'none' }}
-      VALIDATION_ROOT: ${{ runner.temp }}/llzk-pr-validation
+      VALIDATION_ROOT: /tmp/llzk-pr-validation
 
     steps:
       - name: Check out the exact target
