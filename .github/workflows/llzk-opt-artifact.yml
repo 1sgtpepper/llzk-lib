@@ -48,6 +48,7 @@ jobs:
         max-jobs = 1
         cores = 2
         experimental-features = nix-command flakes
+        access-tokens = github.com=${{ github.token }}
       TARGET_REPOSITORY: ${{ inputs.target_repository || github.event.pull_request.head.repo.full_name || '1sgtpepper/llzk-lib' }}
       TARGET_HEAD: ${{ inputs.target_head || github.event.pull_request.head.sha || github.sha }}
       BASE_REPOSITORY: ${{ inputs.base_repository || github.event.pull_request.base.repo.full_name || 'project-llzk/llzk-lib' }}
