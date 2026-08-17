@@ -36,6 +36,9 @@
 
 #include <llvm/ADT/DenseSet.h>
 #include <llvm/ADT/MapVector.h>
+#include <llvm/Support/Debug.h>
+
+#define DEBUG_TYPE "llzk-function-ops"
 
 // TableGen'd implementation files
 #define GET_OP_CLASSES
@@ -755,9 +758,14 @@ struct KnownTargetVerifier : public CallOpVerifier {
         bool allParamsReferenced = llvm::all_of(realParams, [&](TemplateParamOp p) {
           return referencedInSignature.contains(FlatSymbolRefAttr::get(p.getNameAttr()));
         });
+        LLVM_DEBUG({
+          llvm::dbgs() << "[call-template-verifier] target=@" << tgt.getName()
+                       << " all-params-referenced=" << allParamsReferenced << "\n";
+        });
         if (allParamsReferenced) {
           FailureOr<UnificationMap> unifyResult = callOp->unifyTypeSignature(tgtType);
           if (failed(unifyResult)) {
+            LLVM_DEBUG(llvm::dbgs() << "[call-template-verifier] unification=FAIL\n");
             return failure();
           }
           return callOp->verifyTemplateParamsMatchInferred(realParams, unifyResult.value());

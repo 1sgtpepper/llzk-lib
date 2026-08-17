@@ -40,8 +40,11 @@
 #include <llvm/ADT/STLExtras.h>
 #include <llvm/ADT/SmallVectorExtras.h>
 #include <llvm/ADT/Twine.h>
+#include <llvm/Support/Debug.h>
 
 #include <memory>
+
+#define DEBUG_TYPE "llzk-verif-ops"
 
 // TableGen'd implementation files
 #include "llzk/Dialect/Verif/IR/OpInterfaces.cpp.inc"
@@ -830,9 +833,14 @@ struct KnownTargetVerifier : public IncludeOpVerifier {
         bool allParamsReferenced = llvm::all_of(realParams, [&](TemplateParamOp p) {
           return referencedInSignature.contains(FlatSymbolRefAttr::get(p.getNameAttr()));
         });
+        LLVM_DEBUG({
+          llvm::dbgs() << "[include-template-verifier] target=@" << tgt.getName()
+                       << " all-params-referenced=" << allParamsReferenced << "\n";
+        });
         if (allParamsReferenced) {
           FailureOr<UnificationMap> unifyResult = includeOp->unifyTypeSignature(tgtType);
           if (failed(unifyResult)) {
+            LLVM_DEBUG(llvm::dbgs() << "[include-template-verifier] unification=FAIL\n");
             return failure();
           }
           return includeOp->verifyTemplateParamsMatchInferred(realParams, unifyResult.value());

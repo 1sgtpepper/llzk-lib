@@ -324,7 +324,7 @@ jobs:
                   raw_body="${raw_body%%| FileCheck*}"
                 fi
                 raw_producer_cmd="${raw_body//%s/$clean_input}"
-                raw_producer_cmd="$raw_producer_cmd -debug-only=llzk-symbol-helpers"
+                raw_producer_cmd="$raw_producer_cmd -debug-only=llzk-symbol-helpers,llzk-function-ops,llzk-verif-ops"
                 printf '%s\n' "$raw_producer_cmd" > "$run_output/raw-producer-command.txt"
                 set +e
                 PATH="$tool_path:$PATH" bash -o pipefail -c "$raw_producer_cmd" \
