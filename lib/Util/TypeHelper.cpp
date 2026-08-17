@@ -723,9 +723,7 @@ struct UnifierImpl {
       // those bindings in their respective scopes.
       if (unifications) {
         if (StructType lhsStruct = llvm::dyn_cast<StructType>(lhs)) {
-          return typeParamsUnify(
-              lhsStruct.getParams(), llvm::cast<StructType>(rhs).getParams()
-          );
+          return typeParamsUnify(lhsStruct.getParams(), llvm::cast<StructType>(rhs).getParams());
         }
         if (ArrayType lhsArray = llvm::dyn_cast<ArrayType>(lhs)) {
           return arrayTypesUnify(lhsArray, llvm::cast<ArrayType>(rhs));
@@ -834,9 +832,7 @@ private:
           // Equal flat references may belong to different template scopes. Record the RHS-to-LHS
           // mapping so callers can resolve the mapped symbol in the operation's scope instead of
           // treating the missing entry as evidence that the parameter was not exposed.
-          track(
-              Side::RHS, llvm::cast<FlatSymbolRefAttr>(rhsAttr), lhsAttr
-          );
+          track(Side::RHS, llvm::cast<FlatSymbolRefAttr>(rhsAttr), lhsAttr);
         } else if (TypeAttr lhsTy = llvm::dyn_cast<TypeAttr>(lhsAttr)) {
           return typesUnify(lhsTy.getValue(), llvm::cast<TypeAttr>(rhsAttr).getValue());
         }
@@ -1104,7 +1100,17 @@ bool isMoreConcreteUnification(
   // the "least concrete" attribute kind) where the old type contained any other attribute. In the
   // AffineInstantiations map, a RHS key would indicate that the new type contains an AffineMapAttr
   // where the old type contains an IntegerAttr.
-  auto entryIsRHS = [](const auto &entry) { return entry.first.second == Side::RHS; };
+  auto entryIsRHS = [](const auto &entry) {
+    if (entry.first.second != Side::RHS) {
+      return false;
+    }
+    // Equal flat symbols are tracked so template inference can preserve their scope path, but an
+    // identity mapping does not make the new type less concrete than the old type.
+    if (auto mappedSymbol = llvm::dyn_cast<SymbolRefAttr>(entry.second)) {
+      return mappedSymbol != entry.first.first;
+    }
+    return true;
+  };
   return !llvm::any_of(unifications, entryIsRHS) && !llvm::any_of(affineInstantiations, entryIsRHS);
 }
 
