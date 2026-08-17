@@ -234,6 +234,10 @@ jobs:
           comparisons when the fixture is directly replayable. Fixtures requiring unsupported
           lit substitutions or other tools are listed as delegated in their run metadata and
           remain covered by the project's standard CI test job.
+          For diagnostic fixtures, raw producer output is also captured without
+          -verify-diagnostics so the artifact preserves the underlying compiler diagnostics.
+          Generated-check comparison normalizes only the repository's split-file separator
+          spelling (CHECK versus CHECK-NEXT); all other generated-check differences fail validation.
           EOF
 
       - name: Replay changed LLZK fixtures and compare generated checks
@@ -314,6 +318,23 @@ jobs:
           Path(sys.argv[2]).write_text("\n".join(clean).strip() + "\n")
           PY
 
+              if [[ "$run_body" == *'-verify-diagnostics'* ]]; then
+                raw_body="${run_body//-verify-diagnostics/}"
+                if [[ "$raw_body" == *'| FileCheck'* ]]; then
+                  raw_body="${raw_body%%| FileCheck*}"
+                fi
+                raw_producer_cmd="${raw_body//%s/$clean_input}"
+                printf '%s\n' "$raw_producer_cmd" > "$run_output/raw-producer-command.txt"
+                set +e
+                PATH="$tool_path:$PATH" bash -o pipefail -c "$raw_producer_cmd" \
+                  > "$run_output/raw-producer-output.txt" \
+                  2> "$run_output/raw-producer-stderr.txt"
+                raw_status=$?
+                set -e
+                printf 'run_exit_status=%s\n' "$raw_status" \
+                  > "$run_output/raw-status.txt"
+              fi
+
               if [[ -z "$filecheck" && "$run_body" == *'| FileCheck'* ]]; then
                 printf 'status=FAIL\nreason=FileCheck was not found in the Nix environment\n' \
                   > "$run_output/status.txt"
@@ -392,15 +413,33 @@ jobs:
           directive = re.compile(
               rf"^// {re.escape(prefix)}(?:$|:|-LABEL:|-NEXT:|-SAME:|-NOT:|-DAG:|-EMPTY:)"
           )
-          committed_lines = [
+          committed_raw_lines = [
               line for line in source.read_text().splitlines() if directive.match(line)
           ]
-          generated_lines = [
+          generated_raw_lines = [
               line for line in generated.read_text().splitlines() if directive.match(line)
           ]
+          separator = f"// {prefix}:  // -----"
+          separator_next = f"// {prefix}-NEXT:  // -----"
+
+          def normalize(lines):
+              normalized = []
+              separator_count = 0
+              for line in lines:
+                  if line == separator:
+                      normalized.append(separator_next)
+                      separator_count += 1
+                  else:
+                      normalized.append(line)
+              return normalized, separator_count
+
+          committed_lines, committed_separator_count = normalize(committed_raw_lines)
+          generated_lines, generated_separator_count = normalize(generated_raw_lines)
           comparison.write_text(
-              f"committed_check_lines={len(committed_lines)}\n"
-              f"generated_check_lines={len(generated_lines)}\n"
+              f"committed_check_lines={len(committed_raw_lines)}\n"
+              f"generated_check_lines={len(generated_raw_lines)}\n"
+              f"normalized_check_lines={len(committed_lines)}\n"
+              f"separator_placement_normalized={committed_separator_count + generated_separator_count}\n"
           )
           if committed_lines != generated_lines:
               diff_path.write_text(
