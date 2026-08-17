@@ -1,9 +1,6 @@
 name: LLZK PR validation evidence
 
 on:
-  push:
-    branches:
-      - ci/publish-llzk-opt-artifact
   pull_request:
     types: [opened, synchronize, reopened]
   workflow_dispatch:
