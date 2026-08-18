@@ -728,8 +728,7 @@ struct KnownTargetVerifier : public CallOpVerifier {
       auto realParams = tgtOpParent.getConstOps<TemplateParamOp>();
       return llzk::verifyKnownTargetTemplateParams(
           callOp->getOperation(), tgtType, tgt.getSymName(), tgtOpParent.getSymName(),
-          callOp->getTemplateParamsAttr(), realParams,
-          llzk::TemplateParamSignatureKind::Function,
+          callOp->getTemplateParamsAttr(), realParams, llzk::TemplateParamSignatureKind::Function,
           [this] { return callOp->unifyTypeSignature(tgtType); }
       );
     } else {

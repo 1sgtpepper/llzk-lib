@@ -502,8 +502,7 @@ LogicalResult verifyKnownTargetTemplateParams(
     Operation *origin, FunctionType targetType, StringRef targetName, StringRef targetTemplateName,
     ArrayAttr explicitParams,
     llvm::iterator_range<Region::op_iterator<TemplateParamOp>> targetParamDefs,
-    TemplateParamSignatureKind signatureKind,
-    llvm::function_ref<FailureOr<UnificationMap>()> unify
+    TemplateParamSignatureKind signatureKind, llvm::function_ref<FailureOr<UnificationMap>()> unify
 ) {
   if (isNullOrEmpty(explicitParams)) {
     // Omitted arguments are valid only when every target parameter is exposed by the signature.
@@ -532,8 +531,8 @@ LogicalResult verifyKnownTargetTemplateParams(
 
   // Normalize integer attributes before checking arity and declared restrictions.
   if (failed(forceIntAttrTypes(explicitParams.getValue(), [origin] {
-        return InFlightDiagnosticWrapper(origin->emitOpError());
-      }))) {
+    return InFlightDiagnosticWrapper(origin->emitOpError());
+  }))) {
     return failure();
   }
 
