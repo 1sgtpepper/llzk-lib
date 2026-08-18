@@ -1,6 +1,5 @@
 // RUN: llzk-opt --llzk-fuse-product-control-flow -mlir-print-debuginfo %s | FileCheck --enable-var-scope %s
 
-// Fused conditionals and yields retain both source locations from their compute and constrain inputs.
 module attributes {llzk.lang = "llzk"} {
   struct.def @A {
     struct.member @foo : !felt.type
@@ -33,6 +32,7 @@ module attributes {llzk.lang = "llzk"} {
   }
 }
 
+// Fused conditionals and yields retain both source locations from their compute and constrain inputs.
 // CHECK: #loc{{[0-9]+}} = loc("{{.*}}fuse_if_preserves_locations.llzk":7:27)
 // CHECK-NEXT: module attributes {llzk.lang = "llzk"} {
 // CHECK-NEXT:    struct.def @A {
