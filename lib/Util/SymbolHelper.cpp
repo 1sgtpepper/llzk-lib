@@ -504,6 +504,16 @@ LogicalResult verifyKnownTargetTemplateParams(
     llvm::iterator_range<Region::op_iterator<TemplateParamOp>> targetParamDefs,
     TemplateParamSignatureKind signatureKind, llvm::function_ref<FailureOr<UnificationMap>()> unify
 ) {
+  StringRef signatureDescription = [&] {
+    switch (signatureKind) {
+    case TemplateParamSignatureKind::Function:
+      return StringRef("function");
+    case TemplateParamSignatureKind::Contract:
+      return StringRef("contract");
+    }
+    llvm_unreachable("unknown template parameter signature kind");
+  }();
+
   if (isNullOrEmpty(explicitParams)) {
     // Omitted arguments are valid only when every target parameter is exposed by the signature.
     llvm::SmallDenseSet<SymbolRefAttr> referencedInSignature;
@@ -525,7 +535,7 @@ LogicalResult verifyKnownTargetTemplateParams(
     return origin->emitOpError().append(
         "must provide template instantiation parameters when calling \"@", targetName,
         "\" because not all template parameters of \"@", targetTemplateName,
-        "\" appear in the function type signature"
+        "\" appear in the ", signatureDescription, " type signature"
     );
   }
 
