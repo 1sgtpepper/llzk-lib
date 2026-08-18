@@ -134,16 +134,6 @@ static inline bool areOppositeProductSources(Operation *a, Operation *b) {
          (*sourceA == FUNC_NAME_CONSTRAIN && *sourceB == FUNC_NAME_COMPUTE);
 }
 
-/// Return the result number of `value` on `ifOp`, if `value` is one of its results.
-static std::optional<unsigned> getIfResultIndex(scf::IfOp ifOp, Value value) {
-  for (auto [idx, result] : llvm::enumerate(ifOp.getResults())) {
-    if (result == value) {
-      return idx;
-    }
-  }
-  return std::nullopt;
-}
-
 /// Return whether every operand of `op` is available at `insertionPoint` using the conservative
 /// same-block dominance proof accepted by this pass. Block arguments are available by definition;
 /// operation results must be defined earlier in the insertion block.
@@ -271,8 +261,7 @@ static bool collectConstrainValueMappings(
           source && *source != FUNC_NAME_COMPUTE) {
         return false;
       }
-      std::optional<unsigned> resultIndex = getIfResultIndex(computeIf, writeOp.getVal());
-      if (!resultIndex) {
+      if (!llvm::is_contained(computeIf.getResults(), writeOp.getVal())) {
         return false;
       }
       precedingWrites.push_back(writeOp);
@@ -402,10 +391,12 @@ static void fuseIfPair(
 
   llvm::DenseMap<Value, unsigned> valueToResult;
   SmallVector<MemberReadOp> readsToHoist;
-  [[maybe_unused]] bool canMap = collectConstrainValueMappings(
-      computeIf, constrainIf, valueToResult, readsToHoist, symbolTables
-  );
-  assert(canMap && "fusion candidates must have already been checked");
+  if (!collectConstrainValueMappings(
+          computeIf, constrainIf, valueToResult, readsToHoist, symbolTables
+      )) {
+    assert(false && "fusion candidates must have already been checked");
+    return;
+  }
 
   // Preserve the signal member used by the constrain branch. Insert reads in source order before
   // the fused conditional; the matching writes stay after it.

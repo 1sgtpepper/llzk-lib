@@ -272,6 +272,7 @@ module attributes {llzk.lang = "llzk"} {
 
 // -----
 
+// A constrain-side function call is not proven movable, so the matching conditionals stay separate.
 module attributes {llzk.lang = "llzk"} {
   struct.def @A {
     struct.member @foo : !felt.type {llzk.pub}
@@ -366,6 +367,7 @@ module attributes {llzk.lang = "llzk"} {
 
 // -----
 
+// A read of a non-signal member cannot be hoisted, so the matching conditionals stay separate.
 module attributes {llzk.lang = "llzk"} {
   struct.def @A {
     struct.member @foo : !felt.type
