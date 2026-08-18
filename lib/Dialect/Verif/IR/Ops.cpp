@@ -753,6 +753,16 @@ void IncludeOp::build(
   addTemplateParams<IncludeOp>(odsBuilder, props, templateParams);
 }
 
+LogicalResult IncludeOp::verifyTemplateParamsMatchInferred(
+    llvm::iterator_range<Region::op_iterator<TemplateParamOp>> targetParamDefs,
+    const UnificationMap &unifications
+) {
+  return llzk::verifyTemplateParamsMatchInferred(
+      getOperation(), getTemplateParamsAttr(), targetParamDefs, unifications,
+      llzk::TemplateParamSignatureKind::Contract
+  );
+}
+
 namespace {
 
 struct IncludeOpVerifier {

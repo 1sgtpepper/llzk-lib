@@ -614,6 +614,16 @@ void CallOp::build(
   addTemplateParams<CallOp>(odsBuilder, props, templateParams);
 }
 
+LogicalResult CallOp::verifyTemplateParamsMatchInferred(
+    llvm::iterator_range<Region::op_iterator<TemplateParamOp>> targetParamDefs,
+    const UnificationMap &unifications
+) {
+  return llzk::verifyTemplateParamsMatchInferred(
+      getOperation(), getTemplateParamsAttr(), targetParamDefs, unifications,
+      llzk::TemplateParamSignatureKind::Function
+  );
+}
+
 namespace {
 
 struct CallOpVerifier {
