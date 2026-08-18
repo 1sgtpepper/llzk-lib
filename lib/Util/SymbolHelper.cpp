@@ -800,6 +800,12 @@ bool feltRestrictionsConflict(std::optional<Type> lhs, std::optional<Type> rhs) 
   return lhsFelt && rhsFelt && lhsFelt.hasField() && rhsFelt.hasField() && lhsFelt != rhsFelt;
 }
 
+/// Compare explicit and signature-inferred template values. For a felt restriction, local template
+/// bindings contribute type evidence and qualified globals contribute type and concrete-value
+/// evidence. Return `false` for a known field or value conflict, or when contextual materialization
+/// rejects a value. Preserve the context-free unifier's result when either symbol has no resolvable
+/// evidence. Return failure when the enclosing template scope cannot be resolved or a resolved
+/// global is mutable. Non-felt restrictions always use the context-free unifier.
 FailureOr<bool> resolvedTemplateParamValuesUnify(
     SymbolTableCollection &tables, Operation *origin, Attribute explicitValue,
     Attribute inferredValue, std::optional<Type> requiredParamType
