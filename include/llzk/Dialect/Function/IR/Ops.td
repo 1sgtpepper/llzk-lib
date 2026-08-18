@@ -350,7 +350,7 @@ def CallOp : FunctionDialectOp<
 
     Every explicit or inferred argument must satisfy its `poly.param` type restriction. If the
     function signature independently infers a value for an explicitly supplied parameter, all
-    known fields and concrete values must agree.
+    known fields, concrete values, and types must agree.
 
     Symbol arguments must resolve to an enclosing template binding or a constant global; unknown,
     mutable-global, and wrong-kind symbols are rejected.

@@ -373,7 +373,7 @@ def IncludeOp
     every parameter appears in the contract signature; omitted values are derived from the
     inclusion operand types. Every explicit or inferred argument must satisfy its declared type
     restriction. If both forms provide a value for the same parameter, all known fields and
-    concrete values must agree. The `?` wildcard is valid for any parameter with a `poly.tvar`
+    concrete values, and types must agree. The `?` wildcard is valid for any parameter with a `poly.tvar`
     restriction and leaves that type for later inference based on the callee.
 
     Symbol arguments must resolve to an enclosing template binding or a constant global; unknown,

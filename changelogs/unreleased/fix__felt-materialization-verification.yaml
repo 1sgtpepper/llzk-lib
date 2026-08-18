@@ -1,3 +1,4 @@
 fixed:
   - Apply required felt fields to fieldless constants and integer arguments, and reject field or value conflicts between explicit and omitted template arguments inferred from distinct template scopes
+  - Reject ambiguous omitted template parameters when repeated signature positions infer incompatible types
   - Require symbolic template arguments to resolve to an enclosing template binding or a constant global

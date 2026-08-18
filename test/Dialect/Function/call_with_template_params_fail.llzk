@@ -269,6 +269,31 @@ module attributes {llzk.lang} {
   }
 }
 // -----
+
+// Omitted type-only parameters must reject conflicting inferences from repeated signature
+// positions while preserving the valid same-type case.
+module attributes {llzk.lang} {
+  poly.template @RepeatedTypeOnly {
+    poly.param @T : !poly.tvar<@T>
+
+    function.def @accept(%lhs: !poly.tvar<@T>, %rhs: !poly.tvar<@T>) {
+      function.return
+    }
+  }
+
+  function.def @mismatched(%lhs: !felt.type, %rhs: index) {
+    // expected-error@+1 {{'function.call' op cannot infer template instantiation value for parameter "@T" from function type signature}}
+    function.call @RepeatedTypeOnly::@accept(%lhs, %rhs) : (!felt.type, index) -> ()
+    function.return
+  }
+
+  function.def @matching(%lhs: !felt.type, %rhs: !felt.type) {
+    function.call @RepeatedTypeOnly::@accept(%lhs, %rhs) : (!felt.type, !felt.type) -> ()
+    function.return
+  }
+}
+// -----
+
 module attributes {llzk.lang} {
   poly.template @GlobalFunc {
     poly.param @A

@@ -95,6 +95,52 @@ module attributes {llzk.lang} {
 
 // -----
 
+// Omitted type-only parameters must reject conflicting inferences from repeated contract
+// signature positions while preserving the valid same-type include.
+module attributes {llzk.lang} {
+  poly.template @RepeatedTypeOnly {
+    poly.param @T : !poly.tvar<@T>
+
+    function.def @target(%lhs: !poly.tvar<@T>, %rhs: !poly.tvar<@T>) {
+      function.return
+    }
+
+    verif.contract @Base for @RepeatedTypeOnly::@target (
+        %lhs: !poly.tvar<@T>, %rhs: !poly.tvar<@T>
+    ) {
+      %ok = arith.constant true
+      verif.ensure_compute %ok
+    }
+  }
+
+  function.def @mismatched(%lhs: !felt.type, %rhs: index) {
+    function.return
+  }
+
+  function.def @matching(%lhs: !felt.type, %rhs: !felt.type) {
+    function.return
+  }
+
+  verif.contract @MismatchedWrapper for @mismatched (
+      %lhs: !felt.type, %rhs: index
+  ) {
+    // expected-error@+1 {{'verif.include' op cannot infer template instantiation value for parameter "@T" from contract type signature}}
+    verif.include @RepeatedTypeOnly::@Base(%lhs, %rhs) : (!felt.type, index) -> ()
+    %ok = arith.constant true
+    verif.ensure_compute %ok
+  }
+
+  verif.contract @MatchingWrapper for @matching (
+      %lhs: !felt.type, %rhs: !felt.type
+  ) {
+    verif.include @RepeatedTypeOnly::@Base(%lhs, %rhs) : (!felt.type, !felt.type) -> ()
+    %ok = arith.constant true
+    verif.ensure_compute %ok
+  }
+}
+
+// -----
+
 module attributes {llzk.lang} {
   function.def @check(%x: index, %y: index) {
     function.return

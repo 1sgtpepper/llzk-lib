@@ -585,10 +585,6 @@ LogicalResult verifyTemplateParamsMatchInferred(
 
   if (isNullOrEmpty(explicitParams)) {
     for (TemplateParamOp paramOp : targetParamDefs) {
-      if (std::optional<Type> declaredType = paramOp.getTypeOpt();
-          declaredType && llvm::isa<TypeVarType>(*declaredType)) {
-        continue;
-      }
       auto it = unifications.find({FlatSymbolRefAttr::get(paramOp.getNameAttr()), Side::RHS});
       if (it == unifications.end()) {
         // No inferred value means the signature did not expose this parameter to the operation.
@@ -599,6 +595,12 @@ LogicalResult verifyTemplateParamsMatchInferred(
             "cannot infer template instantiation value for parameter \"@", paramOp.getName(),
             "\" from ", signatureDescription, " type signature"
         );
+      }
+      // Type-only arguments can defer compatibility checks, but an ambiguous inference is already
+      // invalid and must not be skipped.
+      if (std::optional<Type> declaredType = paramOp.getTypeOpt();
+          declaredType && llvm::isa<TypeVarType>(*declaredType)) {
+        continue;
       }
       if (failed(verifyTemplateParamValueCompatibility(origin, it->second, paramOp))) {
         return failure();
