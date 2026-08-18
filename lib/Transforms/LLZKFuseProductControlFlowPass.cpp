@@ -537,31 +537,26 @@ fuseMatchingLoopPairs(Region &body, MLIRContext *context, SymbolTableCollection 
 
   // Fuse each unambiguous pair; leave preparation failures unchanged.
   IRRewriter rewriter {context};
-  bool fusedAny = false;
   for (auto [computeLoop, constrainLoop] : fusionCandidates) {
     if (failed(prepareForFusion(computeLoop, constrainLoop, rewriter))) {
       continue;
     }
     auto fusedLoop = fuseIndependentSiblingForLoops(computeLoop, constrainLoop, rewriter);
     setProductSource(fusedLoop, "fused");
-    fusedAny = true;
     // Recurse so nested if/loop pairs become eligible after loop fusion.
     fuseMatchingRegionControlFlow(fusedLoop.getBodyRegion(), context, symbolTables);
   }
-
-  if (fusedAny) {
-    // Preparation can move a compute-sourced if out of the loop gap; rescan this parent region
-    // after replacing the loops so its constrain-sourced sibling becomes eligible in this pass.
-    fuseMatchingIfPairs(body, context, symbolTables);
-  }
 }
 
-/// Fuse marked `scf.if` pairs and then `scf.for` pairs in `body`.
+/// Fuse marked `scf.for` pairs before marked `scf.if` pairs in `body`.
 static void fuseMatchingRegionControlFlow(
     Region &body, MLIRContext *context, SymbolTableCollection &symbolTables
 ) {
-  fuseMatchingIfPairs(body, context, symbolTables);
+  // Loop fusion has priority because preparation may legally sink a compute-sourced if, while a
+  // prior fused if is an immovable barrier. The later conditional sweep also catches pairs made
+  // adjacent by that preparation.
   fuseMatchingLoopPairs(body, context, symbolTables);
+  fuseMatchingIfPairs(body, context, symbolTables);
 }
 
 class PassImpl : public llzk::impl::FuseProductControlFlowPassBase<PassImpl> {

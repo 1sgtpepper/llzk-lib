@@ -116,6 +116,10 @@ def FuseProductControlFlowPass : LLZKPass<"llzk-fuse-product-control-flow"> {
       "Fuse matching compute/constrain control flow in a @product function";
   let description = [{
     Fuses uniquely matched compute/constrain control-flow pairs in `@product` functions.
+    Within a region, `scf.for` fusion is attempted before `scf.if` fusion so an eligible legacy
+    loop opportunity is preserved when preparation can legally move compute-sourced operations.
+    Crossed loop/conditional source order may therefore leave the conditionals unfused to preserve
+    both source-local orderings.
     `scf.for` pairs must be siblings with matching trip counts. `scf.if` pairs must be same-block
     siblings where the compute op precedes the constrain op, both use the same SSA condition value
     and have the same else-region presence, and the constrain op is resultless. Conditional fusion
