@@ -6,13 +6,6 @@
 - When you need to run a project command inside the development environment, use:
   `nix develop --command bash -c "[command]"`
 
-### Reusable LLZK toolchain
-
-- For CI fixture/FileCheck replay when LLZK, LLVM, and build/flake inputs are unchanged, use the
-  pinned [reusable `llzk-opt` release](https://github.com/1sgtpepper/llzk-lib/releases/tag/llzk-opt-llvm20.1.8-llzk2.0.0-e7756af).
-- If any of those inputs change, build and validate the exact PR head through CI; the reusable
-  artifact is not exact-head evidence.
-
 ### Tool freshness
 
 - After modifying C++/TableGen/build files that can affect `llzk-opt`, do not run `llzk-opt` or any example pipeline using `llzk-opt` until rebuilding it first.
