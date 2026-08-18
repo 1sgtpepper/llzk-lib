@@ -10,6 +10,7 @@
 
 #include "OpTestBase.h"
 
+#include "llzk/Dialect/Felt/IR/Attrs.h"
 #include "llzk/Dialect/Function/IR/Ops.h"
 #include "llzk/Dialect/Shared/Builders.h"
 
@@ -288,6 +289,60 @@ module attributes {llzk.lang} {
   ASSERT_TRUE(succeeded(mlir::verify(parsed.get())));
   EXPECT_TRUE(verify(calls[0], true));
   EXPECT_TRUE(verify(calls[1], true));
+}
+
+TEST_F(OpTests, CallOpVerifyTemplateParamsMatchInferredUsesFunctionSignature) {
+  constexpr StringLiteral source = R"mlir(
+module attributes {llzk.lang} {
+  poly.template @Target {
+    poly.param @F : !felt.type<"bn128">
+    function.def @accept() {
+      function.return
+    }
+  }
+
+  poly.template @Caller {
+    function.def @caller() {
+      function.call @Target::@accept<[#felt<const 35>]>() : () -> ()
+      function.return
+    }
+  }
+}
+)mlir";
+
+  auto parsed = parseSourceString<ModuleOp>(source, ParserConfig(&ctx));
+  ASSERT_TRUE(parsed);
+
+  SmallVector<CallOp> calls;
+  parsed->walk([&calls](CallOp op) { calls.push_back(op); });
+  ASSERT_EQ(calls.size(), 1u);
+
+  llzk::polymorphic::TemplateOp targetTemplate;
+  parsed->walk([&targetTemplate](llzk::polymorphic::TemplateOp op) {
+    if (op.getSymName() == "Target") {
+      targetTemplate = op;
+    }
+  });
+  ASSERT_NE(targetTemplate.getOperation(), nullptr);
+
+  auto targetParams =
+      targetTemplate.getConstOps<llzk::polymorphic::TemplateParamOp>();
+  UnificationMap unifications;
+  unifications.try_emplace(
+      {FlatSymbolRefAttr::get(&ctx, "F"), Side::RHS},
+      llzk::felt::FeltConstAttr::get(
+          &ctx, APInt(8, 36), llzk::felt::FeltType::get(&ctx, "bn128")
+      )
+  );
+
+  EXPECT_DEATH(
+      {
+        if (failed(calls.front().verifyTemplateParamsMatchInferred(targetParams, unifications))) {
+          std::abort();
+        }
+      },
+      "function type signature"
+  );
 }
 
 TEST_F(OpTests, testCallFeltRestrictionRejectsIncompatibleLocalSymbols) {

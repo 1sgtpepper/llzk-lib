@@ -9,6 +9,7 @@
 
 #include "OpTestBase.h"
 
+#include "llzk/Dialect/Felt/IR/Attrs.h"
 #include "llzk/Dialect/Verif/IR/Ops.h"
 
 #include <mlir/IR/Builders.h>
@@ -326,6 +327,64 @@ module attributes {llzk.lang} {
   ASSERT_TRUE(succeeded(mlir::verify(parsed.get())));
   EXPECT_TRUE(verify(includes[0], true));
   EXPECT_TRUE(verify(includes[1], true));
+}
+
+TEST_F(VerifDialectTests, IncludeOpVerifyTemplateParamsMatchInferredUsesContractSignature) {
+  constexpr StringLiteral source = R"mlir(
+module attributes {llzk.lang} {
+  poly.template @Target {
+    poly.param @F : !felt.type<"bn128">
+    function.def @accept() {
+      function.return
+    }
+    verif.contract @Base for @Target::@accept () {
+      %ok = arith.constant true
+      verif.ensure_compute %ok
+    }
+  }
+
+  poly.template @Caller {
+    verif.contract @Wrapper for @Target::@accept () {
+      verif.include @Target::@Base<[#felt<const 35>]>() : () -> ()
+    }
+  }
+}
+)mlir";
+
+  auto parsed = parseModule(source);
+  ASSERT_TRUE(parsed);
+  auto includes = findOps<IncludeOp>(*parsed);
+
+  ASSERT_EQ(includes.size(), 1u);
+
+  llzk::polymorphic::TemplateOp targetTemplate;
+  parsed->walk([&targetTemplate](llzk::polymorphic::TemplateOp op) {
+    if (op.getSymName() == "Target") {
+      targetTemplate = op;
+    }
+  });
+  ASSERT_NE(targetTemplate.getOperation(), nullptr);
+
+  auto targetParams =
+      targetTemplate.getConstOps<llzk::polymorphic::TemplateParamOp>();
+  UnificationMap unifications;
+  unifications.try_emplace(
+      {FlatSymbolRefAttr::get(&ctx, "F"), Side::RHS},
+      llzk::felt::FeltConstAttr::get(
+          &ctx, APInt(8, 36), llzk::felt::FeltType::get(&ctx, "bn128")
+      )
+  );
+
+  EXPECT_DEATH(
+      {
+        if (failed(
+                includes.front().verifyTemplateParamsMatchInferred(targetParams, unifications)
+            )) {
+          std::abort();
+        }
+      },
+      "contract type signature"
+  );
 }
 
 TEST_F(VerifDialectTests, TemplateIncludeRejectsIncompatibleLocalSymbols) {
