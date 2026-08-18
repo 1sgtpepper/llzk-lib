@@ -341,9 +341,7 @@ module attributes {llzk.lang} {
       %ok = arith.constant true
       verif.ensure_compute %ok
     }
-  }
 
-  poly.template @Caller {
     verif.contract @Wrapper for @Target::@accept () {
       verif.include @Target::@Base<[#felt<const 35>]>() : () -> ()
     }
