@@ -25,6 +25,7 @@
 
 #include <mlir/Dialect/SCF/Utils/Utils.h>
 #include <mlir/IR/BuiltinAttributes.h>
+#include <mlir/IR/Dominance.h>
 #include <mlir/IR/IRMapping.h>
 #include <mlir/IR/PatternMatch.h>
 #include <mlir/IR/SymbolTable.h>
@@ -472,7 +473,8 @@ fuseMatchingIfPairs(Region &body, MLIRContext *context, SymbolTableCollection &s
 }
 
 /// Collect compute-sourced operations between sibling loops that must move after `constrainLoop`.
-/// Fail if the loops do not share a block or the move would cross already-fused constraint work.
+/// Fail if the loops do not share a block, the move would cross already-fused constraint work, or
+/// sinking a result would place it below a surviving user.
 static FailureOr<SmallVector<Operation *>>
 canPrepareForFusion(scf::ForOp computeLoop, scf::ForOp constrainLoop) {
   if (computeLoop->getBlock() != constrainLoop->getBlock()) {
@@ -487,6 +489,28 @@ canPrepareForFusion(scf::ForOp computeLoop, scf::ForOp constrainLoop) {
     }
     if (hasProductSource(op, FUNC_NAME_COMPUTE)) {
       opsToSink.push_back(op);
+    }
+  }
+
+  DominanceInfo dominanceInfo(computeLoop->getParentOp());
+  auto isMovedWithSink = [&](Operation *user) {
+    return llvm::any_of(opsToSink, [&](Operation *sink) {
+      return sink == user || sink->isAncestor(user);
+    });
+  };
+  for (Operation *op : opsToSink) {
+    for (Value result : op->getResults()) {
+      for (Operation *user : result.getUsers()) {
+        if (isMovedWithSink(user)) {
+          continue;
+        }
+        // The result definition moves after `constrainLoop`; every surviving user must therefore
+        // be dominated by that insertion point and cannot be inside the constrain loop itself.
+        if (user == constrainLoop.getOperation() || constrainLoop->isAncestor(user) ||
+            !dominanceInfo.dominates(constrainLoop, user)) {
+          return failure();
+        }
+      }
     }
   }
   return opsToSink;
