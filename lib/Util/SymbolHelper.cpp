@@ -246,6 +246,11 @@ LogicalResult verifyTemplateSymbolType(
   return success();
 }
 
+FailureOr<bool> resolvedTemplateParamValuesUnify(
+    SymbolTableCollection &tables, Operation *origin, Attribute explicitValue,
+    Attribute inferredValue, std::optional<Type> requiredParamType
+);
+
 } // namespace
 
 llvm::SmallVector<StringRef> getNames(SymbolRefAttr ref) {
@@ -795,8 +800,6 @@ bool feltRestrictionsConflict(std::optional<Type> lhs, std::optional<Type> rhs) 
   return lhsFelt && rhsFelt && lhsFelt.hasField() && rhsFelt.hasField() && lhsFelt != rhsFelt;
 }
 
-} // namespace
-
 FailureOr<bool> resolvedTemplateParamValuesUnify(
     SymbolTableCollection &tables, Operation *origin, Attribute explicitValue,
     Attribute inferredValue, std::optional<Type> requiredParamType
@@ -884,6 +887,8 @@ FailureOr<bool> resolvedTemplateParamValuesUnify(
   }
   return contextFreeResult;
 }
+
+} // namespace
 
 FailureOr<StructDefOp>
 verifyStructTypeResolution(SymbolTableCollection &tables, StructType ty, Operation *origin) {
