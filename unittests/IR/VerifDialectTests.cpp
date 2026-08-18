@@ -365,14 +365,11 @@ module attributes {llzk.lang} {
   });
   ASSERT_NE(targetTemplate.getOperation(), nullptr);
 
-  auto targetParams =
-      targetTemplate.getConstOps<llzk::polymorphic::TemplateParamOp>();
+  auto targetParams = targetTemplate.getConstOps<llzk::polymorphic::TemplateParamOp>();
   UnificationMap unifications;
   unifications.try_emplace(
       {FlatSymbolRefAttr::get(&ctx, "F"), Side::RHS},
-      llzk::felt::FeltConstAttr::get(
-          &ctx, APInt(8, 36), llzk::felt::FeltType::get(&ctx, "bn128")
-      )
+      llzk::felt::FeltConstAttr::get(&ctx, APInt(8, 36), llzk::felt::FeltType::get(&ctx, "bn128"))
   );
 
   EXPECT_DEATH(
