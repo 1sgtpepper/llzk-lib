@@ -534,8 +534,8 @@ LogicalResult verifyKnownTargetTemplateParams(
     }
     return origin->emitOpError().append(
         "must provide template instantiation parameters when calling \"@", targetName,
-        "\" because not all template parameters of \"@", targetTemplateName,
-        "\" appear in the ", signatureDescription, " type signature"
+        "\" because not all template parameters of \"@", targetTemplateName, "\" appear in the ",
+        signatureDescription, " type signature"
     );
   }
 
