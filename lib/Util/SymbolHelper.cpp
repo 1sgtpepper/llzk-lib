@@ -498,6 +498,67 @@ LogicalResult verifyTemplateParamValuesCompatibility(
   return success();
 }
 
+LogicalResult verifyKnownTargetTemplateParams(
+    Operation *origin, FunctionType targetType, StringRef targetName, StringRef targetTemplateName,
+    ArrayAttr explicitParams,
+    llvm::iterator_range<Region::op_iterator<TemplateParamOp>> targetParamDefs,
+    TemplateParamSignatureKind signatureKind,
+    llvm::function_ref<FailureOr<UnificationMap>()> unify
+) {
+  if (isNullOrEmpty(explicitParams)) {
+    // Omitted arguments are valid only when every target parameter is exposed by the signature.
+    llvm::SmallDenseSet<SymbolRefAttr> referencedInSignature;
+    getSymbolsUsedIn(targetType.getInputs(), referencedInSignature);
+    getSymbolsUsedIn(targetType.getResults(), referencedInSignature);
+
+    bool allParamsReferenced = llvm::all_of(targetParamDefs, [&](TemplateParamOp param) {
+      return referencedInSignature.contains(FlatSymbolRefAttr::get(param.getNameAttr()));
+    });
+    if (allParamsReferenced) {
+      FailureOr<UnificationMap> unifyResult = unify();
+      if (failed(unifyResult)) {
+        return failure();
+      }
+      return verifyTemplateParamsMatchInferred(
+          origin, explicitParams, targetParamDefs, unifyResult.value(), signatureKind
+      );
+    }
+    return origin->emitOpError().append(
+        "must provide template instantiation parameters when calling \"@", targetName,
+        "\" because not all template parameters of \"@", targetTemplateName,
+        "\" appear in the function type signature"
+    );
+  }
+
+  // Normalize integer attributes before checking arity and declared restrictions.
+  if (failed(forceIntAttrTypes(explicitParams.getValue(), [origin] {
+        return InFlightDiagnosticWrapper(origin->emitOpError());
+      }))) {
+    return failure();
+  }
+
+  size_t numTemplateParams = llvm::range_size(targetParamDefs);
+  if (explicitParams.size() != numTemplateParams) {
+    return origin->emitOpError().append(
+        "template instantiation has ", explicitParams.size(), " parameter(s) but \"@",
+        targetTemplateName, "\" expects ", numTemplateParams, " template parameter(s)"
+    );
+  }
+
+  if (failed(verifyTemplateParamValuesCompatibility(origin, explicitParams, targetParamDefs))) {
+    return failure();
+  }
+
+  // Reconcile explicit values with the target signature after local compatibility succeeds.
+  FailureOr<UnificationMap> unifyResult = unify();
+  if (failed(unifyResult)) {
+    return failure();
+  }
+  return verifyTemplateParamsMatchInferred(
+      origin, explicitParams, targetParamDefs, unifyResult.value(), signatureKind
+  );
+}
+
 LogicalResult verifyTemplateParamsMatchInferred(
     Operation *origin, ArrayAttr explicitParams,
     llvm::iterator_range<Region::op_iterator<TemplateParamOp>> targetParamDefs,

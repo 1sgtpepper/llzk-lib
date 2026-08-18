@@ -38,6 +38,41 @@ module attributes {llzk.lang} {
 
 // -----
 
+// Same-spelled parameters in different template scopes must still validate an omitted argument.
+module attributes {llzk.lang} {
+  poly.template @BoxTemplate {
+    poly.param @P
+    struct.def @Box {
+      function.def @compute() -> !struct.type<@BoxTemplate::@Box<[@P]>> {
+        %self = struct.new : <@BoxTemplate::@Box<[@P]>>
+        function.return %self : !struct.type<@BoxTemplate::@Box<[@P]>>
+      }
+      function.def @constrain(%self: !struct.type<@BoxTemplate::@Box<[@P]>>) {
+        function.return
+      }
+    }
+  }
+
+  poly.template @Target {
+    poly.param @F : !felt.type<"bn128">
+    function.def @accept(%value: !struct.type<@BoxTemplate::@Box<[@F]>>) {
+      function.return
+    }
+  }
+
+  poly.template @Caller {
+    poly.param @F : !felt.type<"goldilocks">
+    function.def @same_name_omitted(%value: !struct.type<@BoxTemplate::@Box<[@F]>>) {
+      // expected-error@+1 {{'function.call' op instantiation value '@F' is not compatible with parameter "@F" type restriction '!felt.type<"bn128">'}}
+      function.call @Target::@accept(%value) :
+          (!struct.type<@BoxTemplate::@Box<[@F]>>) -> ()
+      function.return
+    }
+  }
+}
+
+// -----
+
 module attributes {llzk.lang} {
   poly.template @BoxTemplate {
     poly.param @P

@@ -753,16 +753,6 @@ void IncludeOp::build(
   addTemplateParams<IncludeOp>(odsBuilder, props, templateParams);
 }
 
-LogicalResult IncludeOp::verifyTemplateParamsMatchInferred(
-    llvm::iterator_range<Region::op_iterator<TemplateParamOp>> targetParamDefs,
-    const UnificationMap &unifications
-) {
-  return llzk::verifyTemplateParamsMatchInferred(
-      getOperation(), getTemplateParamsAttr(), targetParamDefs, unifications,
-      llzk::TemplateParamSignatureKind::Contract
-  );
-}
-
 namespace {
 
 struct IncludeOpVerifier {
@@ -810,75 +800,13 @@ struct KnownTargetVerifier : public IncludeOpVerifier {
   LogicalResult verifyTemplateParams() override {
     Operation *tgtOp = tgt.getOperation();
     if (TemplateOp tgtOpParent = getParentOfType<TemplateOp>(tgtOp)) {
-      // When the target contract is within a TemplateOp, the IncludeOp may have
-      // template parameter instantiations that must be checked against the template parameters.
-      // - If the contract signature references all template parameters, then the parameter
-      //   instantiation list on the IncludeOp is optional, otherwise it's required.
-      // - If present, the instantiation list must provide a value for every template parameter
-      //   and the value must be type-compatible with the parameter's declared type (if any).
-      // - If present, the instantiation list must result in a contract signature that can be
-      //   unified with the IncludeOp's operand types.
       auto realParams = tgtOpParent.getConstOps<TemplateParamOp>();
-      ArrayAttr callParams = includeOp->getTemplateParamsAttr();
-
-      // When every parameter appears in the signature, infer and validate omitted arguments.
-      if (isNullOrEmpty(callParams)) {
-        llvm::SmallDenseSet<SymbolRefAttr> referencedInSignature;
-        llzk::getSymbolsUsedIn(tgtType.getInputs(), referencedInSignature);
-        llzk::getSymbolsUsedIn(tgtType.getResults(), referencedInSignature);
-
-        bool allParamsReferenced = llvm::all_of(realParams, [&](TemplateParamOp p) {
-          return referencedInSignature.contains(FlatSymbolRefAttr::get(p.getNameAttr()));
-        });
-        if (allParamsReferenced) {
-          FailureOr<UnificationMap> unifyResult = includeOp->unifyTypeSignature(tgtType);
-          if (failed(unifyResult)) {
-            return failure();
-          }
-          return includeOp->verifyTemplateParamsMatchInferred(realParams, unifyResult.value());
-        }
-        return includeOp->emitOpError().append(
-            "must provide template instantiation parameters when calling \"@", tgt.getSymName(),
-            "\" because not all template parameters of \"@", tgtOpParent.getSymName(),
-            "\" appear in the function type signature"
-        );
-      }
-
-      // Ensure `forceIntAttrTypes()` was successful on the IncludeOp's template parameters.
-      if (failed(llzk::forceIntAttrTypes(callParams.getValue(), [this] {
-        return llzk::InFlightDiagnosticWrapper(this->includeOp->emitOpError());
-      }))) {
-        return failure();
-      }
-
-      // The instantiation list is present. Check it has exactly one entry per template param.
-      size_t numTemplateParams = llvm::range_size(realParams);
-      if (callParams.size() != numTemplateParams) {
-        return includeOp->emitOpError().append(
-            "template instantiation has ", callParams.size(), " parameter(s) but \"@",
-            tgtOpParent.getSymName(), "\" expects ", numTemplateParams, " template parameter(s)"
-        );
-      }
-
-      // Check type compatibility of each provided value with the declared parameter type (if any).
-      if (failed(
-              llzk::verifyTemplateParamValuesCompatibility(
-                  includeOp->getOperation(), callParams, realParams
-              )
-          )) {
-        return failure();
-      }
-
-      // Check that the provided instantiation values are consistent with what type unification
-      // of the target contract signature against the IncludeOp's operand types would determine.
-      FailureOr<UnificationMap> unifyResult = includeOp->unifyTypeSignature(tgtType);
-      // This is already checked by `verifyInputs()`, but `verifyTemplateParams()` is called
-      // even if `verifyInputs()` fails for error aggregation, so we still need to return
-      // early here.
-      if (failed(unifyResult)) {
-        return failure();
-      }
-      return includeOp->verifyTemplateParamsMatchInferred(realParams, unifyResult.value());
+      return llzk::verifyKnownTargetTemplateParams(
+          includeOp->getOperation(), tgtType, tgt.getSymName(), tgtOpParent.getSymName(),
+          includeOp->getTemplateParamsAttr(), realParams,
+          llzk::TemplateParamSignatureKind::Contract,
+          [this] { return includeOp->unifyTypeSignature(tgtType); }
+      );
     } else {
       // Contracts outside templates cannot have template parameter instantiations.
       return verifyNoTemplateInstantiations();

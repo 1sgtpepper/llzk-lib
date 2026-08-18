@@ -614,16 +614,6 @@ void CallOp::build(
   addTemplateParams<CallOp>(odsBuilder, props, templateParams);
 }
 
-LogicalResult CallOp::verifyTemplateParamsMatchInferred(
-    llvm::iterator_range<Region::op_iterator<TemplateParamOp>> targetParamDefs,
-    const UnificationMap &unifications
-) {
-  return llzk::verifyTemplateParamsMatchInferred(
-      getOperation(), getTemplateParamsAttr(), targetParamDefs, unifications,
-      llzk::TemplateParamSignatureKind::Function
-  );
-}
-
 namespace {
 
 struct CallOpVerifier {
@@ -735,72 +725,13 @@ struct KnownTargetVerifier : public CallOpVerifier {
       // Struct function calls cannot contain template parameter instantiations.
       return verifyNoTemplateInstantiations();
     } else if (TemplateOp tgtOpParent = getParentOfType<TemplateOp>(tgtOp)) {
-      // When the target function is a free function within a TemplateOp, the CallOp may have
-      // template parameter instantiations that must be checked against the template parameters.
-      // - If the function type signature references all template parameters, then the parameter
-      //   instantiation list on the CallOp is optional, otherwise it's required.
-      // - If present, the instantiation list must provide a value for every template parameter
-      //   and the value must be type-compatible with the parameter's declared type (if any).
-      // - If present, the instantiation list must result in a function type signature that can
-      //   be unified with the CallOp's operand and result types.
       auto realParams = tgtOpParent.getConstOps<TemplateParamOp>();
-      ArrayAttr callParams = callOp->getTemplateParamsAttr();
-
-      // When every parameter appears in the signature, infer and validate omitted arguments.
-      if (isNullOrEmpty(callParams)) {
-        llvm::SmallDenseSet<SymbolRefAttr> referencedInSignature;
-        llzk::getSymbolsUsedIn(tgtType.getInputs(), referencedInSignature);
-        llzk::getSymbolsUsedIn(tgtType.getResults(), referencedInSignature);
-
-        bool allParamsReferenced = llvm::all_of(realParams, [&](TemplateParamOp p) {
-          return referencedInSignature.contains(FlatSymbolRefAttr::get(p.getNameAttr()));
-        });
-        if (allParamsReferenced) {
-          FailureOr<UnificationMap> unifyResult = callOp->unifyTypeSignature(tgtType);
-          if (failed(unifyResult)) {
-            return failure();
-          }
-          return callOp->verifyTemplateParamsMatchInferred(realParams, unifyResult.value());
-        }
-        // Tested in call_with_template_params_fail.llzk
-        return callOp->emitOpError().append(
-            "must provide template instantiation parameters when calling \"@", tgt.getSymName(),
-            "\" because not all template parameters of \"@", tgtOpParent.getSymName(),
-            "\" appear in the function type signature"
-        );
-      }
-
-      // Ensure `forceIntAttrTypes()` was successful on the CallOp's template parameters.
-      if (failed(llzk::forceIntAttrTypes(callParams.getValue(), [this] {
-        return llzk::InFlightDiagnosticWrapper(this->callOp->emitOpError());
-      }))) {
-        return failure();
-      }
-
-      // The instantiation list is present. Check it has exactly one entry per template param.
-      size_t numTemplateParams = llvm::range_size(realParams);
-      if (callParams.size() != numTemplateParams) {
-        // Tested in call_with_template_params_fail.llzk
-        return callOp->emitOpError().append(
-            "template instantiation has ", callParams.size(), " parameter(s) but \"@",
-            tgtOpParent.getSymName(), "\" expects ", numTemplateParams, " template parameter(s)"
-        );
-      }
-
-      // Check type compatibility of each provided value with the declared parameter type (if any).
-      if (failed(
-              llzk::verifyTemplateParamValuesCompatibility(
-                  callOp->getOperation(), callParams, realParams
-              )
-          )) {
-        return failure();
-      }
-
-      // Check that the provided instantiation values are consistent with what type unification
-      // of the target function types against the call's operand and result types would determine.
-      FailureOr<UnificationMap> unifyResult = callOp->unifyTypeSignature(tgtType);
-      assert(succeeded(unifyResult) && "already checked by `verifyInputs()` and `verifyOutputs()`");
-      return callOp->verifyTemplateParamsMatchInferred(realParams, unifyResult.value());
+      return llzk::verifyKnownTargetTemplateParams(
+          callOp->getOperation(), tgtType, tgt.getSymName(), tgtOpParent.getSymName(),
+          callOp->getTemplateParamsAttr(), realParams,
+          llzk::TemplateParamSignatureKind::Function,
+          [this] { return callOp->unifyTypeSignature(tgtType); }
+      );
     } else {
       // Non-template functions cannot contain template parameter instantiations.
       return verifyNoTemplateInstantiations();

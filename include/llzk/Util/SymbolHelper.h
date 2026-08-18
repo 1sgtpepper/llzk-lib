@@ -12,6 +12,7 @@
 #include "llzk/Util/SymbolLookup.h"
 #include "llzk/Util/TypeHelper.h"
 
+#include <mlir/IR/BuiltinTypes.h>
 #include <mlir/IR/Region.h>
 #include <mlir/Interfaces/CallInterfaces.h>
 
@@ -239,6 +240,17 @@ mlir::LogicalResult verifyTemplateParamsMatchInferred(
     mlir::Operation *origin, mlir::ArrayAttr explicitParams,
     llvm::iterator_range<mlir::Region::op_iterator<polymorphic::TemplateParamOp>> targetParamDefs,
     const UnificationMap &unifications, TemplateParamSignatureKind signatureKind
+);
+
+/// Verify template arguments for a known function or contract target, including omitted-argument
+/// inference, explicit-value compatibility, and signature reconciliation. The unification callback
+/// is invoked only when the target signature is needed to infer or reconcile template arguments.
+mlir::LogicalResult verifyKnownTargetTemplateParams(
+    mlir::Operation *origin, mlir::FunctionType targetType, llvm::StringRef targetName,
+    llvm::StringRef targetTemplateName, mlir::ArrayAttr explicitParams,
+    llvm::iterator_range<mlir::Region::op_iterator<polymorphic::TemplateParamOp>> targetParamDefs,
+    TemplateParamSignatureKind signatureKind,
+    llvm::function_ref<mlir::FailureOr<UnificationMap>()> unify
 );
 
 /// Ensure that the given symbol (that is used as a parameter of the given type) can be resolved.

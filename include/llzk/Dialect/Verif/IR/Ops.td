@@ -496,20 +496,6 @@ def IncludeOp
     /// so it can be passed to the builders as an `ArrayRef<ValueRange>`.
     static ::llvm::SmallVector<::mlir::ValueRange> toVectorOfValueRange(::mlir::OperandRangeRange);
 
-    /// Verify that each template parameter value provided in this `IncludeOp` is consistent with
-    /// the value inferred for the target `TemplateParamOp` in the given `UnificationMap`. The
-    /// `UnificationMap` is expected to contain the unification results of this `IncludeOp` against
-    /// the target contract type signature.
-    ///
-    /// The template parameter list may be omitted when all parameters are inferable from the
-    /// contract type signature.
-    ///
-    /// Pre-condition assertions when the list is present:
-    ///   - `getTemplateParamsAttr().size() == llvm::range_size(targetParamDefs)`
-    ::mlir::LogicalResult verifyTemplateParamsMatchInferred(
-        ::llvm::iterator_range<::mlir::Region::op_iterator<::llzk::polymorphic::TemplateParamOp>> targetParamDefs,
-        const UnificationMap &unifications
-    );
   }];
 }
 
