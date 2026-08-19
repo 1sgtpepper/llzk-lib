@@ -141,6 +141,65 @@ module attributes {llzk.lang} {
 
 // -----
 
+// Omitted type-only parameters must reject a unique value inferred through an unrestricted struct
+// parameter while accepting a concrete type inference.
+module attributes {llzk.lang} {
+  poly.template @BoxTemplate {
+    poly.param @P
+    struct.def @Box {
+      function.def @compute() -> !struct.type<@BoxTemplate::@Box<[@P]>> {
+        %self = struct.new : <@BoxTemplate::@Box<[@P]>>
+        function.return %self : !struct.type<@BoxTemplate::@Box<[@P]>>
+      }
+      function.def @constrain(%self: !struct.type<@BoxTemplate::@Box<[@P]>>) {
+        function.return
+      }
+    }
+  }
+
+  poly.template @TypeTarget {
+    poly.param @T : !poly.tvar<@T>
+    function.def @accept(%value: !struct.type<@BoxTemplate::@Box<[@T]>>) {
+      function.return
+    }
+    verif.contract @Base for @TypeTarget::@accept (
+        %value: !struct.type<@BoxTemplate::@Box<[@T]>>
+    ) {
+      %ok = arith.constant true
+      verif.ensure_compute %ok
+    }
+  }
+
+  function.def @wrongKind(%value: !struct.type<@BoxTemplate::@Box<[5]>>) {
+    function.return
+  }
+
+  function.def @concreteType(%value: !struct.type<@BoxTemplate::@Box<[index]>>) {
+    function.return
+  }
+
+  verif.contract @WrongKind for @wrongKind (
+      %value: !struct.type<@BoxTemplate::@Box<[5]>>
+  ) {
+    // expected-error@+1 {{'verif.include' op instantiation value '5 : index' is not compatible with parameter "@T" type restriction '!poly.tvar<@T>'}}
+    verif.include @TypeTarget::@Base(%value) :
+        (!struct.type<@BoxTemplate::@Box<[5]>>) -> ()
+    %ok = arith.constant true
+    verif.ensure_compute %ok
+  }
+
+  verif.contract @ConcreteType for @concreteType (
+      %value: !struct.type<@BoxTemplate::@Box<[index]>>
+  ) {
+    verif.include @TypeTarget::@Base(%value) :
+        (!struct.type<@BoxTemplate::@Box<[index]>>) -> ()
+    %ok = arith.constant true
+    verif.ensure_compute %ok
+  }
+}
+
+// -----
+
 module attributes {llzk.lang} {
   function.def @check(%x: index, %y: index) {
     function.return

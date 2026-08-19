@@ -601,12 +601,6 @@ LogicalResult verifyTemplateParamsMatchInferred(
             "\" from ", signatureDescription, " type signature"
         );
       }
-      // Type-only arguments can defer compatibility checks, but an ambiguous inference is already
-      // invalid and must not be skipped.
-      if (std::optional<Type> declaredType = paramOp.getTypeOpt();
-          declaredType && llvm::isa<TypeVarType>(*declaredType)) {
-        continue;
-      }
       if (failed(verifyTemplateParamValueCompatibility(origin, it->second, paramOp))) {
         return failure();
       }

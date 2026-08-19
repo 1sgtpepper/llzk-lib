@@ -294,6 +294,44 @@ module attributes {llzk.lang} {
 }
 // -----
 
+// Omitted type-only parameters must reject a unique value inferred through an unrestricted struct
+// parameter while accepting a concrete type inference.
+module attributes {llzk.lang} {
+  poly.template @BoxTemplate {
+    poly.param @P
+    struct.def @Box {
+      function.def @compute() -> !struct.type<@BoxTemplate::@Box<[@P]>> {
+        %self = struct.new : <@BoxTemplate::@Box<[@P]>>
+        function.return %self : !struct.type<@BoxTemplate::@Box<[@P]>>
+      }
+      function.def @constrain(%self: !struct.type<@BoxTemplate::@Box<[@P]>>) {
+        function.return
+      }
+    }
+  }
+
+  poly.template @TypeTarget {
+    poly.param @T : !poly.tvar<@T>
+    function.def @accept(%value: !struct.type<@BoxTemplate::@Box<[@T]>>) {
+      function.return
+    }
+  }
+
+  function.def @wrongKind(%value: !struct.type<@BoxTemplate::@Box<[5]>>) {
+    // expected-error@+1 {{'function.call' op instantiation value '5 : index' is not compatible with parameter "@T" type restriction '!poly.tvar<@T>'}}
+    function.call @TypeTarget::@accept(%value) :
+        (!struct.type<@BoxTemplate::@Box<[5]>>) -> ()
+    function.return
+  }
+
+  function.def @concreteType(%value: !struct.type<@BoxTemplate::@Box<[index]>>) {
+    function.call @TypeTarget::@accept(%value) :
+        (!struct.type<@BoxTemplate::@Box<[index]>>) -> ()
+    function.return
+  }
+}
+// -----
+
 module attributes {llzk.lang} {
   poly.template @GlobalFunc {
     poly.param @A

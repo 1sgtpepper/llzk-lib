@@ -349,8 +349,10 @@ def CallOp : FunctionDialectOp<
     inference based on the body of the callee function.
 
     Every explicit or inferred argument must satisfy its `poly.param` type restriction. If the
-    function signature independently infers a value for an explicitly supplied parameter, all
-    known fields, concrete values, and types must agree.
+    function signature independently infers a value for an explicitly supplied parameter, the
+    values must satisfy the generic unification rules. For felt-valued parameters, known fields
+    and concrete values must also agree; other symbolic equality remains subject to the generic
+    unifier.
 
     Symbol arguments must resolve to an enclosing template binding or a constant global; unknown,
     mutable-global, and wrong-kind symbols are rejected.
