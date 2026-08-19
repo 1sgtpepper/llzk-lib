@@ -48,7 +48,13 @@ module attributes {llzk.lang} {
       function.return %self : !struct.type<@Main>
     }
 
-    function.def @constrain(%self: !struct.type<@Main>) {
+    function.def @constrain(
+        %self: !struct.type<@Main>,
+        %global: !struct.type<@BoxTemplate::@Box<[@globals::@G]>>,
+        %literal: !struct.type<@BoxTemplate::@Box<[
+            #felt<const 35 : !felt.type<"bn128">>
+        ]>>
+    ) {
       function.return
     }
   }
