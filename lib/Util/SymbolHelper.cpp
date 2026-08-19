@@ -615,9 +615,8 @@ LogicalResult verifyTemplateParamsMatchInferred(
         // No inferred value means the signature did not expose this parameter to the operation.
         continue;
       }
-      ArrayRef<Attribute> inferredCandidates = candidates
-                                                    ? candidates(paramName, Side::RHS)
-                                                    : ArrayRef<Attribute>();
+      ArrayRef<Attribute> inferredCandidates =
+          candidates ? candidates(paramName, Side::RHS) : ArrayRef<Attribute>();
       std::optional<Type> requiredType = paramOp.getTypeOpt();
       if (inferredCandidates.size() > 1 && requiredType &&
           llvm::isa<felt::FeltType>(*requiredType)) {

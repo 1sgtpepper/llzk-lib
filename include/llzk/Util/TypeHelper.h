@@ -220,8 +220,7 @@ using UnificationMap = mlir::DenseMap<std::pair<mlir::SymbolRefAttr, Side>, mlir
 
 /// Record every symbolic candidate encountered during a contextual type unification without
 /// changing `UnificationMap`'s generic `nullptr` conflict semantics.
-using UnificationCandidateFn =
-    llvm::function_ref<void(mlir::SymbolRefAttr, Side, mlir::Attribute)>;
+using UnificationCandidateFn = llvm::function_ref<void(mlir::SymbolRefAttr, Side, mlir::Attribute)>;
 
 /// Return `true` iff the two ArrayRef instances containing StructType or ArrayType parameters
 /// are equivalent or could be equivalent after full instantiation of template parameters.
