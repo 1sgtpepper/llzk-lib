@@ -815,7 +815,15 @@ struct KnownTargetVerifier : public IncludeOpVerifier {
           includeOp->getOperation(), tgtType, tgt.getSymName(), tgtOpParent.getSymName(),
           includeOp->getTemplateParamsAttr(), realParams,
           llzk::TemplateParamSignatureKind::Contract,
-          [this] { return includeOp->unifyTypeSignature(tgtType); }
+          [this](llzk::UnificationCandidateFn recordCandidate) -> FailureOr<UnificationMap> {
+            UnificationMap unifications;
+            if (functionTypesUnify(
+                    includeOp->getTypeSignature(), tgtType, {}, &unifications, recordCandidate
+                )) {
+              return unifications;
+            }
+            return failure();
+          }
       );
     } else {
       // Contracts outside templates cannot have template parameter instantiations.

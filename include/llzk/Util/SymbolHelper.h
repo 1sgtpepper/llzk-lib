@@ -235,22 +235,28 @@ enum class TemplateParamSignatureKind : std::uint8_t { Function, Contract };
 
 /// Verify explicit template values against the values inferred from a call-like operation's target
 /// signature. The operation-specific entry points delegate here so value compatibility and
-/// conflict handling stay identical for function calls and contract includes.
+/// conflict handling stay identical for function calls and contract includes. When provided, the
+/// candidate lookup supplies all symbolic values preserved during contextual unification; it is
+/// used to reconcile repeated omitted felt arguments before generic ambiguity is reported.
 mlir::LogicalResult verifyTemplateParamsMatchInferred(
     mlir::Operation *origin, mlir::ArrayAttr explicitParams,
     llvm::iterator_range<mlir::Region::op_iterator<polymorphic::TemplateParamOp>> targetParamDefs,
-    const UnificationMap &unifications, TemplateParamSignatureKind signatureKind
+    const UnificationMap &unifications, TemplateParamSignatureKind signatureKind,
+    llvm::function_ref<mlir::ArrayRef<mlir::Attribute>(mlir::SymbolRefAttr, Side)> candidates =
+        nullptr
 );
 
 /// Verify template arguments for a known function or contract target, including omitted-argument
 /// inference, explicit-value compatibility, and signature reconciliation. The unification callback
 /// is invoked only when the target signature is needed to infer or reconcile template arguments.
+/// Its argument records symbolic candidates that contextual felt reconciliation may need to
+/// compare when repeated signature positions map to the same target parameter.
 mlir::LogicalResult verifyKnownTargetTemplateParams(
     mlir::Operation *origin, mlir::FunctionType targetType, llvm::StringRef targetName,
     llvm::StringRef targetTemplateName, mlir::ArrayAttr explicitParams,
     llvm::iterator_range<mlir::Region::op_iterator<polymorphic::TemplateParamOp>> targetParamDefs,
     TemplateParamSignatureKind signatureKind,
-    llvm::function_ref<mlir::FailureOr<UnificationMap>()> unify
+    llvm::function_ref<mlir::FailureOr<UnificationMap>(UnificationCandidateFn)> unify
 );
 
 /// Ensure that the given symbol (that is used as a parameter of the given type) can be resolved.

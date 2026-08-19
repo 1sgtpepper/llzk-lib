@@ -606,13 +606,17 @@ struct UnifierImpl {
   ArrayRef<StringRef> rhsRevPrefix;
   UnificationMap *unifications;
   AffineInstantiations *affineToIntTracker;
+  UnificationCandidateFn candidateRecorder;
   // This optional function can be used to provide an exception to the standard unification
   // rules and return a true/success result when it otherwise may not.
   llvm::function_ref<bool(Type oldTy, Type newTy)> overrideSuccess;
 
-  UnifierImpl(UnificationMap *unificationMap, ArrayRef<StringRef> rhsReversePrefix = {})
+  UnifierImpl(
+      UnificationMap *unificationMap, ArrayRef<StringRef> rhsReversePrefix = {},
+      UnificationCandidateFn recordCandidate = nullptr
+  )
       : rhsRevPrefix(rhsReversePrefix), unifications(unificationMap), affineToIntTracker(nullptr),
-        overrideSuccess(nullptr) {}
+        candidateRecorder(recordCandidate), overrideSuccess(nullptr) {}
 
   UnifierImpl &trackAffineToInt(AffineInstantiations *tracker) {
     this->affineToIntTracker = tracker;
@@ -807,7 +811,15 @@ private:
       // checks on the UnificationMap may do LHS checks, and in the case of both being
       // SymbolRefAttr, unification in either direction is possible.
       if (SymbolRefAttr otherSymAttr = dyn_cast<SymbolRefAttr>(attr)) {
+        if (candidateRecorder) {
+          // Preserve the reverse candidate before the generic tracker may collapse a conflict.
+          candidateRecorder(otherSymAttr, reverse(side), symRef);
+        }
         track(*unifications, reverse(side), otherSymAttr, symRef);
+      }
+      if (candidateRecorder) {
+        // Preserve the candidate before the generic tracker may collapse a conflict.
+        candidateRecorder(symRef, side, attr);
       }
       track(*unifications, side, symRef, attr);
     }
@@ -944,9 +956,9 @@ bool podTypesUnify(
 
 bool functionTypesUnify(
     FunctionType lhs, FunctionType rhs, ArrayRef<StringRef> rhsReversePrefix,
-    UnificationMap *unifications
+    UnificationMap *unifications, UnificationCandidateFn recordCandidate
 ) {
-  return UnifierImpl(unifications, rhsReversePrefix).functionTypesUnify(lhs, rhs);
+  return UnifierImpl(unifications, rhsReversePrefix, recordCandidate).functionTypesUnify(lhs, rhs);
 }
 
 bool typesUnify(

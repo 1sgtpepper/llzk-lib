@@ -28,6 +28,7 @@
 #include <mlir/IR/BuiltinTypes.h>
 #include <mlir/IR/Operation.h>
 
+#include <llvm/ADT/STLExtras.h>
 #include <llvm/ADT/TypeSwitch.h>
 #include <llvm/Support/Debug.h>
 #include <llvm/Support/ErrorHandling.h>
@@ -507,8 +508,25 @@ LogicalResult verifyKnownTargetTemplateParams(
     Operation *origin, FunctionType targetType, StringRef targetName, StringRef targetTemplateName,
     ArrayAttr explicitParams,
     llvm::iterator_range<Region::op_iterator<TemplateParamOp>> targetParamDefs,
-    TemplateParamSignatureKind signatureKind, llvm::function_ref<FailureOr<UnificationMap>()> unify
+    TemplateParamSignatureKind signatureKind,
+    llvm::function_ref<FailureOr<UnificationMap>(UnificationCandidateFn)> unify
 ) {
+  using CandidateMap =
+      llvm::DenseMap<std::pair<SymbolRefAttr, Side>, llvm::SmallVector<Attribute, 2>>;
+  CandidateMap candidateValues;
+  auto recordCandidate = [&](SymbolRefAttr symbol, Side side, Attribute value) {
+    auto &values = candidateValues[{symbol, side}];
+    if (llvm::find(values, value) == values.end()) {
+      values.push_back(value);
+    }
+  };
+  auto getCandidates = [&](SymbolRefAttr symbol, Side side) -> ArrayRef<Attribute> {
+    auto it = candidateValues.find({symbol, side});
+    return it == candidateValues.end() ? ArrayRef<Attribute>() : it->second;
+  };
+  UnificationCandidateFn candidateRecorder =
+      isNullOrEmpty(explicitParams) ? UnificationCandidateFn(recordCandidate) : nullptr;
+
   StringRef signatureDescription = [&] {
     switch (signatureKind) {
     case TemplateParamSignatureKind::Function:
@@ -529,12 +547,12 @@ LogicalResult verifyKnownTargetTemplateParams(
       return referencedInSignature.contains(FlatSymbolRefAttr::get(param.getNameAttr()));
     });
     if (allParamsReferenced) {
-      FailureOr<UnificationMap> unifyResult = unify();
+      FailureOr<UnificationMap> unifyResult = unify(candidateRecorder);
       if (failed(unifyResult)) {
         return failure();
       }
       return verifyTemplateParamsMatchInferred(
-          origin, explicitParams, targetParamDefs, unifyResult.value(), signatureKind
+          origin, explicitParams, targetParamDefs, unifyResult.value(), signatureKind, getCandidates
       );
     }
     return origin->emitOpError().append(
@@ -564,19 +582,20 @@ LogicalResult verifyKnownTargetTemplateParams(
   }
 
   // Reconcile explicit values with the target signature after local compatibility succeeds.
-  FailureOr<UnificationMap> unifyResult = unify();
+  FailureOr<UnificationMap> unifyResult = unify(candidateRecorder);
   if (failed(unifyResult)) {
     return failure();
   }
   return verifyTemplateParamsMatchInferred(
-      origin, explicitParams, targetParamDefs, unifyResult.value(), signatureKind
+      origin, explicitParams, targetParamDefs, unifyResult.value(), signatureKind, getCandidates
   );
 }
 
 LogicalResult verifyTemplateParamsMatchInferred(
     Operation *origin, ArrayAttr explicitParams,
     llvm::iterator_range<Region::op_iterator<TemplateParamOp>> targetParamDefs,
-    const UnificationMap &unifications, TemplateParamSignatureKind signatureKind
+    const UnificationMap &unifications, TemplateParamSignatureKind signatureKind,
+    llvm::function_ref<ArrayRef<Attribute>(SymbolRefAttr, Side)> candidates
 ) {
   StringRef signatureDescription = [&] {
     switch (signatureKind) {
@@ -590,9 +609,41 @@ LogicalResult verifyTemplateParamsMatchInferred(
 
   if (isNullOrEmpty(explicitParams)) {
     for (TemplateParamOp paramOp : targetParamDefs) {
-      auto it = unifications.find({FlatSymbolRefAttr::get(paramOp.getNameAttr()), Side::RHS});
+      FlatSymbolRefAttr paramName = FlatSymbolRefAttr::get(paramOp.getNameAttr());
+      auto it = unifications.find({paramName, Side::RHS});
       if (it == unifications.end()) {
         // No inferred value means the signature did not expose this parameter to the operation.
+        continue;
+      }
+      ArrayRef<Attribute> inferredCandidates = candidates
+                                                    ? candidates(paramName, Side::RHS)
+                                                    : ArrayRef<Attribute>();
+      std::optional<Type> requiredType = paramOp.getTypeOpt();
+      if (inferredCandidates.size() > 1 && requiredType &&
+          llvm::isa<felt::FeltType>(*requiredType)) {
+        for (Attribute candidate : inferredCandidates) {
+          if (failed(verifyTemplateParamValueCompatibility(origin, candidate, paramOp))) {
+            return failure();
+          }
+        }
+
+        SymbolTableCollection tables;
+        for (auto [i, lhsCandidate] : llvm::enumerate(inferredCandidates)) {
+          for (Attribute rhsCandidate : inferredCandidates.drop_front(i + 1)) {
+            FailureOr<bool> resolved = resolvedTemplateParamValuesUnify(
+                tables, origin, lhsCandidate, rhsCandidate, requiredType
+            );
+            if (failed(resolved)) {
+              return failure();
+            }
+            if (!*resolved) {
+              return origin->emitOpError().append(
+                  "cannot infer template instantiation value for parameter \"@", paramOp.getName(),
+                  "\" from ", signatureDescription, " type signature"
+              );
+            }
+          }
+        }
         continue;
       }
       if (!it->second) {
