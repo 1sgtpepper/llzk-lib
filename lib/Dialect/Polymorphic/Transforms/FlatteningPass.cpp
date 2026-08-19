@@ -1344,6 +1344,8 @@ static LogicalResult applyBodyConversions(
 
 class InstantiateFuncAtCallOp final : public OpRewritePattern<CallOp> {
   ConversionTracker &tracker_;
+  using CandidateMap =
+      DenseMap<std::pair<SymbolRefAttr, Side>, SmallVector<Attribute, 2>>;
 
 public:
   InstantiateFuncAtCallOp(MLIRContext *ctx, ConversionTracker &tracker)
@@ -1383,7 +1385,9 @@ public:
     // middle but the overall chain does not unify. Hence, this unification may fail and should
     // produce a meaningful error message if it does.
     // See: `test/Transforms/Flattening/instantiate_funcs_fail.llzk`
-    FailureOr<UnificationMap> unifyResult = unifyTypeSignature(op, callTgt, rewriter);
+    CandidateMap candidateValues;
+    FailureOr<UnificationMap> unifyResult =
+        unifyTypeSignature(op, callTgt, rewriter, candidateValues);
     if (failed(unifyResult)) {
       return failure();
     }
@@ -1396,7 +1400,7 @@ public:
     DenseMap<Attribute, Attribute> paramNameToConcrete;
     if (failed(collectConcreteTemplateParams(
             op, rewriter, symTables, callTgt, parentTemplate, unifyResult.value(),
-            paramNameToConcrete
+            candidateValues, paramNameToConcrete
         ))) {
       return failure();
     }
@@ -1450,11 +1454,22 @@ public:
 private:
   /// Re-run call/callee type unification so flattening can surface a useful error if a chain of
   /// partially-instantiated calls stops unifying once earlier substitutions have been applied.
+  /// Preserve repeated candidates so verified equivalent felt values can still materialize.
   static FailureOr<UnificationMap>
-  unifyTypeSignature(CallOp op, FuncDefOp callTgt, PatternRewriter &rewriter) {
-    FailureOr<UnificationMap> unifyResult = op.unifyTypeSignature(callTgt.getFunctionType());
-    if (succeeded(unifyResult)) {
-      return unifyResult;
+  unifyTypeSignature(
+      CallOp op, FuncDefOp callTgt, PatternRewriter &rewriter, CandidateMap &candidateValues
+  ) {
+    auto recordCandidate = [&](SymbolRefAttr symbol, Side side, Attribute value) {
+      auto &values = candidateValues[{symbol, side}];
+      if (llvm::find(values, value) == values.end()) {
+        values.push_back(value);
+      }
+    };
+    UnificationMap unifications;
+    if (functionTypesUnify(
+            op.getTypeSignature(), callTgt.getFunctionType(), {}, &unifications, recordCandidate
+        )) {
+      return unifications;
     }
     return rewriter.notifyMatchFailure(op, [&](Diagnostic &diag) {
       diag.append("target function type does not unify with call type ")
@@ -1469,6 +1484,7 @@ private:
   static LogicalResult collectConcreteTemplateParams(
       CallOp op, PatternRewriter &rewriter, SymbolTableCollection &symTables, FuncDefOp callTgt,
       TemplateOp parentTemplate, const UnificationMap &unifyResult,
+      const CandidateMap &candidateValues,
       DenseMap<Attribute, Attribute> &paramNameToConcrete
   ) {
     auto realParams = parentTemplate.getConstOps<TemplateParamOp>();
@@ -1490,17 +1506,37 @@ private:
 
     // If there's no template instantiation list, must infer all template parameters.
     if (isNullOrEmpty(callParams)) {
+      auto getCandidates = [&](SymbolRefAttr symbol, Side side) -> ArrayRef<Attribute> {
+        auto it = candidateValues.find({symbol, side});
+        return it == candidateValues.end() ? ArrayRef<Attribute>() : it->second;
+      };
+      if (failed(llzk::verifyTemplateParamsMatchInferred(
+              op.getOperation(), callParams, realParams, unifyResult,
+              TemplateParamSignatureKind::Function, getCandidates
+          ))) {
+        return rewriter.notifyMatchFailure(op, [&](Diagnostic &diag) {
+          diag.append("incompatible with inferred param value(s)");
+        });
+      }
       for (auto paramOp : realParams) {
         auto paramName = FlatSymbolRefAttr::get(paramOp.getSymNameAttr());
         auto inferredValOpt = inferUnifiedParam(unifyResult, paramName);
-        if (!inferredValOpt.has_value()) {
+        Attribute inferredVal = inferredValOpt.value_or(Attribute());
+        if (!inferredVal) {
+          for (Attribute candidate : getCandidates(paramName, Side::RHS)) {
+            if (isConcreteAttr(candidate)) {
+              inferredVal = candidate;
+              break;
+            }
+          }
+        }
+        if (!inferredVal) {
           LLVM_DEBUG(
               llvm::dbgs() << "[InstantiateFuncAtCallOp]  unification for param '" << paramName
                            << "': not found\n"
           );
           continue;
         }
-        Attribute inferredVal = *inferredValOpt;
         LLVM_DEBUG(
             llvm::dbgs() << "[InstantiateFuncAtCallOp]  inferredVal: " << inferredVal << '\n'
         );
