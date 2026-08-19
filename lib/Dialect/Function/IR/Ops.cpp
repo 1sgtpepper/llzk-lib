@@ -739,15 +739,15 @@ struct KnownTargetVerifier : public CallOpVerifier {
       return llzk::verifyKnownTargetTemplateParams(
           callOp->getOperation(), tgtType, tgt.getSymName(), tgtOpParent.getSymName(),
           callOp->getTemplateParamsAttr(), realParams, llzk::TemplateParamSignatureKind::Function,
-        [this](llzk::UnificationCandidateFn recordCandidate) -> FailureOr<UnificationMap> {
-          UnificationMap unifications;
-          if (functionTypesUnify(
-                  callOp->getTypeSignature(), tgtType, {}, &unifications, recordCandidate
-              )) {
-            return unifications;
-          }
-          return failure();
+          [this](llzk::UnificationCandidateFn recordCandidate) -> FailureOr<UnificationMap> {
+        UnificationMap unifications;
+        if (functionTypesUnify(
+                callOp->getTypeSignature(), tgtType, {}, &unifications, recordCandidate
+            )) {
+          return unifications;
         }
+        return failure();
+      }
       );
     } else {
       // Non-template functions cannot contain template parameter instantiations.
