@@ -1,6 +1,7 @@
 // RUN: llzk-opt -split-input-file --llzk-compute-constrain-to-product="root-struct=A" --llzk-fuse-product-control-flow %s | FileCheck --enable-var-scope %s
 // REQUIRES: raghav-cf-fusion
 
+// Different loop steps produce different trip counts, so the compute and constrain loops stay separate.
 module attributes {llzk.lang = "llzk"} {
     poly.template @TA {
       poly.param @N : index
@@ -96,6 +97,7 @@ module attributes {llzk.lang = "llzk"} {
 // CHECK-NEXT:    }
 // CHECK-NEXT:  }
 // -----
+// Nested loops with different outer-loop steps are not matching loop pairs and remain separate.
 module attributes {llzk.lang = "llzk"} {
     poly.template @TA {
       poly.param @N : index
@@ -218,6 +220,7 @@ module attributes {llzk.lang = "llzk"} {
 // CHECK-NEXT:    }
 // CHECK-NEXT:  }
 // -----
+// The compute and constrain regions have different control-flow nesting, so no loop pair is fused.
 module attributes {llzk.lang = "llzk"} {
     poly.template @TA {
       poly.param @N : index
