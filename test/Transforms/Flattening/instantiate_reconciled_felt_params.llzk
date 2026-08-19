@@ -1,0 +1,33 @@
+// RUN: llzk-opt -llzk-flatten -verify-diagnostics %s | FileCheck --enable-var-scope %s
+
+// The verifier accepts equivalent symbolic and literal felt evidence for an omitted
+// target template argument. Flattening must retain the literal candidate to materialize
+// the target function instantiation.
+module attributes {llzk.lang} {
+  poly.template @RepeatedFelt {
+    poly.param @F : !felt.type<"bn128">
+    function.def @accept(%global: !felt.type<@F>, %literal: !felt.type<@F>) {
+      function.return
+    }
+  }
+
+  module @globals {
+    global.def const @G : !felt.type<"bn128"> = 35
+  }
+
+  struct.def @Main {
+    function.def @compute(
+        %global: !felt.type<@globals::@G>,
+        %literal: !felt.type<#felt<const 35 : !felt.type<"bn128">>>
+    ) -> !struct.type<@Main> {
+      %self = struct.new : !struct.type<@Main>
+      function.call @RepeatedFelt::@accept(%global, %literal) :
+          (!felt.type<@globals::@G>, !felt.type<#felt<const 35 : !felt.type<"bn128">>>) -> ()
+      function.return %self : !struct.type<@Main>
+    }
+
+    function.def @constrain(%self: !struct.type<@Main>) {
+      function.return
+    }
+  }
+}
