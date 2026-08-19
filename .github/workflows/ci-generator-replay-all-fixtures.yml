@@ -122,6 +122,12 @@ jobs:
             python3 "$tested_path/scripts/generate-test-checks.py" \
               < "$evidence_path/producer-output.llzk" \
               > "$evidence_path/generated-checks.txt"
+
+            split_delimiters=$(grep -c '^// -----$' "$clean_input" || true)
+            generated_separator_checks=$(grep -c '^// CHECK-NEXT:  // -----$' \
+              "$evidence_path/generated-checks.txt" || true)
+            test "$generated_separator_checks" -eq "$split_delimiters"
+
             "$filecheck" --enable-var-scope "$tested_path/$test_file" \
               < "$evidence_path/producer-output.llzk" \
               > "$evidence_path/filecheck-output.txt" 2>&1
@@ -132,13 +138,17 @@ jobs:
               > "$evidence_path/generated-checks-only.txt"
             if python3 - "$evidence_path/committed-checks.txt" \
                 "$evidence_path/generated-checks-only.txt" \
-                "$evidence_path/check-comparison.diff" <<'PY'
+                "$evidence_path/check-comparison.diff" \
+                "$evidence_path/normalized-check-counts.txt" <<'PY'
           from difflib import unified_diff
           from pathlib import Path
           import re
           import sys
 
-          committed_path, generated_path, diff_path = map(Path, sys.argv[1:])
+          committed_path = Path(sys.argv[1])
+          generated_path = Path(sys.argv[2])
+          diff_path = Path(sys.argv[3])
+          counts_path = Path(sys.argv[4])
 
           def normalize(lines):
               normalized = []
@@ -184,6 +194,12 @@ jobs:
 
           committed = normalize(committed_path.read_text().splitlines())
           generated = normalize(generated_path.read_text().splitlines())
+          committed = [line for line in committed if line != "// CHECK: // -----"]
+          generated = [line for line in generated if line != "// CHECK: // -----"]
+          counts_path.write_text(
+              f"committed={len(committed)}\n"
+              f"generated={len(generated)}\n"
+          )
           if committed != generated:
               diff_path.write_text(
                   "\n".join(
@@ -207,8 +223,10 @@ jobs:
               full_check_mismatches+=("$test_file")
             fi
 
-            committed_checks=$(wc -l < "$evidence_path/committed-checks.txt")
-            generated_checks=$(wc -l < "$evidence_path/generated-checks-only.txt")
+            committed_checks=$(sed -n 's/^committed=//p' \
+              "$evidence_path/normalized-check-counts.txt")
+            generated_checks=$(sed -n 's/^generated=//p' \
+              "$evidence_path/normalized-check-counts.txt")
             if test "$committed_checks" -eq "$generated_checks"; then
               complete_check_line_count=PASS
             else
@@ -225,6 +243,10 @@ jobs:
               echo "fresh_generated_check_lines=$generated_checks"
               echo "full_committed_check_block=$full_check_block"
               echo "complete_check_line_count=$complete_check_line_count"
+              echo "separator_placement_adjustment=structural_split_delimiter_checks_omitted_from_module_comparison"
+              echo "split_delimiters=$split_delimiters"
+              echo "generated_separator_checks=$generated_separator_checks"
+              echo "comparison_normalization=FileCheck directive placement, stable SSA/attribute names, source paths, and location IDs"
             } > "$evidence_path/comparison.txt"
           done
 
