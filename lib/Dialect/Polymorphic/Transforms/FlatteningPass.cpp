@@ -2700,7 +2700,18 @@ class PassImpl : public llzk::polymorphic::impl::FlatteningPassBase<PassImpl> {
 
       LLVM_DEBUG({
         llvm::dbgs() << "[FlatteningPass(count=" << loopCount
-                     << ")] Running step 1: struct instantiation\n";
+                     << ")] Running step 1: function instantiation\n";
+      });
+      // Instantiate functions before their parameterized operand types are materialized. The
+      // function signature is where omitted template arguments retain their symbolic evidence.
+      if (failed(Step2_InstantiateFunctions::run(modOp, tracker))) {
+        llvm::errs() << DEBUG_TYPE << " failed while instantiating functions in templates\n";
+        return failure();
+      }
+
+      LLVM_DEBUG({
+        llvm::dbgs() << "[FlatteningPass(count=" << loopCount
+                     << ")] Running step 2: struct instantiation\n";
       });
       // Find calls to "compute()" that return a parameterized struct type and replace it to call an
       // instantiated version of the struct that has parameters replaced with the constant values.
@@ -2709,15 +2720,10 @@ class PassImpl : public llzk::polymorphic::impl::FlatteningPassBase<PassImpl> {
         llvm::errs() << DEBUG_TYPE << " failed while instantiating structs in templates\n";
         return failure();
       }
-      // Instantiate calls to templated functions.
-      if (failed(Step2_InstantiateFunctions::run(modOp, tracker))) {
-        llvm::errs() << DEBUG_TYPE << " failed while instantiating functions in templates\n";
-        return failure();
-      }
 
       LLVM_DEBUG({
         llvm::dbgs() << "[FlatteningPass(count=" << loopCount
-                     << ")] Running step 2: loop unrolling\n";
+                     << ")] Running step 3: loop unrolling\n";
       });
       // Unroll loops with known iterations.
       if (failed(Step3_Unroll::run(modOp, tracker))) {
@@ -2727,7 +2733,7 @@ class PassImpl : public llzk::polymorphic::impl::FlatteningPassBase<PassImpl> {
 
       LLVM_DEBUG({
         llvm::dbgs() << "[FlatteningPass(count=" << loopCount
-                     << ")] Running step 3: affine maps instantiation\n";
+                     << ")] Running step 4: affine maps instantiation\n";
       });
       // Instantiate affine_map parameters of StructType and ArrayType.
       if (failed(Step4_InstantiateAffineMaps::run(modOp, tracker))) {
@@ -2737,7 +2743,7 @@ class PassImpl : public llzk::polymorphic::impl::FlatteningPassBase<PassImpl> {
 
       LLVM_DEBUG({
         llvm::dbgs() << "[FlatteningPass(count=" << loopCount
-                     << ")] Running step 4: type propagation\n";
+                     << ")] Running step 5: type propagation\n";
       });
       // Propagate updated types using the semantics of various ops.
       if (failed(Step5_PropagateTypes::run(modOp, tracker))) {
@@ -2776,7 +2782,7 @@ class PassImpl : public llzk::polymorphic::impl::FlatteningPassBase<PassImpl> {
   // Perform cleanup according to the 'cleanupMode' option.
   LogicalResult cleanupSwitch(ModuleOp modOp, const ConversionTracker &tracker) {
     FlatteningCleanupMode effectiveCleanupMode = getEffectiveCleanupMode();
-    LLVM_DEBUG({ llvm::dbgs() << "[FlatteningPass] Running step 5: cleanup "; });
+    LLVM_DEBUG({ llvm::dbgs() << "[FlatteningPass] Running step 6: cleanup "; });
     switch (effectiveCleanupMode) {
     case FlatteningCleanupMode::MainAsRoot:
       LLVM_DEBUG(llvm::dbgs() << "(main as root mode)\n");
