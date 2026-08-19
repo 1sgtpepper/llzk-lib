@@ -4,9 +4,26 @@
 // target template argument. Flattening must retain the literal candidate to materialize
 // the target function instantiation.
 module attributes {llzk.lang} {
+  poly.template @BoxTemplate {
+    poly.param @P
+    struct.def @Box {
+      function.def @compute() -> !struct.type<@BoxTemplate::@Box<[@P]>> {
+        %self = struct.new : !struct.type<@BoxTemplate::@Box<[@P]>>
+        function.return %self : !struct.type<@BoxTemplate::@Box<[@P]>>
+      }
+
+      function.def @constrain(%self: !struct.type<@BoxTemplate::@Box<[@P]>>) {
+        function.return
+      }
+    }
+  }
+
   poly.template @RepeatedFelt {
     poly.param @F : !felt.type<"bn128">
-    function.def @accept(%global: !felt.type<@F>, %literal: !felt.type<@F>) {
+    function.def @accept(
+        %global: !struct.type<@BoxTemplate::@Box<[@F]>>,
+        %literal: !struct.type<@BoxTemplate::@Box<[@F]>>
+    ) {
       function.return
     }
   }
@@ -17,12 +34,17 @@ module attributes {llzk.lang} {
 
   struct.def @Main {
     function.def @compute(
-        %global: !felt.type<@globals::@G>,
-        %literal: !felt.type<#felt<const 35 : !felt.type<"bn128">>>
+        %global: !struct.type<@BoxTemplate::@Box<[@globals::@G]>>,
+        %literal: !struct.type<@BoxTemplate::@Box<[
+            #felt<const 35 : !felt.type<"bn128">>
+        ]>>
     ) -> !struct.type<@Main> {
       %self = struct.new : !struct.type<@Main>
       function.call @RepeatedFelt::@accept(%global, %literal) :
-          (!felt.type<@globals::@G>, !felt.type<#felt<const 35 : !felt.type<"bn128">>>) -> ()
+          (!struct.type<@BoxTemplate::@Box<[@globals::@G]>>,
+           !struct.type<@BoxTemplate::@Box<[
+               #felt<const 35 : !felt.type<"bn128">>
+           ]>>) -> ()
       function.return %self : !struct.type<@Main>
     }
 
