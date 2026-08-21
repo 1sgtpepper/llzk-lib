@@ -187,9 +187,7 @@ static bool canHoistMemberRead(
 static bool isSafeToMoveConstrainOp(Operation *op) {
   // ConstraintOpInterface identifies constraint-producing operations but does not guarantee
   // movement safety. Keep this whitelist explicit until the interface carries that contract.
-  if (isa<constrain::EmitEqualityOp, constrain::EmitContainmentOp, NonDetOp>(
-          op
-      )) {
+  if (isa<constrain::EmitEqualityOp, constrain::EmitContainmentOp, NonDetOp>(op)) {
     return true;
   }
 
@@ -465,9 +463,7 @@ fuseMatchingIfPairs(Region &body, MLIRContext *context, SymbolTableCollection &s
 /// Direct member writes are the one stateful operation this pass deliberately moves as part of
 /// the existing product layout. Every other moved operation must be recursively pure so
 /// global/RAM accesses, allocations, calls, traps, and unknown effects remain ordered.
-static bool isSafeToSinkComputeOp(Operation *op) {
-  return isa<MemberWriteOp>(op) || isPure(op);
-}
+static bool isSafeToSinkComputeOp(Operation *op) { return isa<MemberWriteOp>(op) || isPure(op); }
 
 /// Collect compute-sourced operations between sibling loops that must move after `constrainLoop`.
 /// Fail if the loops do not share a block, an intervening operation has observable effects, the
