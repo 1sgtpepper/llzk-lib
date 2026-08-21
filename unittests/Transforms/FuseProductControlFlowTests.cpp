@@ -185,4 +185,101 @@ TEST_F(FuseProductControlFlowTests, UnmarkedMemberReadPreventsFusion) {
   EXPECT_TRUE(write->isBeforeInBlock(read));
 }
 
+TEST_F(FuseProductControlFlowTests, EffectfulOperationsBetweenLoopsPreventFusion) {
+  // Global and RAM operations between the loops must keep their source-local order.
+  mlir::OwningOpRef<mlir::ModuleOp> module = mlir::parseSourceString<mlir::ModuleOp>(
+      R"mlir(
+    module attributes {llzk.lang = "llzk"} {
+      global.def @g : !felt.type = 0
+
+      struct.def @GlobalCase {
+        struct.member @out : !felt.type
+
+        function.def @product(%value: !felt.type) -> !struct.type<@GlobalCase> {
+          %self = struct.new : <@GlobalCase>
+          %c0 = arith.constant 0 : index
+          %c1 = arith.constant 1 : index
+          %c2 = arith.constant 2 : index
+          %one = felt.const 1
+
+          scf.for %i = %c0 to %c2 step %c1 {
+            %computed = felt.add %value, %one
+            scf.yield
+          } {product_source = "compute"}
+
+          %stored = felt.const 2 {product_source = "compute"}
+          global.write @g = %stored : !felt.type {product_source = "compute"}
+
+          scf.for %i = %c0 to %c2 step %c1 {
+            %actual = global.read @g : !felt.type {product_source = "constrain"}
+            constrain.eq %actual, %value : !felt.type
+            scf.yield
+          } {product_source = "constrain"}
+
+          struct.writem %self[@out] = %value : <@GlobalCase>, !felt.type
+          function.return %self : !struct.type<@GlobalCase>
+        }
+      }
+
+      struct.def @RamCase {
+        struct.member @out : !felt.type
+
+        function.def @product(%value: !felt.type) -> !struct.type<@RamCase> {
+          %self = struct.new : <@RamCase>
+          %addr = arith.constant 0 : index
+          %c0 = arith.constant 0 : index
+          %c1 = arith.constant 1 : index
+          %c2 = arith.constant 2 : index
+          %one = felt.const 1
+
+          scf.for %i = %c0 to %c2 step %c1 {
+            %computed = felt.add %value, %one
+            scf.yield
+          } {product_source = "compute"}
+
+          %stored = felt.const 2 {product_source = "compute"}
+          ram.store %addr, %stored : !felt.type {product_source = "compute"}
+
+          scf.for %i = %c0 to %c2 step %c1 {
+            %actual = ram.load %addr : !felt.type {product_source = "constrain"}
+            constrain.eq %actual, %value : !felt.type
+            scf.yield
+          } {product_source = "constrain"}
+
+          struct.writem %self[@out] = %value : <@RamCase>, !felt.type
+          function.return %self : !struct.type<@RamCase>
+        }
+      }
+    }
+  )mlir",
+      &ctx
+  );
+  ASSERT_TRUE(module);
+
+  mlir::PassManager pm(&ctx);
+  pm.addPass(llzk::createFuseProductControlFlowPass());
+  ASSERT_TRUE(mlir::succeeded(pm.run(*module)));
+
+  unsigned computeLoops = 0;
+  unsigned constrainLoops = 0;
+  unsigned fusedLoops = 0;
+  module->walk([&](mlir::scf::ForOp loop) {
+    mlir::StringAttr source = loop->getAttrOfType<mlir::StringAttr>("product_source");
+    if (!source) {
+      return;
+    }
+    if (source.getValue() == "compute") {
+      ++computeLoops;
+    } else if (source.getValue() == "constrain") {
+      ++constrainLoops;
+    } else if (source.getValue() == "fused") {
+      ++fusedLoops;
+    }
+  });
+
+  EXPECT_EQ(computeLoops, 2U);
+  EXPECT_EQ(constrainLoops, 2U);
+  EXPECT_EQ(fusedLoops, 0U);
+}
+
 } // namespace
