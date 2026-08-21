@@ -54,7 +54,17 @@ using namespace llzk::component;
 static void fuseMatchingRegionControlFlow(
     Region &body, MLIRContext *context, SymbolTableCollection &symbolTables
 );
-static inline bool areOppositeProductSources(Operation *a, Operation *b);
+
+/// Return whether one operation is compute-sourced and the other is constrain-sourced.
+static inline bool areOppositeProductSources(Operation *a, Operation *b) {
+  std::optional<llvm::StringRef> sourceA = getProductSource(a);
+  std::optional<llvm::StringRef> sourceB = getProductSource(b);
+  if (!sourceA || !sourceB) {
+    return false;
+  }
+  return (*sourceA == FUNC_NAME_COMPUTE && *sourceB == FUNC_NAME_CONSTRAIN) ||
+         (*sourceA == FUNC_NAME_CONSTRAIN && *sourceB == FUNC_NAME_COMPUTE);
+}
 
 // Bitwidth of `index` for instantiating SMT variables
 constexpr int INDEX_WIDTH = 64;
@@ -90,8 +100,8 @@ static llvm::SMTExprRef tripCount(scf::ForOp op, llvm::SMTSolver *solver) {
   );
 }
 
-/// Return whether two marked loops share a region, have opposite product roles, and have provably
-/// equal trip counts.
+/// Return whether two marked loops have the same parent region, have opposite product roles, and
+/// have provably equal trip counts.
 static inline bool canLoopsBeFused(scf::ForOp a, scf::ForOp b) {
   if (a->getParentRegion() != b->getParentRegion()) {
     return false;
@@ -121,17 +131,6 @@ static inline bool canLoopsBeFused(scf::ForOp a, scf::ForOp b) {
   ));
 
   return !*solver->check();
-}
-
-/// Return whether one operation is compute-sourced and the other is constrain-sourced.
-static inline bool areOppositeProductSources(Operation *a, Operation *b) {
-  std::optional<llvm::StringRef> sourceA = getProductSource(a);
-  std::optional<llvm::StringRef> sourceB = getProductSource(b);
-  if (!sourceA || !sourceB) {
-    return false;
-  }
-  return (*sourceA == FUNC_NAME_COMPUTE && *sourceB == FUNC_NAME_CONSTRAIN) ||
-         (*sourceA == FUNC_NAME_CONSTRAIN && *sourceB == FUNC_NAME_COMPUTE);
 }
 
 /// Return whether every operand of `op` is available at `insertionPoint` using the conservative
@@ -188,7 +187,7 @@ static bool canHoistMemberRead(
 static bool isSafeToMoveConstrainOp(Operation *op) {
   // ConstraintOpInterface identifies constraint-producing operations but does not guarantee
   // movement safety. Keep this whitelist explicit until the interface carries that contract.
-  if (isa<llzk::constrain::EmitEqualityOp, llzk::constrain::EmitContainmentOp, llzk::NonDetOp>(
+  if (isa<constrain::EmitEqualityOp, constrain::EmitContainmentOp, NonDetOp>(
           op
       )) {
     return true;
@@ -209,7 +208,27 @@ static bool isSafeToMoveConstrainOp(Operation *op) {
   return isPure(op);
 }
 
-/// Return attributes that can be preserved on an operation created by if fusion.
+/// Return whether the constrain branch contains an operation unsafe to move across compute-side
+/// operations.
+///
+/// The branch is cloned into the earlier compute branch. An operation is movable only when this
+/// pass explicitly admits it or MLIR proves it pure; the walk rejects reads, writes, calls, traps,
+/// and unknown effects.
+static bool hasUnsafeMovedConstrainOp(scf::IfOp constrainIf) {
+  auto result = constrainIf->walk([&](Operation *op) {
+    if (op == constrainIf.getOperation() || isa<scf::YieldOp>(op)) {
+      return WalkResult::advance();
+    }
+
+    if (isSafeToMoveConstrainOp(op)) {
+      return WalkResult::advance();
+    }
+    return WalkResult::interrupt();
+  });
+  return result.wasInterrupted();
+}
+
+/// Return attributes that can be preserved on an operation created by `scf.if` fusion.
 ///
 /// `product_source` identifies the source role of each input operation and cannot be copied to
 /// the operation that combines both roles. All other attributes must agree exactly; otherwise the
@@ -223,26 +242,6 @@ static std::optional<DictionaryAttr> getCompatibleFusedAttrs(Operation *a, Opera
     return std::nullopt;
   }
   return attrsA.getDictionary(a->getContext());
-}
-
-/// Return whether the constrain branch contains an operation unsafe to move across compute-side
-/// operations.
-///
-/// The branch is cloned into the earlier compute branch. An operation is movable only when this
-/// pass explicitly admits it or MLIR proves it pure; the walk rejects reads, writes, calls, traps,
-/// and unknown effects.
-static bool hasUnsafeMovedConstrainOp(scf::IfOp constrainIf) {
-  auto result = constrainIf->walk([&](Operation *op) {
-    if (op == constrainIf.getOperation() || isa<scf::YieldOp>(op)) {
-      return WalkResult::advance();
-    }
-
-    if (!isSafeToMoveConstrainOp(op)) {
-      return WalkResult::interrupt();
-    }
-    return WalkResult::advance();
-  });
-  return result.wasInterrupted();
 }
 
 /// Collect the compute-if result mappings needed by `constrainIf` and reject unsafe crossings.
@@ -285,10 +284,7 @@ static bool collectConstrainValueMappings(
     valueToResult[result] = idx;
   }
 
-  if (hasUnsafeMovedConstrainOp(constrainIf)) {
-    return false;
-  }
-  return true;
+  return !hasUnsafeMovedConstrainOp(constrainIf);
 }
 
 /// Return whether two marked sibling `scf.if` ops satisfy the conservative fusion contract.
@@ -355,8 +351,8 @@ static void cloneIfBranch(
   IRMapping mapper;
   builder.setInsertionPointToEnd(destBlock);
 
-  scf::YieldOp computeYield = cast<scf::YieldOp>(computeBlock->getTerminator());
-  scf::YieldOp constrainYield = cast<scf::YieldOp>(constrainBlock->getTerminator());
+  scf::YieldOp computeYield = llvm::cast<scf::YieldOp>(computeBlock->getTerminator());
+  scf::YieldOp constrainYield = llvm::cast<scf::YieldOp>(constrainBlock->getTerminator());
   for (Operation &op : computeBlock->without_terminator()) {
     builder.clone(op, mapper);
   }
@@ -448,6 +444,7 @@ fuseMatchingIfPairs(Region &body, MLIRContext *context, SymbolTableCollection &s
     } else if (*productSource == FUNC_NAME_CONSTRAIN) {
       constrainIfs.push_back(ifOp);
     }
+    // Defer nested `if` until their enclosing pair has been fused.
     return WalkResult::skip();
   });
 
@@ -463,9 +460,19 @@ fuseMatchingIfPairs(Region &body, MLIRContext *context, SymbolTableCollection &s
   }
 }
 
+/// Return whether sinking `op` across the constrain loop preserves observable effects.
+///
+/// Direct member writes are the one stateful operation this pass deliberately moves as part of
+/// the existing product layout. Every other moved operation must be recursively pure so
+/// global/RAM accesses, allocations, calls, traps, and unknown effects remain ordered.
+static bool isSafeToSinkComputeOp(Operation *op) {
+  return isa<MemberWriteOp>(op) || isPure(op);
+}
+
 /// Collect compute-sourced operations between sibling loops that must move after `constrainLoop`.
-/// Fail if the loops do not share a block, the move would cross already-fused constraint work, or
-/// sinking a result would place it below a surviving user.
+/// Fail if the loops do not share a block, an intervening operation has observable effects, the
+/// move would cross already-fused constraint work, or sinking a result would place it below a
+/// surviving user.
 static FailureOr<SmallVector<Operation *>>
 canPrepareForFusion(scf::ForOp computeLoop, scf::ForOp constrainLoop) {
   if (computeLoop->getBlock() != constrainLoop->getBlock()) {
@@ -479,13 +486,16 @@ canPrepareForFusion(scf::ForOp computeLoop, scf::ForOp constrainLoop) {
       return failure();
     }
     if (hasProductSource(op, FUNC_NAME_COMPUTE)) {
+      if (!isSafeToSinkComputeOp(op)) {
+        return failure();
+      }
       opsToSink.push_back(op);
     }
   }
 
   DominanceInfo dominanceInfo(computeLoop->getParentOp());
-  auto isMovedWithSink = [&](Operation *user) {
-    return llvm::any_of(opsToSink, [&](Operation *sink) {
+  auto isMovedWithSink = [&opsToSink](Operation *user) {
+    return llvm::any_of(opsToSink, [user](Operation *sink) {
       return sink == user || sink->isAncestor(user);
     });
   };
