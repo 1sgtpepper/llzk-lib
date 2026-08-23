@@ -16,7 +16,6 @@
 #include "llzk/Dialect/Function/IR/Ops.h"
 
 #include "llzk/Dialect/Function/IR/Dialect.h"
-#include "llzk/Dialect/Global/IR/Ops.h"
 #include "llzk/Dialect/LLZK/IR/AttributeHelper.h"
 #include "llzk/Dialect/LLZK/IR/Versioning.h"
 #include "llzk/Dialect/Polymorphic/IR/Types.h"

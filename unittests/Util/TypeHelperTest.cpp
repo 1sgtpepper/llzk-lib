@@ -92,6 +92,17 @@ TEST_F(TypeHelperTests, test_functionTypesUnify_Pass) {
   ASSERT_TRUE(functionTypesUnify(a, b));
 }
 
+TEST_F(TypeHelperTests, test_functionTypesUnify_equalSymbolsDoNotChangeGenericUnifications) {
+  FlatSymbolRefAttr param = FlatSymbolRefAttr::get(&ctx, "F");
+  StructType structType =
+      StructType::get(FlatSymbolRefAttr::get(&ctx, "Box"), ArrayRef<Attribute> {param});
+  FunctionType functionType = FunctionType::get(&ctx, {structType}, {});
+  UnificationMap unifications;
+
+  ASSERT_TRUE(functionTypesUnify(functionType, functionType, {}, &unifications));
+  EXPECT_TRUE(unifications.empty());
+}
+
 TEST_F(TypeHelperTests, test_functionTypesUnify_Input_Fail) {
   IndexType tyIndex = IndexType::get(&ctx);
   FunctionType a = FunctionType::get(&ctx, {IntegerType::get(&ctx, 8)}, {tyIndex});

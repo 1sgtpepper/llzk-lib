@@ -524,8 +524,7 @@ LogicalResult verifyKnownTargetTemplateParams(
     auto it = candidateValues.find({symbol, side});
     return it == candidateValues.end() ? ArrayRef<Attribute>() : it->second;
   };
-  UnificationCandidateFn candidateRecorder =
-      isNullOrEmpty(explicitParams) ? UnificationCandidateFn(recordCandidate) : nullptr;
+  UnificationCandidateFn candidateRecorder = recordCandidate;
 
   StringRef signatureDescription = [&] {
     switch (signatureKind) {

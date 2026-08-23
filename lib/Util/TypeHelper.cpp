@@ -723,9 +723,9 @@ struct UnifierImpl {
   bool typesUnify(Type lhs, Type rhs) {
     if (lhs == rhs) {
       // Structural equality does not prove that equal flat symbols have the same template owner.
-      // Revisit parameterized types while collecting unifications so callers can reconcile those
-      // bindings in their respective scopes.
-      if (unifications) {
+      // Contextual candidate collection revisits parameterized types so its caller can reconcile
+      // those bindings without changing the generic unifier's existing empty-map behavior.
+      if (unifications && candidateRecorder) {
         if (StructType lhsStruct = llvm::dyn_cast<StructType>(lhs)) {
           return typeParamsUnify(lhsStruct.getParams(), llvm::cast<StructType>(rhs).getParams());
         }
@@ -839,7 +839,7 @@ private:
     assertValidAttrForParamOfType(rhsAttr);
     // Straightforward equality check.
     if (lhsAttr == rhsAttr) {
-      if (unifications) {
+      if (unifications && candidateRecorder) {
         if (llvm::isa<FlatSymbolRefAttr>(lhsAttr)) {
           // Equal flat references may belong to different template scopes. Record the RHS-to-LHS
           // mapping so callers can resolve the mapped symbol in the operation's scope instead of
@@ -1112,17 +1112,7 @@ bool isMoreConcreteUnification(
   // the "least concrete" attribute kind) where the old type contained any other attribute. In the
   // AffineInstantiations map, a RHS key would indicate that the new type contains an AffineMapAttr
   // where the old type contains an IntegerAttr.
-  auto entryIsRHS = [](const auto &entry) {
-    if (entry.first.second != Side::RHS) {
-      return false;
-    }
-    // Equal flat symbols are tracked so template inference can preserve their scope path, but an
-    // identity mapping does not make the new type less concrete than the old type.
-    if (auto mappedSymbol = llvm::dyn_cast<SymbolRefAttr>(entry.second)) {
-      return mappedSymbol != entry.first.first;
-    }
-    return true;
-  };
+  auto entryIsRHS = [](const auto &entry) { return entry.first.second == Side::RHS; };
   return !llvm::any_of(unifications, entryIsRHS) && !llvm::any_of(affineInstantiations, entryIsRHS);
 }
 
