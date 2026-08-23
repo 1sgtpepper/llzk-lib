@@ -1344,7 +1344,6 @@ static LogicalResult applyBodyConversions(
 
 class InstantiateFuncAtCallOp final : public OpRewritePattern<CallOp> {
   ConversionTracker &tracker_;
-  using CandidateMap = DenseMap<std::pair<SymbolRefAttr, Side>, SmallVector<Attribute, 2>>;
 
 public:
   InstantiateFuncAtCallOp(MLIRContext *ctx, ConversionTracker &tracker)
@@ -1384,9 +1383,7 @@ public:
     // middle but the overall chain does not unify. Hence, this unification may fail and should
     // produce a meaningful error message if it does.
     // See: `test/Transforms/Flattening/instantiate_funcs_fail.llzk`
-    CandidateMap candidateValues;
-    FailureOr<UnificationMap> unifyResult =
-        unifyTypeSignature(op, callTgt, rewriter, candidateValues);
+    FailureOr<UnificationMap> unifyResult = unifyTypeSignature(op, callTgt, rewriter);
     if (failed(unifyResult)) {
       return failure();
     }
@@ -1398,7 +1395,7 @@ public:
     // Maps template parameter symbols to the instantiation value at the call site.
     DenseMap<Attribute, Attribute> paramNameToConcrete;
     if (failed(collectConcreteTemplateParams(
-            op, rewriter, symTables, callTgt, parentTemplate, unifyResult.value(), candidateValues,
+            op, rewriter, symTables, callTgt, parentTemplate, unifyResult.value(),
             paramNameToConcrete
         ))) {
       return failure();
@@ -1453,21 +1450,11 @@ public:
 private:
   /// Re-run call/callee type unification so flattening can surface a useful error if a chain of
   /// partially-instantiated calls stops unifying once earlier substitutions have been applied.
-  /// Preserve repeated candidates so verified equivalent felt values can still materialize.
-  static FailureOr<UnificationMap> unifyTypeSignature(
-      CallOp op, FuncDefOp callTgt, PatternRewriter &rewriter, CandidateMap &candidateValues
-  ) {
-    auto recordCandidate = [&](SymbolRefAttr symbol, Side side, Attribute value) {
-      auto &values = candidateValues[{symbol, side}];
-      if (llvm::find(values, value) == values.end()) {
-        values.push_back(value);
-      }
-    };
-    UnificationMap unifications;
-    if (functionTypesUnify(
-            op.getTypeSignature(), callTgt.getFunctionType(), {}, &unifications, recordCandidate
-        )) {
-      return unifications;
+  static FailureOr<UnificationMap>
+  unifyTypeSignature(CallOp op, FuncDefOp callTgt, PatternRewriter &rewriter) {
+    FailureOr<UnificationMap> unifyResult = op.unifyTypeSignature(callTgt.getFunctionType());
+    if (succeeded(unifyResult)) {
+      return unifyResult;
     }
     return rewriter.notifyMatchFailure(op, [&](Diagnostic &diag) {
       diag.append("target function type does not unify with call type ")
@@ -1482,7 +1469,7 @@ private:
   static LogicalResult collectConcreteTemplateParams(
       CallOp op, PatternRewriter &rewriter, SymbolTableCollection &symTables, FuncDefOp callTgt,
       TemplateOp parentTemplate, const UnificationMap &unifyResult,
-      const CandidateMap &candidateValues, DenseMap<Attribute, Attribute> &paramNameToConcrete
+      DenseMap<Attribute, Attribute> &paramNameToConcrete
   ) {
     auto realParams = parentTemplate.getConstOps<TemplateParamOp>();
     ArrayAttr callParams = op.getTemplateParamsAttr();
@@ -1503,39 +1490,17 @@ private:
 
     // If there's no template instantiation list, must infer all template parameters.
     if (isNullOrEmpty(callParams)) {
-      auto getCandidates = [&](SymbolRefAttr symbol, Side side) -> ArrayRef<Attribute> {
-        auto it = candidateValues.find({symbol, side});
-        return it == candidateValues.end() ? ArrayRef<Attribute>() : it->second;
-      };
-      if (failed(
-              llzk::verifyTemplateParamsMatchInferred(
-                  op.getOperation(), callParams, realParams, unifyResult,
-                  TemplateParamSignatureKind::Function, getCandidates
-              )
-          )) {
-        return rewriter.notifyMatchFailure(op, [&](Diagnostic &diag) {
-          diag.append("incompatible with inferred param value(s)");
-        });
-      }
       for (auto paramOp : realParams) {
         auto paramName = FlatSymbolRefAttr::get(paramOp.getSymNameAttr());
         auto inferredValOpt = inferUnifiedParam(unifyResult, paramName);
-        Attribute inferredVal = inferredValOpt.value_or(Attribute());
-        if (!inferredVal) {
-          for (Attribute candidate : getCandidates(paramName, Side::RHS)) {
-            if (isConcreteAttr(candidate)) {
-              inferredVal = candidate;
-              break;
-            }
-          }
-        }
-        if (!inferredVal) {
+        if (!inferredValOpt.has_value()) {
           LLVM_DEBUG(
               llvm::dbgs() << "[InstantiateFuncAtCallOp]  unification for param '" << paramName
                            << "': not found\n"
           );
           continue;
         }
+        Attribute inferredVal = *inferredValOpt;
         LLVM_DEBUG(
             llvm::dbgs() << "[InstantiateFuncAtCallOp]  inferredVal: " << inferredVal << '\n'
         );
@@ -2700,18 +2665,7 @@ class PassImpl : public llzk::polymorphic::impl::FlatteningPassBase<PassImpl> {
 
       LLVM_DEBUG({
         llvm::dbgs() << "[FlatteningPass(count=" << loopCount
-                     << ")] Running step 1: function instantiation\n";
-      });
-      // Instantiate functions before their parameterized operand types are materialized. The
-      // function signature is where omitted template arguments retain their symbolic evidence.
-      if (failed(Step2_InstantiateFunctions::run(modOp, tracker))) {
-        llvm::errs() << DEBUG_TYPE << " failed while instantiating functions in templates\n";
-        return failure();
-      }
-
-      LLVM_DEBUG({
-        llvm::dbgs() << "[FlatteningPass(count=" << loopCount
-                     << ")] Running step 2: struct instantiation\n";
+                     << ")] Running step 1: struct instantiation\n";
       });
       // Find calls to "compute()" that return a parameterized struct type and replace it to call an
       // instantiated version of the struct that has parameters replaced with the constant values.
@@ -2720,10 +2674,15 @@ class PassImpl : public llzk::polymorphic::impl::FlatteningPassBase<PassImpl> {
         llvm::errs() << DEBUG_TYPE << " failed while instantiating structs in templates\n";
         return failure();
       }
+      // Instantiate calls to templated functions.
+      if (failed(Step2_InstantiateFunctions::run(modOp, tracker))) {
+        llvm::errs() << DEBUG_TYPE << " failed while instantiating functions in templates\n";
+        return failure();
+      }
 
       LLVM_DEBUG({
         llvm::dbgs() << "[FlatteningPass(count=" << loopCount
-                     << ")] Running step 3: loop unrolling\n";
+                     << ")] Running step 2: loop unrolling\n";
       });
       // Unroll loops with known iterations.
       if (failed(Step3_Unroll::run(modOp, tracker))) {
@@ -2733,7 +2692,7 @@ class PassImpl : public llzk::polymorphic::impl::FlatteningPassBase<PassImpl> {
 
       LLVM_DEBUG({
         llvm::dbgs() << "[FlatteningPass(count=" << loopCount
-                     << ")] Running step 4: affine maps instantiation\n";
+                     << ")] Running step 3: affine maps instantiation\n";
       });
       // Instantiate affine_map parameters of StructType and ArrayType.
       if (failed(Step4_InstantiateAffineMaps::run(modOp, tracker))) {
@@ -2743,7 +2702,7 @@ class PassImpl : public llzk::polymorphic::impl::FlatteningPassBase<PassImpl> {
 
       LLVM_DEBUG({
         llvm::dbgs() << "[FlatteningPass(count=" << loopCount
-                     << ")] Running step 5: type propagation\n";
+                     << ")] Running step 4: type propagation\n";
       });
       // Propagate updated types using the semantics of various ops.
       if (failed(Step5_PropagateTypes::run(modOp, tracker))) {
@@ -2782,7 +2741,7 @@ class PassImpl : public llzk::polymorphic::impl::FlatteningPassBase<PassImpl> {
   // Perform cleanup according to the 'cleanupMode' option.
   LogicalResult cleanupSwitch(ModuleOp modOp, const ConversionTracker &tracker) {
     FlatteningCleanupMode effectiveCleanupMode = getEffectiveCleanupMode();
-    LLVM_DEBUG({ llvm::dbgs() << "[FlatteningPass] Running step 6: cleanup "; });
+    LLVM_DEBUG({ llvm::dbgs() << "[FlatteningPass] Running step 5: cleanup "; });
     switch (effectiveCleanupMode) {
     case FlatteningCleanupMode::MainAsRoot:
       LLVM_DEBUG(llvm::dbgs() << "(main as root mode)\n");
