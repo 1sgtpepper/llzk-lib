@@ -1,9 +1,9 @@
-name: LLZK PR 484 exact-head output replay
+name: LLZK PR 484 current-head output replay
 
 on:
   push:
     branches:
-      - ci/verify-pr484-final-output-20260819
+      - ci/verify-pr484-current-output-20260823
   workflow_dispatch:
 
 permissions:
@@ -14,7 +14,7 @@ jobs:
     runs-on: ubuntu-24.04
     env:
       BASE_HEAD: d2c8ece96581416010972c778e75866903bc9568
-      TARGET_HEAD: 07c9e783bd74ee44b3f4d9944bbba66e75ade95b
+      TARGET_HEAD: cfcd04652729b72bfe57b6ef39ae1dcf5bc02efe
       OUTPUT_PATH: /home/runner/work/_temp/llzk-pr484-exact-head
 
     steps:
@@ -72,7 +72,7 @@ jobs:
           test_files=(
             test/Transforms/FuseProductControlFlow/fuse_if_positive.llzk
             test/Transforms/FuseProductControlFlow/fuse_if_preserves_locations.llzk
-            test/Transforms/FuseProductControlFlow/fuse_single.llzk
+            test/Transforms/FuseProductControlFlow/fuse_if_compute_constrain.llzk
             test/Transforms/FuseProductControlFlow/no_fuse_if_internal_unknown_effect_in_product.llzk
             test/Transforms/FuseProductControlFlow/no_fuse_single.llzk
           )
