@@ -1,5 +1,7 @@
 // RUN: llzk-opt -split-input-file --llzk-fuse-product-control-flow %s | FileCheck --enable-var-scope %s
 
+// Matching result-producing compute and resultless constrain conditionals fuse when all branch
+// operations are movable.
 module attributes {llzk.lang = "llzk"} {
   struct.def @A {
     struct.member @foo : !felt.type
@@ -50,6 +52,7 @@ module attributes {llzk.lang = "llzk"} {
 // CHECK-NEXT:  }
 // -----
 
+// Uses of a compute result inside the constrain branches are remapped to the fused branch result.
 module attributes {llzk.lang = "llzk"} {
   struct.def @A {
     struct.member @foo : !felt.type
@@ -171,6 +174,7 @@ module attributes {llzk.lang = "llzk"} {
 // CHECK-NEXT:  }
 // -----
 
+// Matching resultless conditionals without else regions fuse.
 module attributes {llzk.lang = "llzk"} {
   struct.def @A {
     struct.member @foo : !felt.type
@@ -205,6 +209,7 @@ module attributes {llzk.lang = "llzk"} {
 // CHECK-NEXT:  }
 // -----
 
+// Nondeterministic values and constraints are movable, so they do not block conditional fusion.
 module attributes {llzk.lang = "llzk"} {
   struct.def @A {
     struct.member @foo : !felt.type
@@ -257,6 +262,7 @@ module attributes {llzk.lang = "llzk"} {
 // CHECK-NEXT:  }
 // -----
 
+// Matching conditional and yield attributes are preserved on the fused operation and branches.
 module attributes {llzk.lang = "llzk"} {
   struct.def @A {
     struct.member @foo : !felt.type
@@ -496,6 +502,7 @@ module attributes {llzk.lang = "llzk"} {
 // CHECK-NEXT:  }
 // -----
 
+// Inserting a subarray mutates aggregate state and prevents moving the constrain branches.
 module attributes {llzk.lang = "llzk"} {
   struct.def @A {
     struct.member @foo : !felt.type
@@ -555,6 +562,7 @@ module attributes {llzk.lang = "llzk"} {
 // CHECK-NEXT:  }
 // -----
 
+// Array reads carry memory effects and are conservatively not moved across the compute region.
 module attributes {llzk.lang = "llzk"} {
   struct.def @A {
     struct.member @foo : !felt.type
@@ -618,6 +626,7 @@ module attributes {llzk.lang = "llzk"} {
 // CHECK-NEXT:  }
 // -----
 
+// Array writes mutate memory and prevent moving the constrain branches.
 module attributes {llzk.lang = "llzk"} {
   struct.def @A {
     struct.member @foo : !felt.type
@@ -677,6 +686,7 @@ module attributes {llzk.lang = "llzk"} {
 // CHECK-NEXT:  }
 // -----
 
+// Global reads carry memory effects and are conservatively not moved across the compute region.
 module attributes {llzk.lang = "llzk"} {
   global.def @g : !felt.type = 0
 
@@ -739,6 +749,7 @@ module attributes {llzk.lang = "llzk"} {
 // CHECK-NEXT:  }
 // -----
 
+// Global writes mutate program state and prevent moving the constrain branches.
 module attributes {llzk.lang = "llzk"} {
   global.def @g : !felt.type = 0
 
@@ -797,6 +808,7 @@ module attributes {llzk.lang = "llzk"} {
 // CHECK-NEXT:  }
 // -----
 
+// POD writes mutate aggregate state and prevent moving the constrain branches.
 module attributes {llzk.lang = "llzk"} {
   struct.def @A {
     struct.member @foo : !felt.type
@@ -854,6 +866,7 @@ module attributes {llzk.lang = "llzk"} {
 // CHECK-NEXT:  }
 // -----
 
+// RAM loads carry memory effects and are conservatively not moved across the compute region.
 module attributes {llzk.lang = "llzk"} {
   struct.def @A {
     struct.member @foo : !felt.type
@@ -915,6 +928,7 @@ module attributes {llzk.lang = "llzk"} {
 // CHECK-NEXT:  }
 // -----
 
+// RAM stores mutate memory and prevent moving the constrain branches.
 module attributes {llzk.lang = "llzk"} {
   struct.def @A {
     struct.member @foo : !felt.type
@@ -1052,6 +1066,7 @@ module attributes {llzk.lang = "llzk"} {
 // CHECK-NEXT:  }
 // -----
 
+// Calls without a speculatability guarantee may have observable effects and cannot move.
 module attributes {llzk.lang = "llzk"} {
   struct.def @B {
     function.def @compute() -> !struct.type<@B> {
@@ -1122,6 +1137,7 @@ module attributes {llzk.lang = "llzk"} {
 // CHECK-NEXT:  }
 // -----
 
+// Member writes inside the constrain branches are observable and prevent movement.
 module attributes {llzk.lang = "llzk"} {
   struct.def @A {
     struct.member @foo : !felt.type
@@ -1229,6 +1245,7 @@ module attributes {llzk.lang = "llzk"} {
 // CHECK-NEXT:  }
 // -----
 
+// Non-source attributes must match on the compute and constrain conditionals before fusion.
 module attributes {llzk.lang = "llzk"} {
   struct.def @A {
     struct.member @foo : !felt.type
@@ -1284,6 +1301,7 @@ module attributes {llzk.lang = "llzk"} {
 // CHECK-NEXT:  }
 // -----
 
+// Conditionals with different condition values cannot fuse.
 module attributes {llzk.lang = "llzk"} {
   struct.def @A {
     struct.member @foo : !felt.type
@@ -1339,6 +1357,7 @@ module attributes {llzk.lang = "llzk"} {
 // CHECK-NEXT:  }
 // -----
 
+// Corresponding yield attributes must match in both branches; an else-yield mismatch blocks fusion.
 module attributes {llzk.lang = "llzk"} {
   struct.def @A {
     struct.member @foo : !felt.type
@@ -1396,6 +1415,8 @@ module attributes {llzk.lang = "llzk"} {
 // CHECK-NEXT:  }
 // -----
 
+// Fusion requires a resultless constrain conditional and matching else-region shape; each struct
+// isolates one rejected precondition.
 module attributes {llzk.lang = "llzk"} {
   struct.def @ResultBearingConstrain {
     struct.member @value : !felt.type
@@ -1643,6 +1664,8 @@ module attributes {llzk.lang = "llzk"} {
 // CHECK-NEXT:  }
 // -----
 
+// Yield attributes must match across source roles even when each conditional uses one attribute
+// consistently in both branches.
 module attributes {llzk.lang = "llzk"} {
   struct.def @A {
     struct.member @foo : !felt.type
@@ -1757,6 +1780,7 @@ module attributes {llzk.lang = "llzk"} {
 // CHECK-NEXT:  }
 // -----
 
+// Unmarked loops remain separate even when their nested operations carry compute/constrain sources.
 module attributes {llzk.lang = "llzk"} {
   struct.def @A {
     struct.member @foo : !felt.type
