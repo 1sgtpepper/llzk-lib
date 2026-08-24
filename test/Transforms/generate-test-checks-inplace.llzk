@@ -126,16 +126,17 @@ module {
 // SYMLINK-LINK: warning: refusing to modify a dirty Git worktree
 
 //--- git
-#!/usr/bin/env python3
-import os
-import sys
+#!/bin/sh
 
-if len(sys.argv) != 5 or sys.argv[1] != "-C" or sys.argv[3:] != ["status", "--porcelain"]:
-    raise SystemExit(2)
+if [ "$#" -ne 4 ] || [ "$1" != "-C" ] || [ "$3" != "status" ] || [ "$4" != "--porcelain" ]; then
+    exit 2
+fi
 
-if not os.path.exists(os.path.join(sys.argv[2], ".git")):
-    print("fatal: not a git repository (or any of the parent directories): .git", file=sys.stderr)
-    raise SystemExit(128)
+if [ ! -e "$2/.git" ]; then
+    printf '%s\n' 'fatal: not a git repository (or any of the parent directories): .git' >&2
+    exit 128
+fi
 
-if os.path.exists(os.path.join(sys.argv[2], ".dirty")):
-    print(" M source.llzk")
+if [ -e "$2/.dirty" ]; then
+    printf '%s\n' ' M source.llzk'
+fi
