@@ -722,10 +722,14 @@ struct UnifierImpl {
 
   bool typesUnify(Type lhs, Type rhs) {
     if (lhs == rhs) {
-      // Structural equality does not prove that equal flat symbols have the same template owner.
+      // Structural equality does not prove that equal symbols have the same template owner.
       // Contextual candidate collection revisits parameterized types so its caller can reconcile
       // those bindings without changing the generic unifier's existing empty-map behavior.
       if (unifications && candidateRecorder) {
+        if (TypeVarType lhsTvar = llvm::dyn_cast<TypeVarType>(lhs)) {
+          track(Side::RHS, llvm::cast<TypeVarType>(rhs).getNameRef(), lhsTvar.getNameRef());
+          return true;
+        }
         if (StructType lhsStruct = llvm::dyn_cast<StructType>(lhs)) {
           return typeParamsUnify(lhsStruct.getParams(), llvm::cast<StructType>(rhs).getParams());
         }

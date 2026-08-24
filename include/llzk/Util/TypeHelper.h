@@ -259,10 +259,10 @@ bool podTypesUnify(
 
 /// Return `true` iff the two FunctionType instances are equivalent or could be equivalent after
 /// full instantiation of template parameters.
-/// If `recordCandidate` is provided, structurally equal parameterized types are traversed and each
-/// symbolic mapping is reported before repeated conflicting mappings are represented by `nullptr`
-/// in `unifications`. Without it, equal types retain the generic unifier's existing empty-map
-/// behavior.
+/// If `recordCandidate` is provided, structurally equal type variables and parameterized types are
+/// traversed and each symbolic mapping is reported before repeated conflicting mappings are
+/// represented by `nullptr` in `unifications`. Without it, equal types retain the generic
+/// unifier's existing empty-map behavior.
 bool functionTypesUnify(
     mlir::FunctionType lhs, mlir::FunctionType rhs,
     mlir::ArrayRef<llvm::StringRef> rhsReversePrefix = {}, UnificationMap *unifications = nullptr,

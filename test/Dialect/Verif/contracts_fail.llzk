@@ -62,6 +62,8 @@ module attributes {llzk.lang} {
 
 // -----
 
+// An explicit value cannot hide conflicting evidence inferred for the same parameter from repeated
+// contract signature positions.
 module attributes {llzk.lang} {
   poly.template @RepeatedParam {
     poly.param @N
@@ -90,6 +92,54 @@ module attributes {llzk.lang} {
     // expected-error@+1 {{'verif.include' op cannot infer a unique template instantiation value for parameter "@N" from contract type signature}}
     verif.include @RepeatedParam::@Base<[5]>(%lhs, %rhs) :
         (!array.type<5 x index>, !array.type<7 x index>) -> ()
+  }
+}
+
+// -----
+
+// Equal type-variable spellings in different template scopes still identify different bindings:
+// omitted includes reject an unrestricted caller binding and accept a type-only caller binding.
+module attributes {llzk.lang} {
+  poly.template @TypeOnlyTarget {
+    poly.param @T : !poly.tvar<@T>
+
+    function.def @accept(%value: !poly.tvar<@T>) {
+      function.return
+    }
+
+    verif.contract @Base for @TypeOnlyTarget::@accept (%value: !poly.tvar<@T>) {
+      %ok = arith.constant true
+      verif.ensure_compute %ok
+    }
+  }
+
+  poly.template @UntypedCaller {
+    poly.param @T
+
+    function.def @reject_same_name(%value: !poly.tvar<@T>) {
+      function.return
+    }
+
+    verif.contract @RejectSameName for @UntypedCaller::@reject_same_name (
+        %value: !poly.tvar<@T>
+    ) {
+      // expected-error@+1 {{'verif.include' op instantiation value '@T' is not compatible with parameter "@T" type restriction '!poly.tvar<@T>'}}
+      verif.include @TypeOnlyTarget::@Base(%value) : (!poly.tvar<@T>) -> ()
+    }
+  }
+
+  poly.template @TypeOnlyCaller {
+    poly.param @T : !poly.tvar<@T>
+
+    function.def @accept_same_name(%value: !poly.tvar<@T>) {
+      function.return
+    }
+
+    verif.contract @AcceptSameName for @TypeOnlyCaller::@accept_same_name (
+        %value: !poly.tvar<@T>
+    ) {
+      verif.include @TypeOnlyTarget::@Base(%value) : (!poly.tvar<@T>) -> ()
+    }
   }
 }
 
