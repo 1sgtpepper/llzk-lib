@@ -13,7 +13,7 @@ jobs:
         uses: actions/checkout@v6
         with:
           persist-credentials: false
-          ref: 4166b3cb7f05c5f60d5c13cbd18c364d75d9ad6c
+          ref: 892ae36d23bdaf6168f3a4042915c919a20985d6
 
       - uses: cachix/install-nix-action@d1ca217b388ee87b2507a9a93bf01368bde7cec2
         with:
@@ -77,14 +77,35 @@ jobs:
               ]
 
           def normalize(line):
-              # Generator-stable names are the only tolerated differences: SSA
-              # substitution labels and source paths embedded in locations.
-              line = re.sub(r"\bVAL_[0-9]+\b", "VAL_N", line)
+              variable_names = normalize.variable_names
+
+              def variable(match):
+                  name = match.group(1)
+                  if name not in variable_names:
+                      variable_names[name] = f"VAR_{len(variable_names)}"
+                  return f"[[{variable_names[name]}]]"
+
               line = re.sub(r'loc\("[^"]*"\)', 'loc("<location>")', line)
+              line = re.sub(
+                  r'^// CHECK(?:-(?:LABEL|NEXT|SAME|NOT|DAG|EMPTY))?:',
+                  '// CHECK:',
+                  line,
+              )
+              line = re.sub(r'^(// CHECK:) +', r'\1 ', line)
+              line = re.sub(
+                  r'\[\[([A-Za-z_][A-Za-z0-9_]*)(?::(.*?))?\]\]',
+                  variable,
+                  line,
+              )
               return line
 
+          normalize.variable_names = {}
+
           committed = [normalize(line) for line in check_lines(source)]
+          normalize.variable_names = {}
           fresh = [normalize(line) for line in check_lines(generated)]
+          committed = [line for line in committed if line != "// CHECK: // -----"]
+          fresh = [line for line in fresh if line != "// CHECK: // -----"]
           if committed != fresh:
               print(f"CHECK block mismatch for {source}")
               print("".join(difflib.unified_diff(
