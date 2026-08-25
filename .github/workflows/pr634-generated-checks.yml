@@ -1,0 +1,95 @@
+name: Generated checks
+
+on:
+  push:
+    branches:
+      - validate/pr634-generated-checks-v3
+
+jobs:
+  regenerate:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - uses: cachix/install-nix-action@d1ca217b388ee87b2507a9a93bf01368bde7cec2
+        with:
+          install_url: https://releases.nixos.org/nix/nix-2.23.3/install
+          github_access_token: "${{ secrets.GITHUB_TOKEN }}"
+
+      - name: Set Git credentials
+        run: |
+          git config --global 'url.https://api@github.com/'.insteadOf 'https://github.com/'
+          git config --global 'url.https://ssh@github.com/'.insteadOf 'ssh://git@github.com/'
+          git config --global 'url.https://git@github.com/'.insteadOf 'git@github.com:'
+
+      - name: Build llzk-opt
+        run: nix --print-build-logs build '.#debugGCC'
+
+      - name: Generate complete check output
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts
+          tests=(
+            test/Dialect/Function/call_with_symbolic_felt_restriction_pass.llzk
+            test/Dialect/Function/call_with_template_params_pass.llzk
+            test/Dialect/Struct/struct_params_restrictions_pass.llzk
+            test/Dialect/Struct/struct_params_symbolic_pass.llzk
+            test/Dialect/Verif/contracts_pass.llzk
+            test/Dialect/Verif/include_with_symbolic_felt_restriction_pass.llzk
+          )
+          for test in "${tests[@]}"; do
+            stem="${test##*/}"
+            stem="${stem%.llzk}"
+            result/bin/llzk-opt -I test -split-input-file "$test" > "artifacts/${stem}.raw.llzk"
+            scripts/generate-test-checks.py < "artifacts/${stem}.raw.llzk" > "artifacts/${stem}.checks.llzk"
+            cp "$test" "artifacts/${stem}.source.llzk"
+            python3 - "$test" "artifacts/${stem}.checks.llzk" \
+                > "artifacts/${stem}.comparison.txt" <<'PY'
+          import difflib
+          import pathlib
+          import re
+          import sys
+
+          source, generated = (pathlib.Path(arg) for arg in sys.argv[1:])
+
+          def check_lines(path):
+              return [
+                  line.rstrip("\n")
+                  for line in path.read_text().splitlines(keepends=True)
+                  if line.startswith("// CHECK")
+              ]
+
+          def normalize(line):
+              # Generator-stable names are the only tolerated differences: SSA
+              # substitution labels and source paths embedded in locations.
+              line = re.sub(r"\bVAL_[0-9]+\b", "VAL_N", line)
+              line = re.sub(r'loc\("[^"]*"\)', 'loc("<location>")', line)
+              return line
+
+          committed = [normalize(line) for line in check_lines(source)]
+          fresh = [normalize(line) for line in check_lines(generated)]
+          if committed != fresh:
+              print(f"CHECK block mismatch for {source}")
+              print("".join(difflib.unified_diff(
+                  [line + "\n" for line in committed],
+                  [line + "\n" for line in fresh],
+                  fromfile="committed",
+                  tofile="fresh",
+              )), end="")
+              raise SystemExit(1)
+          print(f"CHECK block matches fresh generator output for {source}")
+          PY
+            set -o pipefail
+            result/bin/llzk-opt -I test -split-input-file "$test" \
+              | result/bin/FileCheck --enable-var-scope "$test"
+          done
+
+      - name: Upload generated checks
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: pr634-generated-checks
+          path: artifacts
