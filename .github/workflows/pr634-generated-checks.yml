@@ -48,12 +48,23 @@ jobs:
             test/Dialect/Verif/contracts_pass.llzk
             test/Dialect/Verif/include_with_symbolic_felt_restriction_pass.llzk
           )
+
+          # Produce every fresh output before comparing any checked-in block, so a
+          # stale fixture cannot hide the authoritative output for later fixtures.
           for test in "${tests[@]}"; do
             stem="${test##*/}"
             stem="${stem%.llzk}"
             result/bin/llzk-opt -I test -split-input-file "$test" > "artifacts/${stem}.raw.llzk"
             scripts/generate-test-checks.py < "artifacts/${stem}.raw.llzk" > "artifacts/${stem}.checks.llzk"
             cp "$test" "artifacts/${stem}.source.llzk"
+          done
+
+          filecheck=$(find /nix/store -type f -path '*/bin/FileCheck' -executable -print -quit)
+          test -n "$filecheck"
+
+          for test in "${tests[@]}"; do
+            stem="${test##*/}"
+            stem="${stem%.llzk}"
             python3 - "$test" "artifacts/${stem}.checks.llzk" \
                 > "artifacts/${stem}.comparison.txt" <<'PY'
           import difflib
@@ -70,15 +81,37 @@ jobs:
                   if line.startswith("// CHECK")
               ]
 
-          def normalize(line):
-              # Generator-stable names are the only tolerated differences: SSA
-              # substitution labels and source paths embedded in locations.
-              line = re.sub(r"\bVAL_[0-9]+\b", "VAL_N", line)
-              line = re.sub(r'loc\("[^"]*"\)', 'loc("<location>")', line)
-              return line
+          def normalize(lines):
+              # Canonicalize only generator-stable SSA substitution labels and
+              # source paths embedded in locations. IR text and CHECK directives
+              # remain byte-for-byte significant.
+              normalized = []
+              variable_names = {}
 
-          committed = [normalize(line) for line in check_lines(source)]
-          fresh = [normalize(line) for line in check_lines(generated)]
+              def variable(match):
+                  name = match.group(1)
+                  if name not in variable_names:
+                      variable_names[name] = f"SSA_{len(variable_names)}"
+                  replacement = variable_names[name]
+                  definition = match.group(2)
+                  if definition is None:
+                      return f"%[[{replacement}]]"
+                  return f"%[[{replacement}:{definition}]]"
+
+              for line in lines:
+                  if line.startswith("// CHECK-LABEL:"):
+                      variable_names = {}
+                  line = re.sub(
+                      r"%\[\[([A-Za-z_][A-Za-z0-9_]*)(?::(.*?))?\]\]",
+                      variable,
+                      line,
+                  )
+                  line = re.sub(r'loc\("[^"]*"\)', 'loc("<location>")', line)
+                  normalized.append(line)
+              return normalized
+
+          committed = normalize(check_lines(source))
+          fresh = normalize(check_lines(generated))
           if committed != fresh:
               print(f"CHECK block mismatch for {source}")
               print("".join(difflib.unified_diff(
@@ -92,7 +125,7 @@ jobs:
           PY
             set -o pipefail
             result/bin/llzk-opt -I test -split-input-file "$test" \
-              | result/bin/FileCheck --enable-var-scope "$test"
+              | "$filecheck" --enable-var-scope "$test"
           done
 
       - name: Upload generated checks
