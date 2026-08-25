@@ -118,15 +118,17 @@ def FuseProductControlFlowPass : LLZKPass<"llzk-fuse-product-control-flow"> {
     Fuses uniquely matched compute/constrain control-flow pairs in `@product` functions.
     Within a region, `scf.for` fusion is attempted before `scf.if` fusion so an eligible legacy
     loop opportunity is preserved when preparation can legally move compute-sourced operations.
-    Loop preparation moves only recursively pure compute operations and the direct member writes
-    already required by product layout; storage and unknown-effect operations keep source order and
-    prevent loop fusion.
+    Loop preparation moves only recursively pure compute operations and direct member writes
+    already required by product layout when the target loop contains no read, write, call, trap, or
+    unknown effect that could observe the reordered component state; such effects keep source order
+    and prevent loop fusion.
     Crossed loop/conditional source order may therefore leave the conditionals unfused to preserve
     both source-local orderings.
     `scf.for` pairs must be siblings with the same induction sequence: their lower bounds, upper
     bounds, and steps must identify the same values. Equal trip counts with different bounds or
-    steps remain separate. Every crossed non-compute operation must be recursively pure, and every
-    relocated loop result must remain dominated by the fused loop's insertion point. `scf.if` pairs
+    steps remain separate. Every crossed non-compute operation must be recursively pure, every
+    relocated loop result must remain dominated by the fused loop's insertion point, and a sunk
+    member write may cross only an admissible constrain-loop body. `scf.if` pairs
     must be same-block siblings where the compute op precedes the constrain op, both use the same
     SSA condition value and have the same else-region presence, and the constrain op is resultless.
     Conditional fusion requires exact SSA value identity for the condition; it does not perform

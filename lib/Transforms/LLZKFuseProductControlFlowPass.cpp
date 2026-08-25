@@ -179,15 +179,13 @@ static bool isSafeToMoveConstrainOp(Operation *op) {
   return isPure(op);
 }
 
-/// Return whether the constrain branch contains an operation unsafe to move across compute-side
-/// operations.
+/// Return whether `root` contains an operation unsafe to cross with compute-side operations.
 ///
-/// The branch is cloned into the earlier compute branch. An operation is movable only when this
-/// pass explicitly admits it or MLIR proves it pure; the walk rejects reads, writes, calls, traps,
-/// and unknown effects.
-static bool hasUnsafeMovedConstrainOp(scf::IfOp constrainIf) {
-  auto result = constrainIf->walk([&](Operation *op) {
-    if (op == constrainIf.getOperation() || isa<scf::YieldOp>(op)) {
+/// An operation is crossable only when this pass explicitly admits it or MLIR proves it pure; the
+/// walk rejects reads, writes, calls, traps, and unknown effects.
+static bool hasUnsafeCrossedConstrainOp(Operation *root) {
+  auto result = root->walk([&](Operation *op) {
+    if (op == root || isa<scf::YieldOp>(op)) {
       return WalkResult::advance();
     }
 
@@ -255,7 +253,7 @@ static bool collectConstrainValueMappings(
     valueToResult[result] = idx;
   }
 
-  return !hasUnsafeMovedConstrainOp(constrainIf);
+  return !hasUnsafeCrossedConstrainOp(constrainIf.getOperation());
 }
 
 /// Return whether two marked sibling `scf.if` ops satisfy the conservative fusion contract.
@@ -440,7 +438,8 @@ static bool isSafeToSinkComputeOp(Operation *op) { return isa<MemberWriteOp>(op)
 
 /// Collect compute-sourced operations between sibling loops that must move after `constrainLoop`.
 /// Fail if the loops do not share a block, a crossed non-compute operation is not recursively pure,
-/// the move would cross already-fused constraint work, or a relocated result would lose dominance.
+/// a sunk member write would cross an unsafe constrain-loop effect, the move would cross already-
+/// fused constraint work, or a relocated result would lose dominance.
 static FailureOr<SmallVector<Operation *>>
 canPrepareForFusion(scf::ForOp computeLoop, scf::ForOp constrainLoop) {
   if (computeLoop->getBlock() != constrainLoop->getBlock()) {
@@ -459,6 +458,17 @@ canPrepareForFusion(scf::ForOp computeLoop, scf::ForOp constrainLoop) {
       }
       opsToSink.push_back(op);
     } else if (!isPure(op)) {
+      return failure();
+    }
+  }
+
+  if (llvm::any_of(opsToSink, [](Operation *op) { return isa<MemberWriteOp>(op); })) {
+    // A direct member write is intentionally sinkable, but it cannot cross a target-loop read or
+    // unknown effect: without alias analysis, either may observe the component state before the
+    // write in the original order and after it in the fused order. Constraint emission, nondet
+    // values, and structured control flow remain admissible; their nested operations are checked
+    // by this walk as well.
+    if (hasUnsafeCrossedConstrainOp(constrainLoop.getOperation())) {
       return failure();
     }
   }
