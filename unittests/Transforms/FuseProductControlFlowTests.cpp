@@ -638,4 +638,149 @@ TEST_F(FuseProductControlFlowTests, EffectfulOperationsBetweenLoopsPreventFusion
   EXPECT_EQ(fusedLoops, 0U);
 }
 
+TEST_F(FuseProductControlFlowTests, MemberWriteSinkDoesNotCrossConstrainRead) {
+  // A member write may be sunk only when the target loop cannot observe component state. A read
+  // inside the constrain loop would see the write before fusion but after it in the fused order.
+  mlir::OwningOpRef<mlir::ModuleOp> module = mlir::parseSourceString<mlir::ModuleOp>(
+      R"mlir(
+    module attributes {llzk.lang = "llzk"} {
+      struct.def @A {
+        struct.member @value : !felt.type
+
+        function.def @product() -> !struct.type<@A> {
+          %self = struct.new : <@A>
+          %c0 = arith.constant 0 : index
+          %c1 = arith.constant 1 : index
+          %c2 = arith.constant 2 : index
+          %value = felt.const 7
+
+          scf.for %i = %c0 to %c2 step %c1 {
+            %computed = felt.add %value, %value
+            scf.yield
+          } {product_source = "compute"}
+
+          struct.writem %self[@value] = %value : <@A>, !felt.type {
+            product_source = "compute"
+          }
+
+          scf.for %i = %c0 to %c2 step %c1 {
+            %observed = struct.readm %self[@value] : <@A>, !felt.type {
+              product_source = "constrain"
+            }
+            constrain.eq %observed, %value : !felt.type, !felt.type
+            scf.yield
+          } {product_source = "constrain"}
+
+          function.return %self : !struct.type<@A>
+        }
+      }
+    }
+  )mlir",
+      &ctx
+  );
+  ASSERT_TRUE(module);
+
+  mlir::PassManager pm(&ctx);
+  pm.addPass(llzk::createFuseProductControlFlowPass());
+  ASSERT_TRUE(mlir::succeeded(pm.run(*module)));
+
+  llzk::function::FuncDefOp product;
+  module->walk([&](llzk::function::FuncDefOp func) {
+    if (func.isStructProduct()) {
+      product = func;
+    }
+  });
+  ASSERT_TRUE(product);
+
+  llzk::component::MemberWriteOp write;
+  llzk::component::MemberReadOp read;
+  mlir::scf::ForOp constrainLoop;
+  unsigned fusedLoops = 0;
+  product.walk([&](llzk::component::MemberWriteOp writeOp) { write = writeOp; });
+  product.walk([&](llzk::component::MemberReadOp readOp) { read = readOp; });
+  product.walk([&](mlir::scf::ForOp loop) {
+    mlir::StringAttr source = loop->getAttrOfType<mlir::StringAttr>("product_source");
+    if (!source) {
+      return;
+    }
+    if (source.getValue() == "constrain") {
+      constrainLoop = loop;
+    } else if (source.getValue() == "fused") {
+      ++fusedLoops;
+    }
+  });
+
+  ASSERT_TRUE(write);
+  ASSERT_TRUE(read);
+  ASSERT_TRUE(constrainLoop);
+  EXPECT_EQ(fusedLoops, 0U);
+  EXPECT_TRUE(write->isBeforeInBlock(constrainLoop));
+}
+
+TEST_F(FuseProductControlFlowTests, MemberWriteSinkRemainsFusibleWithoutTargetRead) {
+  // Direct member writes retain their existing sink behavior when the constrain loop has no
+  // storage or unknown effect that could observe the write.
+  mlir::OwningOpRef<mlir::ModuleOp> module = mlir::parseSourceString<mlir::ModuleOp>(
+      R"mlir(
+    module attributes {llzk.lang = "llzk"} {
+      struct.def @A {
+        struct.member @value : !felt.type
+
+        function.def @product(%input: !felt.type) -> !struct.type<@A> {
+          %self = struct.new : <@A>
+          %c0 = arith.constant 0 : index
+          %c1 = arith.constant 1 : index
+          %c2 = arith.constant 2 : index
+
+          scf.for %i = %c0 to %c2 step %c1 {
+            %computed = felt.add %input, %input
+            scf.yield
+          } {product_source = "compute"}
+
+          struct.writem %self[@value] = %input : <@A>, !felt.type {
+            product_source = "compute"
+          }
+
+          scf.for %i = %c0 to %c2 step %c1 {
+            %expected = felt.const 0
+            constrain.eq %input, %expected : !felt.type, !felt.type
+            scf.yield
+          } {product_source = "constrain"}
+
+          function.return %self : !struct.type<@A>
+        }
+      }
+    }
+  )mlir",
+      &ctx
+  );
+  ASSERT_TRUE(module);
+
+  mlir::PassManager pm(&ctx);
+  pm.addPass(llzk::createFuseProductControlFlowPass());
+  ASSERT_TRUE(mlir::succeeded(pm.run(*module)));
+
+  llzk::function::FuncDefOp product;
+  module->walk([&](llzk::function::FuncDefOp func) {
+    if (func.isStructProduct()) {
+      product = func;
+    }
+  });
+  ASSERT_TRUE(product);
+
+  llzk::component::MemberWriteOp write;
+  mlir::scf::ForOp fusedLoop;
+  product.walk([&](llzk::component::MemberWriteOp writeOp) { write = writeOp; });
+  product.walk([&](mlir::scf::ForOp loop) {
+    mlir::StringAttr source = loop->getAttrOfType<mlir::StringAttr>("product_source");
+    if (source && source.getValue() == "fused") {
+      fusedLoop = loop;
+    }
+  });
+
+  ASSERT_TRUE(write);
+  ASSERT_TRUE(fusedLoop);
+  EXPECT_TRUE(fusedLoop->isBeforeInBlock(write));
+}
+
 } // namespace
