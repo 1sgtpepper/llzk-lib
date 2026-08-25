@@ -205,7 +205,9 @@ def process_line(line_chunks, variable_namer):
 def process_source_lines(source_lines, note, args):
     source_split_re = re.compile(args.source_delim_regex)
     check_line_re = re.compile(
-        r"^\s*//\s*" + re.escape(args.check_prefix) + r"(?:-|:)"
+        r"^\s*//\s*"
+        + re.escape(args.check_prefix)
+        + r"(?:-(?:NEXT|LABEL|SAME))?:"
     )
     note_lines = note.splitlines()
 
