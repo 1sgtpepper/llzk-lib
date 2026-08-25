@@ -3,7 +3,7 @@ name: Generated checks
 on:
   push:
     branches:
-      - validate/pr634-generated-checks-v3
+      - ci/verify-pr634-output-20260825
 
 jobs:
   regenerate:
@@ -13,6 +13,7 @@ jobs:
         uses: actions/checkout@v6
         with:
           persist-credentials: false
+          ref: 4166b3cb7f05c5f60d5c13cbd18c364d75d9ad6c
 
       - uses: cachix/install-nix-action@d1ca217b388ee87b2507a9a93bf01368bde7cec2
         with:
@@ -26,7 +27,9 @@ jobs:
           git config --global 'url.https://git@github.com/'.insteadOf 'git@github.com:'
 
       - name: Build llzk-opt
-        run: nix --print-build-logs build '.#debugGCC'
+        run: |
+          nix build --impure --print-build-logs --expr \
+            'let flake = builtins.getFlake (toString ./.) ; in flake.packages.x86_64-linux.debugGCC.overrideAttrs (_: { doCheck = false; })'
 
       - name: Generate complete check output
         run: |
@@ -46,6 +49,13 @@ jobs:
             result/bin/llzk-opt -I test -split-input-file "$test" > "artifacts/${stem}.raw.llzk"
             scripts/generate-test-checks.py < "artifacts/${stem}.raw.llzk" > "artifacts/${stem}.checks.llzk"
             cp "$test" "artifacts/${stem}.source.llzk"
+          done
+
+          # Generate every artifact before enforcing comparisons so one stale block cannot hide
+          # the authoritative output for a later fixture.
+          for test in "${tests[@]}"; do
+            stem="${test##*/}"
+            stem="${stem%.llzk}"
             python3 - "$test" "artifacts/${stem}.checks.llzk" \
                 > "artifacts/${stem}.comparison.txt" <<'PY'
           import difflib
