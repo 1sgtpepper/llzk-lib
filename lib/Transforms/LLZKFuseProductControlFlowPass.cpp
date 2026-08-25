@@ -13,7 +13,6 @@
 //===----------------------------------------------------------------------===//
 
 #include "llzk/Dialect/Constrain/IR/Ops.h"
-#include "llzk/Dialect/Felt/IR/Ops.h"
 #include "llzk/Dialect/Function/IR/Ops.h"
 #include "llzk/Dialect/LLZK/IR/Ops.h"
 #include "llzk/Dialect/Polymorphic/IR/Ops.h"
@@ -27,17 +26,17 @@
 #include <mlir/IR/BuiltinAttributes.h>
 #include <mlir/IR/Dominance.h>
 #include <mlir/IR/IRMapping.h>
+#include <mlir/IR/Matchers.h>
 #include <mlir/IR/PatternMatch.h>
 #include <mlir/IR/SymbolTable.h>
 #include <mlir/Interfaces/SideEffectInterfaces.h>
 
+#include <llvm/ADT/APInt.h>
 #include <llvm/ADT/DenseMap.h>
 #include <llvm/ADT/STLExtras.h>
 #include <llvm/ADT/SmallVector.h>
-#include <llvm/Support/SMTAPI.h>
 
 #include <optional>
-#include <string>
 
 // Include the generated base pass class definitions.
 namespace llzk {
@@ -66,42 +65,33 @@ static inline bool areOppositeProductSources(Operation *a, Operation *b) {
          (*sourceA == FUNC_NAME_CONSTRAIN && *sourceB == FUNC_NAME_COMPUTE);
 }
 
-// Bitwidth of `index` for instantiating SMT variables
-constexpr int INDEX_WIDTH = 64;
-
-static inline bool isConstOrStructParam(Value val) {
-  // TODO: doing arithmetic over constants should also be fine?
-  return llvm::isa<arith::ConstantIndexOp, polymorphic::ConstReadOp, felt::FeltConstantOp>(
-      val.getDefiningOp()
-  );
-}
-
-static llvm::SMTExprRef mkExpr(Value value, llvm::SMTSolver *solver) {
-  if (auto constOp = value.getDefiningOp<arith::ConstantIndexOp>()) {
-    return solver->mkBitvector(llvm::APSInt::get(constOp.value()), INDEX_WIDTH);
-  } else if (auto polyReadOp = value.getDefiningOp<polymorphic::ConstReadOp>()) {
-
-    return solver->mkSymbol(
-        std::string {polyReadOp.getConstName()}.c_str(), solver->getBitvectorSort(INDEX_WIDTH)
-    );
+/// Return whether two control operands identify the same induction sequence value.
+///
+/// Distinct `poly.read_const` operations are equivalent only when they read the same binding from
+/// sibling contexts. Matching trip counts are not sufficient because the fused loop uses one
+/// induction variable for both source bodies.
+static bool sameLoopControlValue(Value a, Value b) {
+  if (a.getType() != b.getType()) {
+    return false;
   }
-  assert(false && "unsupported: checking non-constant trip counts");
-  return nullptr; // Unreachable
+  if (a == b) {
+    return true;
+  }
+
+  llvm::APInt aConstant;
+  if (matchPattern(a, m_ConstantInt(&aConstant))) {
+    llvm::APInt bConstant;
+    return matchPattern(b, m_ConstantInt(&bConstant)) && aConstant == bConstant;
+  }
+
+  auto aConstRead = a.getDefiningOp<polymorphic::ConstReadOp>();
+  auto bConstRead = b.getDefiningOp<polymorphic::ConstReadOp>();
+  return aConstRead && bConstRead && aConstRead->getBlock() == bConstRead->getBlock() &&
+         aConstRead.getConstName() == bConstRead.getConstName();
 }
 
-static llvm::SMTExprRef tripCount(scf::ForOp op, llvm::SMTSolver *solver) {
-  const auto *one = solver->mkBitvector(llvm::APSInt::get(1), INDEX_WIDTH);
-  return solver->mkBVSDiv(
-      solver->mkBVAdd(
-          one,
-          solver->mkBVSub(mkExpr(op.getUpperBound(), solver), mkExpr(op.getLowerBound(), solver))
-      ),
-      mkExpr(op.getStep(), solver)
-  );
-}
-
-/// Return whether two marked loops have the same parent region, have opposite product roles, and
-/// have provably equal trip counts.
+/// Return whether two marked loops have the same parent region, opposite product roles, and the
+/// same lower-bound, upper-bound, and step sequence.
 static inline bool canLoopsBeFused(scf::ForOp a, scf::ForOp b) {
   if (a->getParentRegion() != b->getParentRegion()) {
     return false;
@@ -111,26 +101,9 @@ static inline bool canLoopsBeFused(scf::ForOp a, scf::ForOp b) {
     return false;
   }
 
-  // Compare literal trip counts directly; use the solver only when every bound is a constant or
-  // struct parameter and equality can therefore be proved symbolically.
-  auto tripCountA = constantTripCount(a.getLowerBound(), a.getUpperBound(), a.getStep());
-  auto tripCountB = constantTripCount(b.getLowerBound(), b.getUpperBound(), b.getStep());
-  if (tripCountA.has_value() && tripCountB.has_value() && *tripCountA == *tripCountB) {
-    return true;
-  }
-
-  if (!isConstOrStructParam(a.getLowerBound()) || !isConstOrStructParam(a.getUpperBound()) ||
-      !isConstOrStructParam(a.getStep()) || !isConstOrStructParam(b.getLowerBound()) ||
-      !isConstOrStructParam(b.getUpperBound()) || !isConstOrStructParam(b.getStep())) {
-    return false;
-  }
-
-  llvm::SMTSolverRef solver = llvm::CreateZ3Solver();
-  solver->addConstraint(/* (actually ask if they "can't be different") */ solver->mkNot(
-      solver->mkEqual(tripCount(a, solver.get()), tripCount(b, solver.get()))
-  ));
-
-  return !*solver->check();
+  return sameLoopControlValue(a.getLowerBound(), b.getLowerBound()) &&
+         sameLoopControlValue(a.getUpperBound(), b.getUpperBound()) &&
+         sameLoopControlValue(a.getStep(), b.getStep());
 }
 
 /// Return whether every operand of `op` is available at `insertionPoint` using the conservative
@@ -466,9 +439,8 @@ fuseMatchingIfPairs(Region &body, MLIRContext *context, SymbolTableCollection &s
 static bool isSafeToSinkComputeOp(Operation *op) { return isa<MemberWriteOp>(op) || isPure(op); }
 
 /// Collect compute-sourced operations between sibling loops that must move after `constrainLoop`.
-/// Fail if the loops do not share a block, an intervening operation has observable effects, the
-/// move would cross already-fused constraint work, or sinking a result would place it below a
-/// surviving user.
+/// Fail if the loops do not share a block, a crossed non-compute operation is not recursively pure,
+/// the move would cross already-fused constraint work, or a relocated result would lose dominance.
 static FailureOr<SmallVector<Operation *>>
 canPrepareForFusion(scf::ForOp computeLoop, scf::ForOp constrainLoop) {
   if (computeLoop->getBlock() != constrainLoop->getBlock()) {
@@ -486,6 +458,8 @@ canPrepareForFusion(scf::ForOp computeLoop, scf::ForOp constrainLoop) {
         return failure();
       }
       opsToSink.push_back(op);
+    } else if (!isPure(op)) {
+      return failure();
     }
   }
 
@@ -495,18 +469,30 @@ canPrepareForFusion(scf::ForOp computeLoop, scf::ForOp constrainLoop) {
       return sink == user || sink->isAncestor(user);
     });
   };
+  auto hasLegalUsers = [&](Value result) {
+    for (Operation *user : result.getUsers()) {
+      if (isMovedWithSink(user)) {
+        continue;
+      }
+      // The result definition moves after `constrainLoop`; every surviving user must therefore be
+      // dominated by that insertion point and cannot be inside the constrain loop itself.
+      if (user == constrainLoop.getOperation() || constrainLoop->isAncestor(user) ||
+          !dominanceInfo.dominates(constrainLoop, user)) {
+        return false;
+      }
+    }
+    return true;
+  };
+
+  for (Value result : computeLoop.getResults()) {
+    if (!hasLegalUsers(result)) {
+      return failure();
+    }
+  }
   for (Operation *op : opsToSink) {
     for (Value result : op->getResults()) {
-      for (Operation *user : result.getUsers()) {
-        if (isMovedWithSink(user)) {
-          continue;
-        }
-        // The result definition moves after `constrainLoop`; every surviving user must therefore
-        // be dominated by that insertion point and cannot be inside the constrain loop itself.
-        if (user == constrainLoop.getOperation() || constrainLoop->isAncestor(user) ||
-            !dominanceInfo.dominates(constrainLoop, user)) {
-          return failure();
-        }
+      if (!hasLegalUsers(result)) {
+        return failure();
       }
     }
   }

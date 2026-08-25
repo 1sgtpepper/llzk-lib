@@ -123,11 +123,14 @@ def FuseProductControlFlowPass : LLZKPass<"llzk-fuse-product-control-flow"> {
     prevent loop fusion.
     Crossed loop/conditional source order may therefore leave the conditionals unfused to preserve
     both source-local orderings.
-    `scf.for` pairs must be siblings with matching trip counts. `scf.if` pairs must be same-block
-    siblings where the compute op precedes the constrain op, both use the same SSA condition value
-    and have the same else-region presence, and the constrain op is resultless. Conditional fusion
-    requires exact SSA value identity for the condition; it does not perform general
-    signal-equivalence analysis.
+    `scf.for` pairs must be siblings with the same induction sequence: their lower bounds, upper
+    bounds, and steps must identify the same values. Equal trip counts with different bounds or
+    steps remain separate. Every crossed non-compute operation must be recursively pure, and every
+    relocated loop result must remain dominated by the fused loop's insertion point. `scf.if` pairs
+    must be same-block siblings where the compute op precedes the constrain op, both use the same
+    SSA condition value and have the same else-region presence, and the constrain op is resultless.
+    Conditional fusion requires exact SSA value identity for the condition; it does not perform
+    general signal-equivalence analysis.
 
     Each fused conditional branch keeps the compute operations before the cloned constrain
     operations. Uses of compute-if results in constrain branches are remapped to the corresponding

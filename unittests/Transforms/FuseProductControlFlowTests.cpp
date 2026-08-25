@@ -110,8 +110,8 @@ TEST_F(FuseProductControlFlowTests, HoistedSignalMemberReadsPreserveSourceOrder)
   EXPECT_TRUE(reads[1]->isBeforeInBlock(fusedIf));
 }
 
-TEST_F(FuseProductControlFlowTests, UnmarkedMemberReadPreventsFusion) {
-  // An unmarked member is an intermediate expression, so its read must stay after the write.
+TEST_F(FuseProductControlFlowTests, NonSignalMemberReadPreventsFusion) {
+  // A non-signal member is an intermediate expression, so its read must stay after the write.
   mlir::OwningOpRef<mlir::ModuleOp> module = mlir::parseSourceString<mlir::ModuleOp>(
       R"mlir(
     module attributes {llzk.lang = "llzk"} {
@@ -185,8 +185,303 @@ TEST_F(FuseProductControlFlowTests, UnmarkedMemberReadPreventsFusion) {
   EXPECT_TRUE(write->isBeforeInBlock(read));
 }
 
+TEST_F(FuseProductControlFlowTests, UnmarkedSignalMemberReadPreventsFusion) {
+  // A signal read without a constrain source marker is not eligible for hoisting across its write.
+  mlir::OwningOpRef<mlir::ModuleOp> module = mlir::parseSourceString<mlir::ModuleOp>(
+      R"mlir(
+    module attributes {llzk.lang = "llzk"} {
+      struct.def @A {
+        struct.member @value : !felt.type {signal}
+
+        function.def @product(%condition: i1) -> !struct.type<@A> {
+          %self = struct.new : <@A>
+
+          %value = scf.if %condition -> !felt.type {
+            %zero = felt.const 0
+            scf.yield %zero : !felt.type
+          } else {
+            %one = felt.const 1
+            scf.yield %one : !felt.type
+          } {product_source = "compute"}
+
+          struct.writem %self[@value] = %value : <@A>, !felt.type
+          %value_read = struct.readm %self[@value] : <@A>, !felt.type
+
+          scf.if %condition {
+            %expected = felt.const 0
+            constrain.eq %value_read, %expected : !felt.type, !felt.type
+          } else {
+            %expected = felt.const 1
+            constrain.eq %value_read, %expected : !felt.type, !felt.type
+          } {product_source = "constrain"}
+
+          function.return %self : !struct.type<@A>
+        }
+      }
+    }
+  )mlir",
+      &ctx
+  );
+  ASSERT_TRUE(module);
+
+  mlir::PassManager pm(&ctx);
+  pm.addPass(llzk::createFuseProductControlFlowPass());
+  ASSERT_TRUE(mlir::succeeded(pm.run(*module)));
+
+  llzk::function::FuncDefOp product;
+  module->walk([&](llzk::function::FuncDefOp func) {
+    if (func.isStructProduct()) {
+      product = func;
+    }
+  });
+  ASSERT_TRUE(product);
+
+  llzk::component::MemberWriteOp write;
+  llzk::component::MemberReadOp read;
+  mlir::scf::IfOp fusedIf;
+  for (mlir::Operation &op : product.getBody().front()) {
+    if (auto writeOp = llvm::dyn_cast<llzk::component::MemberWriteOp>(&op)) {
+      write = writeOp;
+    } else if (auto readOp = llvm::dyn_cast<llzk::component::MemberReadOp>(&op)) {
+      read = readOp;
+    } else if (auto ifOp = llvm::dyn_cast<mlir::scf::IfOp>(&op)) {
+      if (auto source = ifOp->getAttrOfType<mlir::StringAttr>("product_source");
+          source && source.getValue() == "fused") {
+        fusedIf = ifOp;
+      }
+    }
+  }
+
+  ASSERT_TRUE(write);
+  ASSERT_TRUE(read);
+  EXPECT_FALSE(fusedIf);
+  EXPECT_TRUE(write->isBeforeInBlock(read));
+}
+
+TEST_F(FuseProductControlFlowTests, NestedLoopControlMismatchPreventsFusion) {
+  // The outer conditionals may fuse, but equal-count loops with different bounds or steps must
+  // retain each source induction sequence because their bodies observe the induction variable.
+  mlir::OwningOpRef<mlir::ModuleOp> module = mlir::parseSourceString<mlir::ModuleOp>(
+      R"mlir(
+    module attributes {llzk.lang = "llzk"} {
+      struct.def @A {
+        struct.member @value : !felt.type
+
+        function.def @product(%condition: i1) -> !struct.type<@A> {
+          %self = struct.new : <@A>
+          %c0 = arith.constant 0 : index
+          %c1 = arith.constant 1 : index
+          %c2 = arith.constant 2 : index
+          %c3 = arith.constant 3 : index
+          %zero = felt.const 0
+
+          scf.if %condition {
+            scf.for %i = %c0 to %c2 step %c1 {
+              %lower_value = arith.addi %i, %c0 : index
+              scf.yield
+            } {product_source = "compute"}
+            scf.for %i = %c0 to %c2 step %c2 {
+              %step_value = arith.addi %i, %c0 : index
+              scf.yield
+            } {product_source = "compute"}
+            scf.yield
+          } {product_source = "compute"}
+
+          scf.if %condition {
+            scf.for %i = %c1 to %c3 step %c1 {
+              %lower_value = arith.addi %i, %c0 : index
+              scf.yield
+            } {product_source = "constrain"}
+            scf.for %i = %c0 to %c1 step %c1 {
+              %step_value = arith.addi %i, %c0 : index
+              scf.yield
+            } {product_source = "constrain"}
+            scf.yield
+          } {product_source = "constrain"}
+
+          struct.writem %self[@value] = %zero : <@A>, !felt.type
+          function.return %self : !struct.type<@A>
+        }
+      }
+    }
+  )mlir",
+      &ctx
+  );
+  ASSERT_TRUE(module);
+
+  mlir::PassManager pm(&ctx);
+  pm.addPass(llzk::createFuseProductControlFlowPass());
+  ASSERT_TRUE(mlir::succeeded(pm.run(*module)));
+
+  llzk::function::FuncDefOp product;
+  module->walk([&](llzk::function::FuncDefOp func) {
+    if (func.isStructProduct()) {
+      product = func;
+    }
+  });
+  ASSERT_TRUE(product);
+
+  unsigned fusedIfs = 0;
+  unsigned computeLoops = 0;
+  unsigned constrainLoops = 0;
+  unsigned fusedLoops = 0;
+  product.walk([&](mlir::scf::IfOp ifOp) {
+    if (auto source = ifOp->getAttrOfType<mlir::StringAttr>("product_source");
+        source && source.getValue() == "fused") {
+      ++fusedIfs;
+    }
+  });
+  product.walk([&](mlir::scf::ForOp loop) {
+    mlir::StringAttr source = loop->getAttrOfType<mlir::StringAttr>("product_source");
+    if (!source) {
+      return;
+    }
+    if (source.getValue() == "compute") {
+      ++computeLoops;
+    } else if (source.getValue() == "constrain") {
+      ++constrainLoops;
+    } else if (source.getValue() == "fused") {
+      ++fusedLoops;
+    }
+  });
+
+  EXPECT_EQ(fusedIfs, 1U);
+  EXPECT_EQ(computeLoops, 2U);
+  EXPECT_EQ(constrainLoops, 2U);
+  EXPECT_EQ(fusedLoops, 0U);
+}
+
+TEST_F(FuseProductControlFlowTests, ComputeLoopResultDependenciesPreventFusion) {
+  // A compute-loop result cannot move across a surviving constrain-loop user. The final pair is
+  // the opposite branch: its compute-sourced pure user moves with the result and remains fusible.
+  mlir::OwningOpRef<mlir::ModuleOp> module = mlir::parseSourceString<mlir::ModuleOp>(
+      R"mlir(
+    module attributes {llzk.lang = "llzk"} {
+      struct.def @A {
+        struct.member @value : !felt.type
+
+        function.def @product() -> !struct.type<@A> {
+          %self = struct.new : <@A>
+          %c0 = arith.constant 0 : index
+          %c1 = arith.constant 1 : index
+          %c2 = arith.constant 2 : index
+          %c3 = arith.constant 3 : index
+          %c4 = arith.constant 4 : index
+          %c5 = arith.constant 5 : index
+          %c6 = arith.constant 6 : index
+          %c7 = arith.constant 7 : index
+          %zero = felt.const 0
+
+          // The constrain iter_arg is initialized from the compute-loop result.
+          %compute_iter = scf.for %i = %c0 to %c2 step %c1 iter_args(%acc = %c0) -> (index) {
+            %next = arith.addi %acc, %c1 : index
+            scf.yield %next : index
+          } {product_source = "compute"}
+          scf.for %i = %c0 to %c2 step %c1 iter_args(%acc = %compute_iter) -> (index) {
+            %next = arith.addi %acc, %c1 : index
+            scf.yield %next : index
+          } {product_source = "constrain"}
+
+          // A nested constrain bound captures the compute-loop result.
+          %compute_bound = scf.for %i = %c0 to %c3 step %c1 iter_args(%acc = %c0) -> (index) {
+            %next = arith.addi %acc, %c1 : index
+            scf.yield %next : index
+          } {product_source = "compute"}
+          scf.for %i = %c0 to %c3 step %c1 {
+            scf.for %j = %c0 to %compute_bound step %c1 {
+              %nested = arith.addi %j, %c1 : index
+              scf.yield
+            }
+            scf.yield
+          } {product_source = "constrain"}
+
+          // A pure operation in the constrain body captures the compute-loop result.
+          %compute_body = scf.for %i = %c0 to %c4 step %c1 iter_args(%acc = %c0) -> (index) {
+            %next = arith.addi %acc, %c1 : index
+            scf.yield %next : index
+          } {product_source = "compute"}
+          scf.for %i = %c0 to %c4 step %c1 {
+            %captured = arith.addi %compute_body, %c1 : index
+            scf.yield
+          } {product_source = "constrain"}
+
+          // A constrain-sourced pure interstitial operation uses the result before the loop.
+          %compute_tagged = scf.for %i = %c0 to %c5 step %c1 iter_args(%acc = %c0) -> (index) {
+            %next = arith.addi %acc, %c1 : index
+            scf.yield %next : index
+          } {product_source = "compute"}
+          %constrain_use = arith.addi %compute_tagged, %c1 : index {product_source = "constrain"}
+          scf.for %i = %c0 to %c5 step %c1 {
+            scf.yield
+          } {product_source = "constrain"}
+
+          // An unmarked pure interstitial operation has the same surviving-use restriction.
+          %compute_unmarked = scf.for %i = %c0 to %c6 step %c1 iter_args(%acc = %c0) -> (index) {
+            %next = arith.addi %acc, %c1 : index
+            scf.yield %next : index
+          } {product_source = "compute"}
+          %unmarked_use = arith.addi %compute_unmarked, %c1 : index
+          scf.for %i = %c0 to %c6 step %c1 {
+            scf.yield
+          } {product_source = "constrain"}
+
+          // The compute-sourced pure use moves after the constrain loop with its definition.
+          %compute_sink = scf.for %i = %c0 to %c7 step %c1 iter_args(%acc = %c0) -> (index) {
+            %next = arith.addi %acc, %c1 : index
+            scf.yield %next : index
+          } {product_source = "compute"}
+          %sink_use = arith.addi %compute_sink, %c1 : index {product_source = "compute"}
+          scf.for %i = %c0 to %c7 step %c1 {
+            scf.yield
+          } {product_source = "constrain"}
+
+          struct.writem %self[@value] = %zero : <@A>, !felt.type
+          function.return %self : !struct.type<@A>
+        }
+      }
+    }
+  )mlir",
+      &ctx
+  );
+  ASSERT_TRUE(module);
+
+  mlir::PassManager pm(&ctx);
+  pm.addPass(llzk::createFuseProductControlFlowPass());
+  ASSERT_TRUE(mlir::succeeded(pm.run(*module)));
+
+  llzk::function::FuncDefOp product;
+  module->walk([&](llzk::function::FuncDefOp func) {
+    if (func.isStructProduct()) {
+      product = func;
+    }
+  });
+  ASSERT_TRUE(product);
+
+  unsigned computeLoops = 0;
+  unsigned constrainLoops = 0;
+  unsigned fusedLoops = 0;
+  product.walk([&](mlir::scf::ForOp loop) {
+    mlir::StringAttr source = loop->getAttrOfType<mlir::StringAttr>("product_source");
+    if (!source) {
+      return;
+    }
+    if (source.getValue() == "compute") {
+      ++computeLoops;
+    } else if (source.getValue() == "constrain") {
+      ++constrainLoops;
+    } else if (source.getValue() == "fused") {
+      ++fusedLoops;
+    }
+  });
+
+  EXPECT_EQ(computeLoops, 5U);
+  EXPECT_EQ(constrainLoops, 5U);
+  EXPECT_EQ(fusedLoops, 1U);
+}
+
 TEST_F(FuseProductControlFlowTests, EffectfulOperationsBetweenLoopsPreventFusion) {
-  // Global and RAM operations between the loops must keep their source-local order.
+  // Global and RAM operations between the loops must keep their source-local order, whether the
+  // interstitial write is constrain-sourced or unmarked.
   mlir::OwningOpRef<mlir::ModuleOp> module = mlir::parseSourceString<mlir::ModuleOp>(
       R"mlir(
     module attributes {llzk.lang = "llzk"} {
@@ -250,6 +545,64 @@ TEST_F(FuseProductControlFlowTests, EffectfulOperationsBetweenLoopsPreventFusion
           function.return %self : !struct.type<@RamCase>
         }
       }
+
+      struct.def @ConstrainEffectCase {
+        struct.member @out : !felt.type
+
+        function.def @product(%value: !felt.type) -> !struct.type<@ConstrainEffectCase> {
+          %self = struct.new : <@ConstrainEffectCase>
+          %c0 = arith.constant 0 : index
+          %c1 = arith.constant 1 : index
+          %c2 = arith.constant 2 : index
+          %one = felt.const 1
+
+          scf.for %i = %c0 to %c2 step %c1 {
+            %computed = felt.add %value, %one
+            scf.yield
+          } {product_source = "compute"}
+
+          %stored = felt.const 3
+          global.write @g = %stored : !felt.type {product_source = "constrain"}
+
+          scf.for %i = %c0 to %c2 step %c1 {
+            %actual = global.read @g : !felt.type {product_source = "constrain"}
+            constrain.eq %actual, %value : !felt.type
+            scf.yield
+          } {product_source = "constrain"}
+
+          struct.writem %self[@out] = %value : <@ConstrainEffectCase>, !felt.type
+          function.return %self : !struct.type<@ConstrainEffectCase>
+        }
+      }
+
+      struct.def @UnmarkedEffectCase {
+        struct.member @out : !felt.type
+
+        function.def @product(%value: !felt.type) -> !struct.type<@UnmarkedEffectCase> {
+          %self = struct.new : <@UnmarkedEffectCase>
+          %c0 = arith.constant 0 : index
+          %c1 = arith.constant 1 : index
+          %c2 = arith.constant 2 : index
+          %one = felt.const 1
+
+          scf.for %i = %c0 to %c2 step %c1 {
+            %computed = felt.add %value, %one
+            scf.yield
+          } {product_source = "compute"}
+
+          %stored = felt.const 4
+          global.write @g = %stored : !felt.type
+
+          scf.for %i = %c0 to %c2 step %c1 {
+            %actual = global.read @g : !felt.type {product_source = "constrain"}
+            constrain.eq %actual, %value : !felt.type
+            scf.yield
+          } {product_source = "constrain"}
+
+          struct.writem %self[@out] = %value : <@UnmarkedEffectCase>, !felt.type
+          function.return %self : !struct.type<@UnmarkedEffectCase>
+        }
+      }
     }
   )mlir",
       &ctx
@@ -277,8 +630,8 @@ TEST_F(FuseProductControlFlowTests, EffectfulOperationsBetweenLoopsPreventFusion
     }
   });
 
-  EXPECT_EQ(computeLoops, 2U);
-  EXPECT_EQ(constrainLoops, 2U);
+  EXPECT_EQ(computeLoops, 4U);
+  EXPECT_EQ(constrainLoops, 4U);
   EXPECT_EQ(fusedLoops, 0U);
 }
 
