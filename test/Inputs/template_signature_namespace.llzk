@@ -1,3 +1,5 @@
+// RUN: llzk-opt %s
+
 module attributes {llzk.lang} {
   poly.template @Target {
     poly.param @T : !poly.tvar<@T>

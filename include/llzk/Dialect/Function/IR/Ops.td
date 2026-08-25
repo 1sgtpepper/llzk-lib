@@ -354,8 +354,9 @@ def CallOp : FunctionDialectOp<
     and concrete values must also agree; other symbolic equality remains subject to the generic
     unifier.
 
-    Type paths in a target signature reached through `include.from` are compared in the
-    caller-visible include namespace during explicit and inferred signature reconciliation.
+    When a target is loaded through an `include.from` alias, struct types in its signature resolve
+    under that alias, so caller-qualified paths work for both explicit and inferred template
+    arguments.
 
     Symbol arguments must resolve to an enclosing template binding or a constant global; unknown,
     mutable-global, and wrong-kind symbols are rejected.

@@ -168,7 +168,7 @@ module attributes {llzk.lang} {
 // -----
 
 // Omitted type-only parameters must reject a unique value inferred through an unrestricted struct
-// parameter while accepting a concrete type inference.
+// parameter.
 module attributes {llzk.lang} {
   poly.template @BoxTemplate {
     poly.param @P
@@ -200,10 +200,6 @@ module attributes {llzk.lang} {
     function.return
   }
 
-  function.def @concreteType(%value: !struct.type<@BoxTemplate::@Box<[index]>>) {
-    function.return
-  }
-
   verif.contract @WrongKind for @wrongKind (
       %value: !struct.type<@BoxTemplate::@Box<[5]>>
   ) {
@@ -214,14 +210,6 @@ module attributes {llzk.lang} {
     verif.ensure_compute %ok
   }
 
-  verif.contract @ConcreteType for @concreteType (
-      %value: !struct.type<@BoxTemplate::@Box<[index]>>
-  ) {
-    verif.include @TypeTarget::@Base(%value) :
-        (!struct.type<@BoxTemplate::@Box<[index]>>) -> ()
-    %ok = arith.constant true
-    verif.ensure_compute %ok
-  }
 }
 
 // -----

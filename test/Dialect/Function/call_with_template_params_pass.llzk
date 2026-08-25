@@ -42,7 +42,7 @@ module attributes {llzk.lang} {
 // -----
 
 // Same-spelled type-only parameters in separate templates are distinct bindings, but a matching
-// concrete type-only caller parameter is still accepted by omitted template inference.
+// compatible type-only caller binding is still accepted by omitted template inference.
 module attributes {llzk.lang} {
   poly.template @TypeOnlyTarget {
     poly.param @T : !poly.tvar<@T>
@@ -103,6 +103,60 @@ module attributes {llzk.lang} {
 // CHECK-NEXT:    }
 // CHECK-NEXT:    function.def @matching(%[[VAL_2:[0-9a-zA-Z_\.]+]]: !felt.type, %[[VAL_3:[0-9a-zA-Z_\.]+]]: !felt.type) {
 // CHECK-NEXT:      function.call @RepeatedTypeOnly::@accept(%[[VAL_2]], %[[VAL_3]]) : (!felt.type, !felt.type) -> ()
+// CHECK-NEXT:      function.return
+// CHECK-NEXT:    }
+// CHECK-NEXT:  }
+// -----
+
+// A concrete type inferred through a struct parameter satisfies a type-only template restriction.
+module attributes {llzk.lang} {
+  poly.template @BoxTemplate {
+    poly.param @P
+    struct.def @Box {
+      function.def @compute() -> !struct.type<@BoxTemplate::@Box<[@P]>> {
+        %self = struct.new : <@BoxTemplate::@Box<[@P]>>
+        function.return %self : !struct.type<@BoxTemplate::@Box<[@P]>>
+      }
+      function.def @constrain(%self: !struct.type<@BoxTemplate::@Box<[@P]>>) {
+        function.return
+      }
+    }
+  }
+
+  poly.template @TypeTarget {
+    poly.param @T : !poly.tvar<@T>
+    function.def @accept(%value: !struct.type<@BoxTemplate::@Box<[@T]>>) {
+      function.return
+    }
+  }
+
+  function.def @concreteType(%value: !struct.type<@BoxTemplate::@Box<[index]>>) {
+    function.call @TypeTarget::@accept(%value) :
+        (!struct.type<@BoxTemplate::@Box<[index]>>) -> ()
+    function.return
+  }
+}
+// CHECK-LABEL: module attributes {llzk.lang} {
+// CHECK-NEXT:    poly.template @BoxTemplate {
+// CHECK-NEXT:      poly.param @P
+// CHECK-NEXT:      struct.def @Box {
+// CHECK-NEXT:        function.def @compute() -> !struct.type<@BoxTemplate::@Box<[@P]>> attributes {function.allow_witness} {
+// CHECK-NEXT:          %[[VAL_0:[0-9a-zA-Z_\.]+]] = struct.new : <@BoxTemplate::@Box<[@P]>>
+// CHECK-NEXT:          function.return %[[VAL_0]] : !struct.type<@BoxTemplate::@Box<[@P]>>
+// CHECK-NEXT:        }
+// CHECK-NEXT:        function.def @constrain(%[[VAL_1:[0-9a-zA-Z_\.]+]]: !struct.type<@BoxTemplate::@Box<[@P]>>) attributes {function.allow_constraint} {
+// CHECK-NEXT:          function.return
+// CHECK-NEXT:        }
+// CHECK-NEXT:      }
+// CHECK-NEXT:    }
+// CHECK-NEXT:    poly.template @TypeTarget {
+// CHECK-NEXT:      poly.param @T : !poly.tvar<@T>
+// CHECK-NEXT:      function.def @accept(%[[VAL_2:[0-9a-zA-Z_\.]+]]: !struct.type<@BoxTemplate::@Box<[@T]>>) {
+// CHECK-NEXT:        function.return
+// CHECK-NEXT:      }
+// CHECK-NEXT:    }
+// CHECK-NEXT:    function.def @concreteType(%[[VAL_3:[0-9a-zA-Z_\.]+]]: !struct.type<@BoxTemplate::@Box<[index]>>) {
+// CHECK-NEXT:      function.call @TypeTarget::@accept(%[[VAL_3]]) : (!struct.type<@BoxTemplate::@Box<[index]>>) -> ()
 // CHECK-NEXT:      function.return
 // CHECK-NEXT:    }
 // CHECK-NEXT:  }
