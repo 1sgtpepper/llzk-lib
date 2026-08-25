@@ -14,7 +14,7 @@ jobs:
     runs-on: ubuntu-24.04
     env:
       BASE_HEAD: b5c110d1088e93d6786f66ec1e155be87bae755f
-      TARGET_HEAD: fc8301cf4b1fb49689b30fff209ab4b91082c35a
+      TARGET_HEAD: fdb6488e8568531450f74c5642848643bda0d76a
       OUTPUT_PATH: /home/runner/work/_temp/llzk-pr484-exact-head
 
     steps:
@@ -75,6 +75,9 @@ jobs:
             test/Transforms/FuseProductControlFlow/fuse_if_compute_constrain.llzk
             test/Transforms/FuseProductControlFlow/no_fuse_if_internal_unknown_effect_in_product.llzk
             test/Transforms/FuseProductControlFlow/no_fuse_single.llzk
+            test/Transforms/FuseProductControlFlow/fuse_outer.llzk
+            test/Transforms/FuseProductControlFlow/fuse_single.llzk
+            test/Transforms/FuseProductControlFlow/fuse_with_compute_suffix.llzk
           )
           full_check_mismatches=()
           line_count_mismatches=()
@@ -126,9 +129,13 @@ jobs:
               "$evidence_path/generated-checks.txt" || true)
             test "$generated_separator_checks" -eq "$split_delimiters"
 
-            "$filecheck" --enable-var-scope "$tested_path/$test_file" \
-              < "$evidence_path/producer-output.llzk" \
-              > "$evidence_path/filecheck-output.txt" 2>&1
+            if "$filecheck" --enable-var-scope "$tested_path/$test_file" \
+                < "$evidence_path/producer-output.llzk" \
+                > "$evidence_path/filecheck-output.txt" 2>&1; then
+              filecheck_result=PASS
+            else
+              filecheck_result=FAIL
+            fi
 
             grep '^// CHECK' "$tested_path/$test_file" \
               > "$evidence_path/committed-checks.txt"
@@ -241,6 +248,7 @@ jobs:
               echo "fresh_generated_check_lines=$generated_checks"
               echo "full_committed_check_block=$full_check_block"
               echo "complete_check_line_count=$complete_check_line_count"
+              echo "filecheck=$filecheck_result"
               echo "separator_placement_adjustment=structural_split_delimiter_checks_omitted_from_module_comparison"
               echo "split_delimiters=$split_delimiters"
               echo "generated_separator_checks=$generated_separator_checks"
