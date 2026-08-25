@@ -90,14 +90,26 @@ static bool sameLoopControlValue(Value a, Value b) {
          aConstRead.getConstName() == bConstRead.getConstName();
 }
 
+/// Return whether LLZK's witness interpreter gives this loop unsigned bound semantics.
+static bool usesUnsignedCmp(scf::ForOp loop) {
+  if (auto boolAttr = loop->getAttrOfType<BoolAttr>("unsignedCmp")) {
+    return boolAttr.getValue();
+  }
+  return loop->hasAttr("unsignedCmp");
+}
+
 /// Return whether two marked loops have the same parent region, opposite product roles, and the
-/// same lower-bound, upper-bound, and step sequence.
+/// same lower-bound, upper-bound, step, and LLZK comparison-mode sequence.
 static inline bool canLoopsBeFused(scf::ForOp a, scf::ForOp b) {
   if (a->getParentRegion() != b->getParentRegion()) {
     return false;
   }
 
   if (!areOppositeProductSources(a, b)) {
+    return false;
+  }
+
+  if (usesUnsignedCmp(a) != usesUnsignedCmp(b)) {
     return false;
   }
 
@@ -437,12 +449,14 @@ fuseMatchingIfPairs(Region &body, MLIRContext *context, SymbolTableCollection &s
 static bool isSafeToSinkComputeOp(Operation *op) { return isa<MemberWriteOp>(op) || isPure(op); }
 
 /// Collect compute-sourced operations between sibling loops that must move after `constrainLoop`.
-/// Fail if the loops do not share a block, a crossed non-compute operation is not recursively pure,
-/// a sunk member write would cross an unsafe constrain-loop effect, the move would cross already-
-/// fused constraint work, or a relocated result would lose dominance.
+/// Fail if the compute loop is not before its constrain partner in the same block, a crossed
+/// non-compute operation is not recursively pure, a sunk member write would cross an unsafe
+/// constrain-loop effect, the move would cross already-fused constraint work, or a relocated result
+/// would lose dominance.
 static FailureOr<SmallVector<Operation *>>
 canPrepareForFusion(scf::ForOp computeLoop, scf::ForOp constrainLoop) {
-  if (computeLoop->getBlock() != constrainLoop->getBlock()) {
+  if (computeLoop->getBlock() != constrainLoop->getBlock() ||
+      !computeLoop->isBeforeInBlock(constrainLoop)) {
     return failure();
   }
 
@@ -552,13 +566,30 @@ fuseMatchingLoopPairs(Region &body, MLIRContext *context, SymbolTableCollection 
       computeLoops, constrainLoops, canLoopsBeFused, /*allowPartial=*/true
   );
 
-  // Fuse each unambiguous pair; leave preparation failures unchanged.
+  // Matching uses a DenseMap internally. Walk the original lexical compute-loop list when
+  // applying pairs, so the result does not depend on container iteration order.
   IRRewriter rewriter {context};
-  for (auto [computeLoop, constrainLoop] : fusionCandidates) {
+  for (scf::ForOp lexicalComputeLoop : computeLoops) {
+    auto candidate = llvm::find_if(fusionCandidates, [&](auto pair) {
+      return pair.first == lexicalComputeLoop;
+    });
+    if (candidate == fusionCandidates.end()) {
+      continue;
+    }
+    auto [computeLoop, constrainLoop] = *candidate;
+    Attribute unsignedCmpAttr = computeLoop->getAttr("unsignedCmp");
+    if (!unsignedCmpAttr) {
+      unsignedCmpAttr = constrainLoop->getAttr("unsignedCmp");
+    }
     if (failed(prepareForFusion(computeLoop, constrainLoop, rewriter))) {
       continue;
     }
     auto fusedLoop = fuseIndependentSiblingForLoops(computeLoop, constrainLoop, rewriter);
+    if (unsignedCmpAttr) {
+      // The witness interpreter consumes this discardable attribute even though MLIR's SCF dialect
+      // does not. Keep it on the fused loop after the generic helper creates a fresh operation.
+      fusedLoop->setAttr("unsignedCmp", unsignedCmpAttr);
+    }
     setProductSource(fusedLoop, "fused");
     // Recurse so nested if/loop pairs become eligible after loop fusion.
     fuseMatchingRegionControlFlow(fusedLoop.getBodyRegion(), context, symbolTables);
