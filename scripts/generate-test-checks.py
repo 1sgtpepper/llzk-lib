@@ -264,11 +264,14 @@ def workspace_is_dirty(path):
 
 
 # Keep the definition check in the output segment containing its source definition.
-def process_attribute_definition(line, attribute_namer, output_segment):
+def process_attribute_definition(line, attribute_namer, output_segment, check_prefix):
     m = ATTR_DEF_RE.match(line)
     if m:
         attribute_name = attribute_namer.generate_name(m.group(1))
-        line = '// CHECK: #[[' + attribute_name + ':[0-9a-zA-Z_\\.]+]] =' + line[len(m.group(0)):] + '\n'
+        line = (
+            '// ' + check_prefix + ': #[[' + attribute_name
+            + ':[0-9a-zA-Z_\\.]+]] =' + line[len(m.group(0)):] + '\n'
+        )
         output_segment.append(line)
     return bool(m)
 
@@ -417,7 +420,9 @@ def main():
             continue
 
         # Check if this is an attribute definition and process it
-        if process_attribute_definition(input_line, attribute_namer, output_segments[-1]):
+        if process_attribute_definition(
+            input_line, attribute_namer, output_segments[-1], args.check_prefix
+        ):
             continue
 
         # Lines with blocks begin with a ^. These lines have a trailing comment
