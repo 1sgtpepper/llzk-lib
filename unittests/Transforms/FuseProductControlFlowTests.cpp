@@ -351,6 +351,241 @@ TEST_F(FuseProductControlFlowTests, NestedLoopControlMismatchPreventsFusion) {
   EXPECT_EQ(fusedLoops, 0U);
 }
 
+TEST_F(FuseProductControlFlowTests, ReversedLoopPairPreventsFusion) {
+  // A constrain loop that precedes its compute partner is not a forward-sink candidate and must
+  // remain unchanged instead of reaching the end of the block during preparation.
+  mlir::OwningOpRef<mlir::ModuleOp> module = mlir::parseSourceString<mlir::ModuleOp>(
+      R"mlir(
+    module attributes {llzk.lang = "llzk"} {
+      struct.def @A {
+        struct.member @value : !felt.type
+
+        function.def @product() -> !struct.type<@A> {
+          %self = struct.new : <@A>
+          %c0 = arith.constant 0 : index
+          %c1 = arith.constant 1 : index
+          %c2 = arith.constant 2 : index
+          %zero = felt.const 0
+
+          scf.for %i = %c0 to %c2 step %c1 {
+            %observed = arith.addi %i, %c0 : index
+            scf.yield
+          } {product_source = "constrain"}
+
+          scf.for %i = %c0 to %c2 step %c1 {
+            %computed = arith.addi %i, %c0 : index
+            scf.yield
+          } {product_source = "compute"}
+
+          struct.writem %self[@value] = %zero : <@A>, !felt.type
+          function.return %self : !struct.type<@A>
+        }
+      }
+    }
+  )mlir",
+      &ctx
+  );
+  ASSERT_TRUE(module);
+
+  mlir::PassManager pm(&ctx);
+  pm.addPass(llzk::createFuseProductControlFlowPass());
+  ASSERT_TRUE(mlir::succeeded(pm.run(*module)));
+
+  llzk::function::FuncDefOp product;
+  module->walk([&](llzk::function::FuncDefOp func) {
+    if (func.isStructProduct()) {
+      product = func;
+    }
+  });
+  ASSERT_TRUE(product);
+
+  mlir::scf::ForOp constrainLoop;
+  mlir::scf::ForOp computeLoop;
+  unsigned fusedLoops = 0;
+  product.walk([&](mlir::scf::ForOp loop) {
+    mlir::StringAttr source = loop->getAttrOfType<mlir::StringAttr>("product_source");
+    if (!source) {
+      return;
+    }
+    if (source.getValue() == "constrain") {
+      constrainLoop = loop;
+    } else if (source.getValue() == "compute") {
+      computeLoop = loop;
+    } else if (source.getValue() == "fused") {
+      ++fusedLoops;
+    }
+  });
+
+  ASSERT_TRUE(constrainLoop);
+  ASSERT_TRUE(computeLoop);
+  EXPECT_EQ(fusedLoops, 0U);
+  EXPECT_TRUE(constrainLoop->isBeforeInBlock(computeLoop));
+}
+
+TEST_F(FuseProductControlFlowTests, CrossedLoopPairsUseLexicalApplicationOrder) {
+  // The first pair moves the second compute loop past its constrain partner. The stale second
+  // candidate becomes reversed; live-order revalidation blocks it, and lexical order chooses A.
+  mlir::OwningOpRef<mlir::ModuleOp> module = mlir::parseSourceString<mlir::ModuleOp>(
+      R"mlir(
+    module attributes {llzk.lang = "llzk"} {
+      struct.def @A {
+        struct.member @value : !felt.type
+
+        function.def @product() -> !struct.type<@A> {
+          %self = struct.new : <@A>
+          %c0 = arith.constant 0 : index
+          %c1 = arith.constant 1 : index
+          %c2 = arith.constant 2 : index
+          %c3 = arith.constant 3 : index
+          %zero = felt.const 0
+
+          scf.for %i = %c0 to %c2 step %c1 {
+            %compute_a = arith.addi %i, %c0 : index
+            scf.yield
+          } {product_source = "compute"}
+          scf.for %i = %c0 to %c3 step %c1 {
+            %compute_b = arith.addi %i, %c0 : index
+            scf.yield
+          } {product_source = "compute"}
+          scf.for %i = %c0 to %c3 step %c1 {
+            %constrain_b = arith.addi %i, %c0 : index
+            scf.yield
+          } {product_source = "constrain"}
+          scf.for %i = %c0 to %c2 step %c1 {
+            %constrain_a = arith.addi %i, %c0 : index
+            scf.yield
+          } {product_source = "constrain"}
+
+          struct.writem %self[@value] = %zero : <@A>, !felt.type
+          function.return %self : !struct.type<@A>
+        }
+      }
+    }
+  )mlir",
+      &ctx
+  );
+  ASSERT_TRUE(module);
+
+  mlir::PassManager pm(&ctx);
+  pm.addPass(llzk::createFuseProductControlFlowPass());
+  ASSERT_TRUE(mlir::succeeded(pm.run(*module)));
+
+  llzk::function::FuncDefOp product;
+  module->walk([&](llzk::function::FuncDefOp func) {
+    if (func.isStructProduct()) {
+      product = func;
+    }
+  });
+  ASSERT_TRUE(product);
+
+  mlir::scf::ForOp fusedLoop;
+  mlir::scf::ForOp remainingCompute;
+  mlir::scf::ForOp remainingConstrain;
+  product.walk([&](mlir::scf::ForOp loop) {
+    mlir::StringAttr source = loop->getAttrOfType<mlir::StringAttr>("product_source");
+    if (!source) {
+      return;
+    }
+    if (source.getValue() == "fused") {
+      fusedLoop = loop;
+    } else if (source.getValue() == "compute") {
+      remainingCompute = loop;
+    } else if (source.getValue() == "constrain") {
+      remainingConstrain = loop;
+    }
+  });
+
+  ASSERT_TRUE(fusedLoop);
+  ASSERT_TRUE(remainingCompute);
+  ASSERT_TRUE(remainingConstrain);
+  EXPECT_TRUE(remainingConstrain->isBeforeInBlock(fusedLoop));
+  EXPECT_TRUE(fusedLoop->isBeforeInBlock(remainingCompute));
+}
+
+TEST_F(FuseProductControlFlowTests, LoopComparisonModeIsPartOfFusionIdentity) {
+  // LLZK's witness interpreter treats unsignedCmp as loop semantics. Mixed modes stay separate,
+  // while an equal-mode fused loop retains the attribute after the generic MLIR helper rebuilds it.
+  mlir::OwningOpRef<mlir::ModuleOp> module = mlir::parseSourceString<mlir::ModuleOp>(
+      R"mlir(
+    module attributes {llzk.lang = "llzk"} {
+      struct.def @A {
+        struct.member @value : !felt.type
+
+        function.def @product() -> !struct.type<@A> {
+          %self = struct.new : <@A>
+          %c0 = arith.constant 0 : index
+          %c1 = arith.constant 1 : index
+          %c2 = arith.constant 2 : index
+          %c3 = arith.constant 3 : index
+          %zero = felt.const 0
+
+          scf.for %i = %c0 to %c2 step %c1 {
+            %mixed_compute = arith.addi %i, %c0 : index
+            scf.yield
+          } {product_source = "compute", unsignedCmp}
+          scf.for %i = %c0 to %c2 step %c1 {
+            %mixed_constrain = arith.addi %i, %c0 : index
+            scf.yield
+          } {product_source = "constrain"}
+
+          scf.for %i = %c0 to %c3 step %c1 {
+            %equal_compute = arith.addi %i, %c0 : index
+            scf.yield
+          } {product_source = "compute", unsignedCmp}
+          scf.for %i = %c0 to %c3 step %c1 {
+            %equal_constrain = arith.addi %i, %c0 : index
+            scf.yield
+          } {product_source = "constrain", unsignedCmp}
+
+          struct.writem %self[@value] = %zero : <@A>, !felt.type
+          function.return %self : !struct.type<@A>
+        }
+      }
+    }
+  )mlir",
+      &ctx
+  );
+  ASSERT_TRUE(module);
+
+  mlir::PassManager pm(&ctx);
+  pm.addPass(llzk::createFuseProductControlFlowPass());
+  ASSERT_TRUE(mlir::succeeded(pm.run(*module)));
+
+  llzk::function::FuncDefOp product;
+  module->walk([&](llzk::function::FuncDefOp func) {
+    if (func.isStructProduct()) {
+      product = func;
+    }
+  });
+  ASSERT_TRUE(product);
+
+  unsigned computeLoops = 0;
+  unsigned constrainLoops = 0;
+  unsigned fusedLoops = 0;
+  unsigned fusedUnsignedLoops = 0;
+  product.walk([&](mlir::scf::ForOp loop) {
+    mlir::StringAttr source = loop->getAttrOfType<mlir::StringAttr>("product_source");
+    if (!source) {
+      return;
+    }
+    if (source.getValue() == "compute") {
+      ++computeLoops;
+    } else if (source.getValue() == "constrain") {
+      ++constrainLoops;
+    } else if (source.getValue() == "fused") {
+      ++fusedLoops;
+      if (loop->hasAttr("unsignedCmp")) {
+        ++fusedUnsignedLoops;
+      }
+    }
+  });
+
+  EXPECT_EQ(computeLoops, 1U);
+  EXPECT_EQ(constrainLoops, 1U);
+  EXPECT_EQ(fusedLoops, 1U);
+  EXPECT_EQ(fusedUnsignedLoops, 1U);
+}
+
 TEST_F(FuseProductControlFlowTests, ComputeLoopResultDependenciesPreventFusion) {
   // A compute-loop result cannot move across a surviving constrain-loop user. The final pair is
   // the opposite branch: its compute-sourced pure user moves with the result and remains fusible.
