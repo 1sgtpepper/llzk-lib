@@ -379,8 +379,8 @@ def IncludeOp
     inference based on the callee.
 
     When a target is loaded through an `include.from` alias, struct types in its signature resolve
-    under that alias, so caller-qualified paths work for both explicit and inferred template
-    arguments.
+    under that alias during both explicit-template validation and omitted-template inference.
+    Inclusion operand types therefore use the caller-visible qualified path.
 
     Symbol arguments must resolve to an enclosing template binding or a constant global; unknown,
     mutable-global, and wrong-kind symbols are rejected.
