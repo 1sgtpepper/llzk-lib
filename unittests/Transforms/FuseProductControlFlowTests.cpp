@@ -13,6 +13,7 @@
 #include "llzk/Dialect/Struct/IR/Ops.h"
 #include "llzk/Transforms/LLZKTransformationPasses.h"
 
+#include <mlir/Dialect/Arith/IR/Arith.h>
 #include <mlir/Dialect/SCF/IR/SCF.h>
 #include <mlir/IR/BuiltinOps.h>
 #include <mlir/Parser/Parser.h>
@@ -580,45 +581,77 @@ TEST_F(FuseProductControlFlowTests, LoopComparisonModeIsPartOfFusionIdentity) {
   });
   ASSERT_TRUE(product);
 
-  unsigned computeLoops = 0;
-  unsigned constrainLoops = 0;
-  unsigned fusedLoops = 0;
-  unsigned fusedUnsignedLoops = 0;
-  unsigned fusedUnitLoops = 0;
-  unsigned fusedTrueLoops = 0;
-  unsigned fusedFalseLoops = 0;
+  // Unique upper bounds tie each comparison-mode expectation to its original loop pair.
+  llvm::SmallVector<mlir::scf::ForOp> upperBound2Loops;
+  llvm::SmallVector<mlir::scf::ForOp> upperBound3Loops;
+  llvm::SmallVector<mlir::scf::ForOp> upperBound4Loops;
+  llvm::SmallVector<mlir::scf::ForOp> upperBound5Loops;
+  unsigned unexpectedLoopBounds = 0;
   product.walk([&](mlir::scf::ForOp loop) {
-    mlir::StringAttr source = loop->getAttrOfType<mlir::StringAttr>("product_source");
-    if (!source) {
+    auto upperBound = loop.getUpperBound().getDefiningOp<mlir::arith::ConstantIndexOp>();
+    if (!upperBound) {
+      ++unexpectedLoopBounds;
       return;
     }
-    if (source.getValue() == "compute") {
-      ++computeLoops;
-    } else if (source.getValue() == "constrain") {
-      ++constrainLoops;
-    } else if (source.getValue() == "fused") {
-      ++fusedLoops;
-      if (auto boolAttr = loop->getAttrOfType<mlir::BoolAttr>("unsignedCmp")) {
-        if (boolAttr.getValue()) {
-          ++fusedTrueLoops;
-          ++fusedUnsignedLoops;
-        } else {
-          ++fusedFalseLoops;
-        }
-      } else if (loop->hasAttr("unsignedCmp")) {
-        ++fusedUnitLoops;
-        ++fusedUnsignedLoops;
-      }
+    switch (llvm::cast<mlir::IntegerAttr>(upperBound.getValue()).getInt()) {
+    case 2:
+      upperBound2Loops.push_back(loop);
+      break;
+    case 3:
+      upperBound3Loops.push_back(loop);
+      break;
+    case 4:
+      upperBound4Loops.push_back(loop);
+      break;
+    case 5:
+      upperBound5Loops.push_back(loop);
+      break;
+    default:
+      ++unexpectedLoopBounds;
+      break;
     }
   });
 
-  EXPECT_EQ(computeLoops, 1U);
-  EXPECT_EQ(constrainLoops, 1U);
-  EXPECT_EQ(fusedLoops, 3U);
-  EXPECT_EQ(fusedUnsignedLoops, 2U);
-  EXPECT_EQ(fusedUnitLoops, 1U);
-  EXPECT_EQ(fusedTrueLoops, 1U);
-  EXPECT_EQ(fusedFalseLoops, 1U);
+  EXPECT_EQ(unexpectedLoopBounds, 0U);
+
+  ASSERT_EQ(upperBound2Loops.size(), 2U);
+  mlir::StringAttr upperBound2ComputeSource =
+      upperBound2Loops[0]->getAttrOfType<mlir::StringAttr>("product_source");
+  ASSERT_TRUE(upperBound2ComputeSource);
+  EXPECT_EQ(upperBound2ComputeSource.getValue(), "compute");
+  EXPECT_TRUE(llvm::isa<mlir::UnitAttr>(upperBound2Loops[0]->getAttr("unsignedCmp")));
+  mlir::StringAttr upperBound2ConstrainSource =
+      upperBound2Loops[1]->getAttrOfType<mlir::StringAttr>("product_source");
+  ASSERT_TRUE(upperBound2ConstrainSource);
+  EXPECT_EQ(upperBound2ConstrainSource.getValue(), "constrain");
+  EXPECT_FALSE(upperBound2Loops[1]->hasAttr("unsignedCmp"));
+
+  ASSERT_EQ(upperBound3Loops.size(), 1U);
+  mlir::StringAttr upperBound3Source =
+      upperBound3Loops[0]->getAttrOfType<mlir::StringAttr>("product_source");
+  ASSERT_TRUE(upperBound3Source);
+  EXPECT_EQ(upperBound3Source.getValue(), "fused");
+  EXPECT_TRUE(llvm::isa<mlir::UnitAttr>(upperBound3Loops[0]->getAttr("unsignedCmp")));
+
+  ASSERT_EQ(upperBound4Loops.size(), 1U);
+  mlir::StringAttr upperBound4Source =
+      upperBound4Loops[0]->getAttrOfType<mlir::StringAttr>("product_source");
+  ASSERT_TRUE(upperBound4Source);
+  EXPECT_EQ(upperBound4Source.getValue(), "fused");
+  mlir::BoolAttr falseMode =
+      upperBound4Loops[0]->getAttrOfType<mlir::BoolAttr>("unsignedCmp");
+  ASSERT_TRUE(falseMode);
+  EXPECT_FALSE(falseMode.getValue());
+
+  ASSERT_EQ(upperBound5Loops.size(), 1U);
+  mlir::StringAttr upperBound5Source =
+      upperBound5Loops[0]->getAttrOfType<mlir::StringAttr>("product_source");
+  ASSERT_TRUE(upperBound5Source);
+  EXPECT_EQ(upperBound5Source.getValue(), "fused");
+  mlir::BoolAttr trueMode =
+      upperBound5Loops[0]->getAttrOfType<mlir::BoolAttr>("unsignedCmp");
+  ASSERT_TRUE(trueMode);
+  EXPECT_TRUE(trueMode.getValue());
 }
 
 TEST_F(FuseProductControlFlowTests, ComputeLoopResultDependenciesPreventFusion) {
