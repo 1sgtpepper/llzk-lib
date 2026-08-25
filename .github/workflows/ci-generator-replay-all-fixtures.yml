@@ -13,8 +13,8 @@ jobs:
   replay:
     runs-on: ubuntu-24.04
     env:
-      BASE_HEAD: b5c110d1088e93d6786f66ec1e155be87bae755f
-      TARGET_HEAD: fdb6488e8568531450f74c5642848643bda0d76a
+      BASE_HEAD: d2c8ece96581416010972c778e75866903bc9568
+      TARGET_HEAD: f1ad6ece6b034c66ec21c6b121baa6cacaece1d7
       OUTPUT_PATH: /home/runner/work/_temp/llzk-pr484-exact-head
 
     steps:
@@ -75,9 +75,9 @@ jobs:
             test/Transforms/FuseProductControlFlow/fuse_if_compute_constrain.llzk
             test/Transforms/FuseProductControlFlow/no_fuse_if_internal_unknown_effect_in_product.llzk
             test/Transforms/FuseProductControlFlow/no_fuse_single.llzk
-            test/Transforms/FuseProductControlFlow/fuse_outer.llzk
-            test/Transforms/FuseProductControlFlow/fuse_single.llzk
-            test/Transforms/FuseProductControlFlow/fuse_with_compute_suffix.llzk
+            test/Transforms/FuseProductControlFlow/no_fuse_outer_non_pure_interstitial.llzk
+            test/Transforms/FuseProductControlFlow/no_fuse_single_non_pure_interstitial.llzk
+            test/Transforms/FuseProductControlFlow/no_fuse_compute_suffix_non_pure_interstitial.llzk
           )
           full_check_mismatches=()
           line_count_mismatches=()
