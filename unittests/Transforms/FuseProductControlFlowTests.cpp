@@ -638,8 +638,7 @@ TEST_F(FuseProductControlFlowTests, LoopComparisonModeIsPartOfFusionIdentity) {
       upperBound4Loops[0]->getAttrOfType<mlir::StringAttr>("product_source");
   ASSERT_TRUE(upperBound4Source);
   EXPECT_EQ(upperBound4Source.getValue(), "fused");
-  mlir::BoolAttr falseMode =
-      upperBound4Loops[0]->getAttrOfType<mlir::BoolAttr>("unsignedCmp");
+  mlir::BoolAttr falseMode = upperBound4Loops[0]->getAttrOfType<mlir::BoolAttr>("unsignedCmp");
   ASSERT_TRUE(falseMode);
   EXPECT_FALSE(falseMode.getValue());
 
@@ -648,8 +647,7 @@ TEST_F(FuseProductControlFlowTests, LoopComparisonModeIsPartOfFusionIdentity) {
       upperBound5Loops[0]->getAttrOfType<mlir::StringAttr>("product_source");
   ASSERT_TRUE(upperBound5Source);
   EXPECT_EQ(upperBound5Source.getValue(), "fused");
-  mlir::BoolAttr trueMode =
-      upperBound5Loops[0]->getAttrOfType<mlir::BoolAttr>("unsignedCmp");
+  mlir::BoolAttr trueMode = upperBound5Loops[0]->getAttrOfType<mlir::BoolAttr>("unsignedCmp");
   ASSERT_TRUE(trueMode);
   EXPECT_TRUE(trueMode.getValue());
 }
