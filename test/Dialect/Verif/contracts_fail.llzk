@@ -98,7 +98,7 @@ module attributes {llzk.lang} {
 // -----
 
 // Equal type-variable spellings in different template scopes still identify different bindings:
-// omitted includes reject an unrestricted caller binding and accept a type-only caller binding.
+// an omitted include rejects an unrestricted caller binding.
 module attributes {llzk.lang} {
   poly.template @TypeOnlyTarget {
     poly.param @T : !poly.tvar<@T>
@@ -128,25 +128,12 @@ module attributes {llzk.lang} {
     }
   }
 
-  poly.template @TypeOnlyCaller {
-    poly.param @T : !poly.tvar<@T>
-
-    function.def @accept_same_name(%value: !poly.tvar<@T>) {
-      function.return
-    }
-
-    verif.contract @AcceptSameName for @TypeOnlyCaller::@accept_same_name (
-        %value: !poly.tvar<@T>
-    ) {
-      verif.include @TypeOnlyTarget::@Base(%value) : (!poly.tvar<@T>) -> ()
-    }
-  }
 }
 
 // -----
 
 // Omitted type-only parameters must reject conflicting inferences from repeated contract
-// signature positions while preserving the valid same-type include.
+// signature positions.
 module attributes {llzk.lang} {
   poly.template @RepeatedTypeOnly {
     poly.param @T : !poly.tvar<@T>
@@ -167,10 +154,6 @@ module attributes {llzk.lang} {
     function.return
   }
 
-  function.def @matching(%lhs: !felt.type, %rhs: !felt.type) {
-    function.return
-  }
-
   verif.contract @MismatchedWrapper for @mismatched (
       %lhs: !felt.type, %rhs: index
   ) {
@@ -180,13 +163,6 @@ module attributes {llzk.lang} {
     verif.ensure_compute %ok
   }
 
-  verif.contract @MatchingWrapper for @matching (
-      %lhs: !felt.type, %rhs: !felt.type
-  ) {
-    verif.include @RepeatedTypeOnly::@Base(%lhs, %rhs) : (!felt.type, !felt.type) -> ()
-    %ok = arith.constant true
-    verif.ensure_compute %ok
-  }
 }
 
 // -----

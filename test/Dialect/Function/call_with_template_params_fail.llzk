@@ -273,7 +273,7 @@ module attributes {llzk.lang} {
 // -----
 
 // Equal type-variable spellings in different template scopes still identify different bindings:
-// omitted calls reject an unrestricted caller binding and accept a type-only caller binding.
+// an omitted call rejects an unrestricted caller binding.
 module attributes {llzk.lang} {
   poly.template @TypeOnlyTarget {
     poly.param @T : !poly.tvar<@T>
@@ -293,19 +293,11 @@ module attributes {llzk.lang} {
     }
   }
 
-  poly.template @TypeOnlyCaller {
-    poly.param @T : !poly.tvar<@T>
-
-    function.def @accept_same_name(%value: !poly.tvar<@T>) {
-      function.call @TypeOnlyTarget::@accept(%value) : (!poly.tvar<@T>) -> ()
-      function.return
-    }
-  }
 }
 // -----
 
 // Omitted type-only parameters must reject conflicting inferences from repeated signature
-// positions while preserving the valid same-type case.
+// positions.
 module attributes {llzk.lang} {
   poly.template @RepeatedTypeOnly {
     poly.param @T : !poly.tvar<@T>
@@ -321,10 +313,6 @@ module attributes {llzk.lang} {
     function.return
   }
 
-  function.def @matching(%lhs: !felt.type, %rhs: !felt.type) {
-    function.call @RepeatedTypeOnly::@accept(%lhs, %rhs) : (!felt.type, !felt.type) -> ()
-    function.return
-  }
 }
 // -----
 

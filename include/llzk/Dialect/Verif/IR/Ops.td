@@ -378,6 +378,9 @@ def IncludeOp
     is valid for any parameter with a `poly.tvar` restriction and leaves that type for later
     inference based on the callee.
 
+    Type paths in a target signature reached through `include.from` are compared in the
+    caller-visible include namespace during explicit and inferred signature reconciliation.
+
     Symbol arguments must resolve to an enclosing template binding or a constant global; unknown,
     mutable-global, and wrong-kind symbols are rejected.
   }];

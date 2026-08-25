@@ -1,4 +1,4 @@
-// RUN: llzk-opt -split-input-file %s 2>&1 | FileCheck --enable-var-scope %s
+// RUN: llzk-opt -I %input_dir -split-input-file %s 2>&1 | FileCheck --enable-var-scope %s
 
 module attributes {llzk.lang} {
   struct.def @Top {
@@ -29,6 +29,164 @@ module attributes {llzk.lang} {
 // CHECK-NEXT:    verif.contract @Foo for @Top (%[[VAL_2:[0-9a-zA-Z_\.]+]]: !struct.type<@Top>) {
 // CHECK-NEXT:      %[[VAL_3:[0-9a-zA-Z_\.]+]] = arith.constant true
 // CHECK-NEXT:      verif.ensure_compute %[[VAL_3]]
+// CHECK-NEXT:    }
+// CHECK-NEXT:  }
+// -----
+
+// Same-spelled type-only parameters in separate templates are distinct bindings, but a matching
+// concrete type-only caller parameter is still accepted by omitted template inference.
+module attributes {llzk.lang} {
+  poly.template @TypeOnlyTarget {
+    poly.param @T : !poly.tvar<@T>
+
+    function.def @accept(%value: !poly.tvar<@T>) {
+      function.return
+    }
+
+    verif.contract @Base for @TypeOnlyTarget::@accept (%value: !poly.tvar<@T>) {
+      %ok = arith.constant true
+      verif.ensure_compute %ok
+    }
+  }
+
+  poly.template @TypeOnlyCaller {
+    poly.param @T : !poly.tvar<@T>
+
+    function.def @accept_same_name(%value: !poly.tvar<@T>) {
+      function.return
+    }
+
+    verif.contract @AcceptSameName for @TypeOnlyCaller::@accept_same_name (
+        %value: !poly.tvar<@T>
+    ) {
+      verif.include @TypeOnlyTarget::@Base(%value) : (!poly.tvar<@T>) -> ()
+    }
+  }
+}
+// CHECK-LABEL: module attributes {llzk.lang} {
+// CHECK-NEXT:    poly.template @TypeOnlyTarget {
+// CHECK-NEXT:      poly.param @T : !poly.tvar<@T>
+// CHECK-NEXT:      function.def @accept(%[[VAL_0:[0-9a-zA-Z_\.]+]]: !poly.tvar<@T>) {
+// CHECK-NEXT:        function.return
+// CHECK-NEXT:      }
+// CHECK-NEXT:      verif.contract @Base for @TypeOnlyTarget::@accept (%[[VAL_1:[0-9a-zA-Z_\.]+]]: !poly.tvar<@T>) {
+// CHECK-NEXT:        %[[VAL_2:[0-9a-zA-Z_\.]+]] = arith.constant true
+// CHECK-NEXT:        verif.ensure_compute %[[VAL_2]]
+// CHECK-NEXT:      }
+// CHECK-NEXT:    }
+// CHECK-NEXT:    poly.template @TypeOnlyCaller {
+// CHECK-NEXT:      poly.param @T : !poly.tvar<@T>
+// CHECK-NEXT:      function.def @accept_same_name(%[[VAL_3:[0-9a-zA-Z_\.]+]]: !poly.tvar<@T>) {
+// CHECK-NEXT:        function.return
+// CHECK-NEXT:      }
+// CHECK-NEXT:      verif.contract @AcceptSameName for @TypeOnlyCaller::@accept_same_name (%[[VAL_4:[0-9a-zA-Z_\.]+]]: !poly.tvar<@T>) {
+// CHECK-NEXT:        verif.include @TypeOnlyTarget::@Base(%[[VAL_4]]) : (!poly.tvar<@T>) -> ()
+// CHECK-NEXT:      }
+// CHECK-NEXT:    }
+// CHECK-NEXT:  }
+// -----
+
+// Repeated type-only signature positions accept one concrete type when omitted inference finds
+// the same value at both positions.
+module attributes {llzk.lang} {
+  poly.template @RepeatedTypeOnly {
+    poly.param @T : !poly.tvar<@T>
+
+    function.def @target(%lhs: !poly.tvar<@T>, %rhs: !poly.tvar<@T>) {
+      function.return
+    }
+
+    verif.contract @Base for @RepeatedTypeOnly::@target (
+        %lhs: !poly.tvar<@T>, %rhs: !poly.tvar<@T>
+    ) {
+      %ok = arith.constant true
+      verif.ensure_compute %ok
+    }
+  }
+
+  function.def @matching(%lhs: !felt.type, %rhs: !felt.type) {
+    function.return
+  }
+
+  verif.contract @MatchingWrapper for @matching (
+      %lhs: !felt.type, %rhs: !felt.type
+  ) {
+    verif.include @RepeatedTypeOnly::@Base(%lhs, %rhs) : (!felt.type, !felt.type) -> ()
+    %ok = arith.constant true
+    verif.ensure_compute %ok
+  }
+}
+// CHECK-LABEL: module attributes {llzk.lang} {
+// CHECK-NEXT:    poly.template @RepeatedTypeOnly {
+// CHECK-NEXT:      poly.param @T : !poly.tvar<@T>
+// CHECK-NEXT:      function.def @target(%[[VAL_0:[0-9a-zA-Z_\.]+]]: !poly.tvar<@T>, %[[VAL_1:[0-9a-zA-Z_\.]+]]: !poly.tvar<@T>) {
+// CHECK-NEXT:        function.return
+// CHECK-NEXT:      }
+// CHECK-NEXT:      verif.contract @Base for @RepeatedTypeOnly::@target (%[[VAL_2:[0-9a-zA-Z_\.]+]]: !poly.tvar<@T>, %[[VAL_3:[0-9a-zA-Z_\.]+]]: !poly.tvar<@T>) {
+// CHECK-NEXT:        %[[VAL_4:[0-9a-zA-Z_\.]+]] = arith.constant true
+// CHECK-NEXT:        verif.ensure_compute %[[VAL_4]]
+// CHECK-NEXT:      }
+// CHECK-NEXT:    }
+// CHECK-NEXT:    function.def @matching(%[[VAL_5:[0-9a-zA-Z_\.]+]]: !felt.type, %[[VAL_6:[0-9a-zA-Z_\.]+]]: !felt.type) {
+// CHECK-NEXT:      function.return
+// CHECK-NEXT:    }
+// CHECK-NEXT:    verif.contract @MatchingWrapper for @matching (%[[VAL_7:[0-9a-zA-Z_\.]+]]: !felt.type, %[[VAL_8:[0-9a-zA-Z_\.]+]]: !felt.type) {
+// CHECK-NEXT:      verif.include @RepeatedTypeOnly::@Base(%[[VAL_7]], %[[VAL_8]]) : (!felt.type, !felt.type) -> ()
+// CHECK-NEXT:      %[[VAL_9:[0-9a-zA-Z_\.]+]] = arith.constant true
+// CHECK-NEXT:      verif.ensure_compute %[[VAL_9]]
+// CHECK-NEXT:    }
+// CHECK-NEXT:  }
+// -----
+
+// Included target signatures use the caller-visible include namespace for both explicit and
+// omitted template arguments.
+module attributes {llzk.lang} {
+  include.from "Inputs/template_signature_namespace.llzk" as @Lib
+
+  poly.template @Caller {
+    poly.param @T : !poly.tvar<@T>
+
+    function.def @explicit(%value: !struct.type<@Lib::@Target::@Box<[@T]>>) {
+      function.return
+    }
+
+    verif.contract @Explicit for @Caller::@explicit (
+        %value: !struct.type<@Lib::@Target::@Box<[@T]>>
+    ) {
+      verif.include @Lib::@Target::@Base<[@T]>(%value) :
+          (!struct.type<@Lib::@Target::@Box<[@T]>>) -> ()
+    }
+
+    function.def @inferred(%value: !struct.type<@Lib::@Target::@Box<[@T]>>) {
+      function.return
+    }
+
+    verif.contract @Inferred for @Caller::@inferred (
+        %value: !struct.type<@Lib::@Target::@Box<[@T]>>
+    ) {
+      verif.include @Lib::@Target::@Base(%value) :
+          (!struct.type<@Lib::@Target::@Box<[@T]>>) -> ()
+    }
+  }
+}
+// CHECK-LABEL: module attributes {llzk.lang} {
+// CHECK-NEXT:    module @Lib attributes {llzk.lang} {
+// CHECK-NEXT:      include.from "Inputs/template_signature_namespace.llzk" as @Lib
+// CHECK-NEXT:    }
+// CHECK-NEXT:    poly.template @Caller {
+// CHECK-NEXT:      poly.param @T : !poly.tvar<@T>
+// CHECK-NEXT:      function.def @explicit(%[[VAL_0:[0-9a-zA-Z_\.]+]]: !struct.type<@Lib::@Target::@Box<[@T]>>) {
+// CHECK-NEXT:        function.return
+// CHECK-NEXT:      }
+// CHECK-NEXT:      verif.contract @Explicit for @Caller::@explicit (%[[VAL_1:[0-9a-zA-Z_\.]+]]: !struct.type<@Lib::@Target::@Box<[@T]>>) {
+// CHECK-NEXT:        verif.include @Lib::@Target::@Base<[@T]>(%[[VAL_1]]) : (!struct.type<@Lib::@Target::@Box<[@T]>>) -> ()
+// CHECK-NEXT:      }
+// CHECK-NEXT:      function.def @inferred(%[[VAL_2:[0-9a-zA-Z_\.]+]]: !struct.type<@Lib::@Target::@Box<[@T]>>) {
+// CHECK-NEXT:        function.return
+// CHECK-NEXT:      }
+// CHECK-NEXT:      verif.contract @Inferred for @Caller::@inferred (%[[VAL_3:[0-9a-zA-Z_\.]+]]: !struct.type<@Lib::@Target::@Box<[@T]>>) {
+// CHECK-NEXT:        verif.include @Lib::@Target::@Base(%[[VAL_3]]) : (!struct.type<@Lib::@Target::@Box<[@T]>>) -> ()
+// CHECK-NEXT:      }
 // CHECK-NEXT:    }
 // CHECK-NEXT:  }
 // -----

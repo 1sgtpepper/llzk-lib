@@ -741,7 +741,7 @@ struct KnownTargetVerifier : public CallOpVerifier {
           [this](llzk::UnificationCandidateFn recordCandidate) -> FailureOr<UnificationMap> {
         UnificationMap unifications;
         if (functionTypesUnify(
-                callOp->getTypeSignature(), tgtType, {}, &unifications, recordCandidate
+                callOp->getTypeSignature(), tgtType, includeSymNames, &unifications, recordCandidate
             )) {
           return unifications;
         }

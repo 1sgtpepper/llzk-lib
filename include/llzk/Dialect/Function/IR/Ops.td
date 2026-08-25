@@ -354,6 +354,9 @@ def CallOp : FunctionDialectOp<
     and concrete values must also agree; other symbolic equality remains subject to the generic
     unifier.
 
+    Type paths in a target signature reached through `include.from` are compared in the
+    caller-visible include namespace during explicit and inferred signature reconciliation.
+
     Symbol arguments must resolve to an enclosing template binding or a constant global; unknown,
     mutable-global, and wrong-kind symbols are rejected.
   }];
