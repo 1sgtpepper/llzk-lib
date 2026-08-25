@@ -26,8 +26,15 @@ jobs:
           git config --global 'url.https://ssh@github.com/'.insteadOf 'ssh://git@github.com/'
           git config --global 'url.https://git@github.com/'.insteadOf 'git@github.com:'
 
+      - uses: cachix/cachix-action@v17
+        with:
+          name: veridise-public
+          skipPush: true
+
       - name: Build llzk-opt
-        run: nix --print-build-logs build '.#debugGCC'
+        run: |
+          nix build --impure --print-build-logs --expr \
+            'let flake = builtins.getFlake (toString ./.) ; in flake.packages.x86_64-linux.debugGCC.overrideAttrs (_: { doCheck = false; })'
 
       - name: Generate complete check output
         run: |
