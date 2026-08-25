@@ -42,8 +42,6 @@ module attributes {llzk.lang} {
 // CHECK-NEXT:      }
 // CHECK-NEXT:    }
 // CHECK-NEXT:  }
-// CHECK:  // -----
-
 // -----
 
 // A fielded qualified global argument satisfies a fieldless struct restriction.
@@ -88,8 +86,6 @@ module attributes {llzk.lang} {
 // CHECK-NEXT:      function.return
 // CHECK-NEXT:    }
 // CHECK-NEXT:  }
-// CHECK:  // -----
-
 // -----
 
 // A qualified global with a concrete type satisfies an index restriction, while a local type-only

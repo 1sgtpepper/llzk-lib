@@ -29,8 +29,6 @@ module attributes {llzk.lang, llzk.main = !struct.type<@T::@S<[#felt<const 35>]>
 // CHECK-NEXT:      }
 // CHECK-NEXT:    }
 // CHECK-NEXT:  }
-// CHECK:  // -----
-
 // -----
 
 // A concrete TypeAttr can instantiate a type-only restriction.
@@ -62,8 +60,6 @@ module attributes {llzk.lang, llzk.main = !struct.type<@T::@S<[!felt.type]>>} {
 // CHECK-NEXT:      }
 // CHECK-NEXT:    }
 // CHECK-NEXT:  }
-// CHECK:  // -----
-
 // -----
 
 // An explicitly fielded concrete felt with the same field is accepted.
@@ -95,8 +91,6 @@ module attributes {llzk.lang, llzk.main = !struct.type<@T::@S<[#felt<const 35 : 
 // CHECK-NEXT:      }
 // CHECK-NEXT:    }
 // CHECK-NEXT:  }
-// CHECK:  // -----
-
 // -----
 
 // An integer argument can also be materialized in the required field.
@@ -128,8 +122,6 @@ module attributes {llzk.lang, llzk.main = !struct.type<@T::@S<[35]>>} {
 // CHECK-NEXT:      }
 // CHECK-NEXT:    }
 // CHECK-NEXT:  }
-// CHECK:  // -----
-
 // -----
 
 // A one-result affine map remains deferred for an integer-like restriction.
