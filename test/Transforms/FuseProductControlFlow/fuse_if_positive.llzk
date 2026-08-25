@@ -2141,8 +2141,8 @@ module attributes {llzk.lang = "llzk"} {
 // CHECK-NEXT:  }
 // -----
 
-// Loop fusion has priority when the source-local orders of a loop and conditional cross.
-// The conditionals remain separate because fusing both pairs would require opposite orders.
+// The conditional pair fuses while the crossed loop pair remains separate because fusing both
+// pairs would require opposite source orders.
 module attributes {llzk.lang = "llzk"} {
   struct.def @E {
     struct.member @foo : !felt.type
@@ -2185,20 +2185,19 @@ module attributes {llzk.lang = "llzk"} {
 // CHECK-NEXT:        %[[VAL_3:[0-9a-zA-Z_\.]+]] = arith.constant 0 : index
 // CHECK-NEXT:        %[[VAL_4:[0-9a-zA-Z_\.]+]] = arith.constant 2 : index
 // CHECK-NEXT:        %[[VAL_5:[0-9a-zA-Z_\.]+]] = arith.constant 1 : index
-// CHECK-NEXT:        scf.if %[[VAL_0]] {
-// CHECK-NEXT:          constrain.eq %[[VAL_1]], %[[VAL_1]] : !felt.type, !felt.type
-// CHECK-NEXT:        } else {
-// CHECK-NEXT:          constrain.eq %[[VAL_1]], %[[VAL_1]] : !felt.type, !felt.type
-// CHECK-NEXT:        } {product_source = "constrain"}
 // CHECK-NEXT:        scf.for %[[VAL_6:[0-9a-zA-Z_\.]+]] = %[[VAL_3]] to %[[VAL_4]] step %[[VAL_5]] {
 // CHECK-NEXT:          %[[VAL_7:[0-9a-zA-Z_\.]+]] = felt.const  10
-// CHECK-NEXT:          constrain.eq %[[VAL_1]], %[[VAL_1]] : !felt.type, !felt.type
-// CHECK-NEXT:        } {product_source = "fused"}
+// CHECK-NEXT:        } {product_source = "compute"}
 // CHECK-NEXT:        scf.if %[[VAL_0]] {
 // CHECK-NEXT:          %[[VAL_8:[0-9a-zA-Z_\.]+]] = felt.const  20
+// CHECK-NEXT:          constrain.eq %[[VAL_1]], %[[VAL_1]] : !felt.type, !felt.type
 // CHECK-NEXT:        } else {
 // CHECK-NEXT:          %[[VAL_9:[0-9a-zA-Z_\.]+]] = felt.const  30
-// CHECK-NEXT:        } {product_source = "compute"}
+// CHECK-NEXT:          constrain.eq %[[VAL_1]], %[[VAL_1]] : !felt.type, !felt.type
+// CHECK-NEXT:        } {product_source = "fused"}
+// CHECK-NEXT:        scf.for %[[VAL_10:[0-9a-zA-Z_\.]+]] = %[[VAL_3]] to %[[VAL_4]] step %[[VAL_5]] {
+// CHECK-NEXT:          constrain.eq %[[VAL_1]], %[[VAL_1]] : !felt.type, !felt.type
+// CHECK-NEXT:        } {product_source = "constrain"}
 // CHECK-NEXT:        function.return %[[VAL_2]] : !struct.type<@E>
 // CHECK-NEXT:      }
 // CHECK-NEXT:    }
