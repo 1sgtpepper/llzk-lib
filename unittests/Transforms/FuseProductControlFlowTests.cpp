@@ -504,7 +504,8 @@ TEST_F(FuseProductControlFlowTests, CrossedLoopPairsUseLexicalApplicationOrder) 
 
 TEST_F(FuseProductControlFlowTests, LoopComparisonModeIsPartOfFusionIdentity) {
   // LLZK's witness interpreter treats unsignedCmp as loop semantics. Mixed modes stay separate,
-  // while an equal-mode fused loop retains the attribute after the generic MLIR helper rebuilds it.
+  // while each equivalent representation (Unit, true, false, or absent) retains its effective
+  // mode after the generic MLIR helper rebuilds the fused loop.
   mlir::OwningOpRef<mlir::ModuleOp> module = mlir::parseSourceString<mlir::ModuleOp>(
       R"mlir(
     module attributes {llzk.lang = "llzk"} {
@@ -517,6 +518,8 @@ TEST_F(FuseProductControlFlowTests, LoopComparisonModeIsPartOfFusionIdentity) {
           %c1 = arith.constant 1 : index
           %c2 = arith.constant 2 : index
           %c3 = arith.constant 3 : index
+          %c4 = arith.constant 4 : index
+          %c5 = arith.constant 5 : index
           %zero = felt.const 0
 
           scf.for %i = %c0 to %c2 step %c1 {
@@ -534,6 +537,24 @@ TEST_F(FuseProductControlFlowTests, LoopComparisonModeIsPartOfFusionIdentity) {
           } {product_source = "compute", unsignedCmp}
           scf.for %i = %c0 to %c3 step %c1 {
             %equal_constrain = arith.addi %i, %c0 : index
+            scf.yield
+          } {product_source = "constrain", unsignedCmp}
+
+          scf.for %i = %c0 to %c4 step %c1 {
+            %false_compute = arith.addi %i, %c0 : index
+            scf.yield
+          } {product_source = "compute"}
+          scf.for %i = %c0 to %c4 step %c1 {
+            %false_constrain = arith.addi %i, %c0 : index
+            scf.yield
+          } {product_source = "constrain", unsignedCmp = false}
+
+          scf.for %i = %c0 to %c5 step %c1 {
+            %true_compute = arith.addi %i, %c0 : index
+            scf.yield
+          } {product_source = "compute", unsignedCmp = true}
+          scf.for %i = %c0 to %c5 step %c1 {
+            %true_constrain = arith.addi %i, %c0 : index
             scf.yield
           } {product_source = "constrain", unsignedCmp}
 
@@ -563,6 +584,9 @@ TEST_F(FuseProductControlFlowTests, LoopComparisonModeIsPartOfFusionIdentity) {
   unsigned constrainLoops = 0;
   unsigned fusedLoops = 0;
   unsigned fusedUnsignedLoops = 0;
+  unsigned fusedUnitLoops = 0;
+  unsigned fusedTrueLoops = 0;
+  unsigned fusedFalseLoops = 0;
   product.walk([&](mlir::scf::ForOp loop) {
     mlir::StringAttr source = loop->getAttrOfType<mlir::StringAttr>("product_source");
     if (!source) {
@@ -574,7 +598,15 @@ TEST_F(FuseProductControlFlowTests, LoopComparisonModeIsPartOfFusionIdentity) {
       ++constrainLoops;
     } else if (source.getValue() == "fused") {
       ++fusedLoops;
-      if (loop->hasAttr("unsignedCmp")) {
+      if (auto boolAttr = loop->getAttrOfType<mlir::BoolAttr>("unsignedCmp")) {
+        if (boolAttr.getValue()) {
+          ++fusedTrueLoops;
+          ++fusedUnsignedLoops;
+        } else {
+          ++fusedFalseLoops;
+        }
+      } else if (loop->hasAttr("unsignedCmp")) {
+        ++fusedUnitLoops;
         ++fusedUnsignedLoops;
       }
     }
@@ -582,8 +614,11 @@ TEST_F(FuseProductControlFlowTests, LoopComparisonModeIsPartOfFusionIdentity) {
 
   EXPECT_EQ(computeLoops, 1U);
   EXPECT_EQ(constrainLoops, 1U);
-  EXPECT_EQ(fusedLoops, 1U);
-  EXPECT_EQ(fusedUnsignedLoops, 1U);
+  EXPECT_EQ(fusedLoops, 3U);
+  EXPECT_EQ(fusedUnsignedLoops, 2U);
+  EXPECT_EQ(fusedUnitLoops, 1U);
+  EXPECT_EQ(fusedTrueLoops, 1U);
+  EXPECT_EQ(fusedFalseLoops, 1U);
 }
 
 TEST_F(FuseProductControlFlowTests, ComputeLoopResultDependenciesPreventFusion) {
