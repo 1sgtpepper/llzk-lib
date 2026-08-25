@@ -26,6 +26,10 @@ jobs:
           git config --global 'url.https://ssh@github.com/'.insteadOf 'ssh://git@github.com/'
           git config --global 'url.https://git@github.com/'.insteadOf 'git@github.com:'
 
+      - uses: cachix/cachix-action@v17
+        with:
+          name: veridise-public
+
       - name: Build llzk-opt
         run: |
           nix build --impure --print-build-logs --expr \
