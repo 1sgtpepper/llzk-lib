@@ -412,6 +412,7 @@ TEST_F(FuseProductControlFlowTests, ComputeLoopResultDependenciesPreventFusion) 
           } {product_source = "compute"}
           %constrain_use = arith.addi %compute_tagged, %c1 : index {product_source = "constrain"}
           scf.for %i = %c0 to %c5 step %c1 {
+            %unused_tagged = arith.addi %i, %c0 : index
             scf.yield
           } {product_source = "constrain"}
 
@@ -422,6 +423,7 @@ TEST_F(FuseProductControlFlowTests, ComputeLoopResultDependenciesPreventFusion) 
           } {product_source = "compute"}
           %unmarked_use = arith.addi %compute_unmarked, %c1 : index
           scf.for %i = %c0 to %c6 step %c1 {
+            %unused_unmarked = arith.addi %i, %c0 : index
             scf.yield
           } {product_source = "constrain"}
 
@@ -432,6 +434,7 @@ TEST_F(FuseProductControlFlowTests, ComputeLoopResultDependenciesPreventFusion) 
           } {product_source = "compute"}
           %sink_use = arith.addi %compute_sink, %c1 : index {product_source = "compute"}
           scf.for %i = %c0 to %c7 step %c1 {
+            %unused_sink = arith.addi %i, %c0 : index
             scf.yield
           } {product_source = "constrain"}
 
