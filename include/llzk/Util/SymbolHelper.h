@@ -237,7 +237,8 @@ enum class TemplateParamSignatureKind : std::uint8_t { Function, Contract };
 /// signature. The operation-specific entry points delegate here so value compatibility and
 /// conflict handling stay identical for function calls and contract includes. When provided, the
 /// candidate lookup supplies all symbolic values preserved during contextual unification; it is
-/// used to reconcile repeated omitted felt arguments before generic ambiguity is reported.
+/// used to reconcile repeated felt evidence for explicit and omitted arguments before generic
+/// ambiguity is reported.
 mlir::LogicalResult verifyTemplateParamsMatchInferred(
     mlir::Operation *origin, mlir::ArrayAttr explicitParams,
     llvm::iterator_range<mlir::Region::op_iterator<polymorphic::TemplateParamOp>> targetParamDefs,

@@ -46,8 +46,8 @@ module attributes {llzk.lang} {
   }
 }
 
-// Repeated omitted felt positions reconcile equivalent global and literal evidence but reject
-// the same global paired with a different concrete value.
+// Repeated felt positions reconcile equivalent global and literal evidence for both explicit and
+// omitted arguments, but reject concrete-value and field conflicts.
 // -----
 module attributes {llzk.lang} {
   poly.template @BoxTemplate {
@@ -98,6 +98,11 @@ module attributes {llzk.lang} {
           #felt<const 35 : !felt.type<"bn128">>
       ]>>
   ) {
+    verif.include @RepeatedFelt::@Base<[
+        #felt<const 35 : !felt.type<"bn128">>
+    ]>(%global, %literal) :
+        (!struct.type<@BoxTemplate::@Box<[@globals::@G]>>,
+         !struct.type<@BoxTemplate::@Box<[#felt<const 35 : !felt.type<"bn128">>]>>) -> ()
     verif.include @RepeatedFelt::@Base(%global, %literal) :
         (!struct.type<@BoxTemplate::@Box<[@globals::@G]>>,
          !struct.type<@BoxTemplate::@Box<[#felt<const 35 : !felt.type<"bn128">>]>>) -> ()
@@ -117,10 +122,38 @@ module attributes {llzk.lang} {
           #felt<const 36 : !felt.type<"bn128">>
       ]>>
   ) {
+    // expected-error@+1 {{'verif.include' op template instantiation value '#felt<const 35 : <"bn128">> : !felt.type<"bn128">' for parameter "@F" conflicts with value '#felt<const 36 : <"bn128">> : !felt.type<"bn128">' inferred from contract type signature}}
+    verif.include @RepeatedFelt::@Base<[
+        #felt<const 35 : !felt.type<"bn128">>
+    ]>(%global, %literal) :
+        (!struct.type<@BoxTemplate::@Box<[@globals::@G]>>,
+         !struct.type<@BoxTemplate::@Box<[#felt<const 36 : !felt.type<"bn128">>]>>) -> ()
     // expected-error@+1 {{'verif.include' op cannot infer template instantiation value for parameter "@F" from contract type signature}}
     verif.include @RepeatedFelt::@Base(%global, %literal) :
         (!struct.type<@BoxTemplate::@Box<[@globals::@G]>>,
          !struct.type<@BoxTemplate::@Box<[#felt<const 36 : !felt.type<"bn128">>]>>) -> ()
+  }
+
+  function.def @different_field(
+      %global: !struct.type<@BoxTemplate::@Box<[@globals::@G]>>,
+      %literal: !struct.type<@BoxTemplate::@Box<[
+          #felt<const 35 : !felt.type<"goldilocks">>
+      ]>>
+  ) {
+    function.return
+  }
+  verif.contract @DifferentField for @different_field (
+      %global: !struct.type<@BoxTemplate::@Box<[@globals::@G]>>,
+      %literal: !struct.type<@BoxTemplate::@Box<[
+          #felt<const 35 : !felt.type<"goldilocks">>
+      ]>>
+  ) {
+    // expected-error@+1 {{'verif.include' op instantiation value '#felt<const 35 : <"goldilocks">> : !felt.type<"goldilocks">' is not compatible with parameter "@F" type restriction '!felt.type<"bn128">'}}
+    verif.include @RepeatedFelt::@Base<[
+        #felt<const 35 : !felt.type<"bn128">>
+    ]>(%global, %literal) :
+        (!struct.type<@BoxTemplate::@Box<[@globals::@G]>>,
+         !struct.type<@BoxTemplate::@Box<[#felt<const 35 : !felt.type<"goldilocks">>]>>) -> ()
   }
 }
 

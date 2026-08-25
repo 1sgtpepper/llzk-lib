@@ -252,6 +252,57 @@ FailureOr<bool> resolvedTemplateParamValuesUnify(
     Attribute inferredValue, std::optional<Type> requiredParamType
 );
 
+/// Verify that repeated felt candidates satisfy the declared restriction and mutually agree after
+/// resolving contextual symbol evidence. When an explicit value is present, require it to agree
+/// with every candidate. This preserves generic ambiguity for non-felt parameters.
+LogicalResult verifyRepeatedFeltCandidates(
+    Operation *origin, TemplateParamOp paramOp, ArrayRef<Attribute> inferredCandidates,
+    StringRef signatureDescription, Attribute explicitValue = nullptr
+) {
+  for (Attribute candidate : inferredCandidates) {
+    if (failed(verifyTemplateParamValueCompatibility(origin, candidate, paramOp))) {
+      return failure();
+    }
+  }
+
+  SymbolTableCollection tables;
+  if (explicitValue) {
+    for (Attribute inferredCandidate : inferredCandidates) {
+      FailureOr<bool> resolved = resolvedTemplateParamValuesUnify(
+          tables, origin, explicitValue, inferredCandidate, paramOp.getTypeOpt()
+      );
+      if (failed(resolved)) {
+        return failure();
+      }
+      if (!*resolved) {
+        return origin->emitOpError().append(
+            "template instantiation value '", explicitValue, "' for parameter \"@",
+            paramOp.getName(), "\" conflicts with value '", inferredCandidate, "' inferred from ",
+            signatureDescription, " type signature"
+        );
+      }
+    }
+  }
+
+  for (auto [i, lhsCandidate] : llvm::enumerate(inferredCandidates)) {
+    for (Attribute rhsCandidate : inferredCandidates.drop_front(i + 1)) {
+      FailureOr<bool> resolved = resolvedTemplateParamValuesUnify(
+          tables, origin, lhsCandidate, rhsCandidate, paramOp.getTypeOpt()
+      );
+      if (failed(resolved)) {
+        return failure();
+      }
+      if (!*resolved) {
+        return origin->emitOpError().append(
+            "cannot infer template instantiation value for parameter \"@", paramOp.getName(),
+            "\" from ", signatureDescription, " type signature"
+        );
+      }
+    }
+  }
+  return success();
+}
+
 } // namespace
 
 llvm::SmallVector<StringRef> getNames(SymbolRefAttr ref) {
@@ -561,7 +612,7 @@ LogicalResult verifyKnownTargetTemplateParams(
     );
   }
 
-  // Normalize integer attributes before checking arity and declared restrictions.
+  // Check that integer attributes can be represented as index values before validating them.
   if (failed(forceIntAttrTypes(explicitParams.getValue(), [origin] {
     return InFlightDiagnosticWrapper(origin->emitOpError());
   }))) {
@@ -619,28 +670,10 @@ LogicalResult verifyTemplateParamsMatchInferred(
       std::optional<Type> requiredType = paramOp.getTypeOpt();
       if (inferredCandidates.size() > 1 && requiredType &&
           llvm::isa<felt::FeltType>(*requiredType)) {
-        for (Attribute candidate : inferredCandidates) {
-          if (failed(verifyTemplateParamValueCompatibility(origin, candidate, paramOp))) {
-            return failure();
-          }
-        }
-
-        SymbolTableCollection tables;
-        for (auto [i, lhsCandidate] : llvm::enumerate(inferredCandidates)) {
-          for (Attribute rhsCandidate : inferredCandidates.drop_front(i + 1)) {
-            FailureOr<bool> resolved = resolvedTemplateParamValuesUnify(
-                tables, origin, lhsCandidate, rhsCandidate, requiredType
-            );
-            if (failed(resolved)) {
-              return failure();
-            }
-            if (!*resolved) {
-              return origin->emitOpError().append(
-                  "cannot infer template instantiation value for parameter \"@", paramOp.getName(),
-                  "\" from ", signatureDescription, " type signature"
-              );
-            }
-          }
+        if (failed(verifyRepeatedFeltCandidates(
+                origin, paramOp, inferredCandidates, signatureDescription
+            ))) {
+          return failure();
         }
         continue;
       }
@@ -667,8 +700,21 @@ LogicalResult verifyTemplateParamsMatchInferred(
         continue;
       }
     }
-    auto it = unifications.find({FlatSymbolRefAttr::get(paramOp.getNameAttr()), Side::RHS});
+    FlatSymbolRefAttr paramName = FlatSymbolRefAttr::get(paramOp.getNameAttr());
+    auto it = unifications.find({paramName, Side::RHS});
     if (it != unifications.end() && !it->second) {
+      ArrayRef<Attribute> inferredCandidates =
+          candidates ? candidates(paramName, Side::RHS) : ArrayRef<Attribute>();
+      std::optional<Type> requiredType = paramOp.getTypeOpt();
+      if (inferredCandidates.size() > 1 && requiredType &&
+          llvm::isa<felt::FeltType>(*requiredType)) {
+        if (failed(verifyRepeatedFeltCandidates(
+                origin, paramOp, inferredCandidates, signatureDescription, attr
+            ))) {
+          return failure();
+        }
+        continue;
+      }
       return origin->emitOpError().append(
           "cannot infer a unique template instantiation value for parameter \"@", paramOp.getName(),
           "\" from ", signatureDescription, " type signature"
