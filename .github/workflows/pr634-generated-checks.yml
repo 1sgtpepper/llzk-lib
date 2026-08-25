@@ -64,6 +64,7 @@ jobs:
             cp "$test" "artifacts/${stem}.source.llzk"
           done
 
+          # Nix exposes FileCheck as an LLVM tool in the store, not under result/bin.
           filecheck=$(find /nix/store -type f -path '*/bin/FileCheck' -executable -print -quit)
           test -n "$filecheck"
 
