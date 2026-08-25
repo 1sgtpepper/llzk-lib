@@ -13,6 +13,7 @@ jobs:
         uses: actions/checkout@v6
         with:
           persist-credentials: false
+          ref: 4166b3cb7f05c5f60d5c13cbd18c364d75d9ad6c
 
       - uses: cachix/install-nix-action@d1ca217b388ee87b2507a9a93bf01368bde7cec2
         with:
