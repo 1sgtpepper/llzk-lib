@@ -1,0 +1,100 @@
+name: Reproduce signal equivalence member identity
+
+on:
+  push:
+    branches:
+      - repro/signal-equivalence-member-identity
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  reproduce:
+    runs-on: ubuntu-24.04
+    env:
+      TARGET_HEAD: b5c110d1088e93d6786f66ec1e155be87bae755f
+      EVIDENCE_PATH: /home/runner/work/_temp/signal-equivalence-member-identity
+
+    steps:
+      - name: Check out reproduction branch
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Install Nix
+        uses: cachix/install-nix-action@d1ca217b388ee87b2507a9a93bf01368bde7cec2
+        with:
+          install_url: https://releases.nixos.org/nix/nix-2.23.3/install
+          github_access_token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set Git credentials
+        run: |
+          git config --global 'url.https://api@github.com/'.insteadOf 'https://github.com/'
+          git config --global 'url.https://ssh@github.com/'.insteadOf 'ssh://git@github.com/'
+          git config --global 'url.https://git@github.com/'.insteadOf 'git@github.com:'
+
+      - name: Use project build cache
+        uses: cachix/cachix-action@v17
+        with:
+          name: veridise-public
+          skipPush: true
+
+      - name: Build and run the reproduction
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$EVIDENCE_PATH"
+
+          test "$(git merge-base HEAD "$TARGET_HEAD")" = "$TARGET_HEAD"
+          git diff --exit-code "$TARGET_HEAD" -- \
+            include lib tools backends CMakeLists.txt flake.nix flake.lock \
+            > "$EVIDENCE_PATH/production-input.diff"
+          git diff --name-only "$TARGET_HEAD" | sort \
+            > "$EVIDENCE_PATH/reproduction-paths.txt"
+          {
+            printf '%s\n' .github/workflows/reproduce-signal-equivalence-member-identity.yml
+            printf '%s\n' unittests/Analysis/SignalEquivalenceMemberIdentityReproTests.cpp
+          } | sort > "$EVIDENCE_PATH/expected-reproduction-paths.txt"
+          diff -u "$EVIDENCE_PATH/expected-reproduction-paths.txt" \
+            "$EVIDENCE_PATH/reproduction-paths.txt" \
+            > "$EVIDENCE_PATH/reproduction-paths.diff"
+
+          nix --print-build-logs build .#debugGCC 2>&1 | tee "$EVIDENCE_PATH/build.log"
+
+          probe_result=$(grep -E \
+            'LLZKTest\.MemberReadReplacementIgnoresMemberIdentity .* Passed' \
+            "$EVIDENCE_PATH/build.log" | tail -n 1)
+          suite_result=$(grep -E \
+            '100% tests passed, 0 tests failed out of [0-9]+' \
+            "$EVIDENCE_PATH/build.log" | tail -n 1)
+          test -n "$probe_result"
+          test -n "$suite_result"
+          test ! -s "$EVIDENCE_PATH/production-input.diff"
+          test ! -s "$EVIDENCE_PATH/reproduction-paths.diff"
+
+          {
+            printf 'production_head=%s\n' "$TARGET_HEAD"
+            printf 'reproduction_head=%s\n' "$(git rev-parse HEAD)"
+            printf 'production_inputs_unchanged=PASS\n'
+            printf 'reproduction_delta_allowlist=PASS\n'
+            printf 'full_nix_build_and_test=PASS\n'
+            printf 'different_member_false_positive=REPRODUCED\n'
+            printf 'same_member_false_negative=REPRODUCED\n'
+            printf 'matching_member_control=PASS\n'
+            printf 'member_identity_probe=%s\n' "$probe_result"
+            printf 'complete_ctest_suite=%s\n' "$suite_result"
+          } > "$EVIDENCE_PATH/summary.txt"
+
+          cp unittests/Analysis/SignalEquivalenceMemberIdentityReproTests.cpp "$EVIDENCE_PATH/"
+
+      - name: Upload reproduction evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: signal-equivalence-member-identity-${{ github.sha }}
+          path: /home/runner/work/_temp/signal-equivalence-member-identity
+          if-no-files-found: error
+          retention-days: 30
+          compression-level: 0
