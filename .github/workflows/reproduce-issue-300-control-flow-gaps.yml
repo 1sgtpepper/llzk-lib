@@ -67,6 +67,8 @@ jobs:
           input="$PWD/reproducers/issue-300/control-flow-gaps.llzk"
           "$llzk_opt" -split-input-file --llzk-fuse-product-control-flow "$input" \
             > "$EVIDENCE_PATH/current-output.llzk" 2> "$EVIDENCE_PATH/current-stderr.txt"
+          sed '/^[[:space:]]*$/d' "$EVIDENCE_PATH/current-output.llzk" \
+            > "$EVIDENCE_PATH/current-output.filecheck-input.llzk"
           python3 scripts/generate-test-checks.py < "$EVIDENCE_PATH/current-output.llzk" \
             > "$EVIDENCE_PATH/generated-current-checks.txt"
           sed '${/^$/d;}' "$EVIDENCE_PATH/generated-current-checks.txt" \
@@ -74,7 +76,7 @@ jobs:
 
           full_check="$PWD/reproducers/issue-300/current-output.full-check.llzk"
           intended_check="$PWD/reproducers/issue-300/intended-behavior.check"
-          "$filecheck" "$full_check" < "$EVIDENCE_PATH/current-output.llzk" \
+          "$filecheck" "$full_check" < "$EVIDENCE_PATH/current-output.filecheck-input.llzk" \
             > "$EVIDENCE_PATH/current-output.filecheck.stdout.txt" \
             2> "$EVIDENCE_PATH/current-output.filecheck.stderr.txt"
           diff -u "$full_check" "$EVIDENCE_PATH/generated-current-checks.normalized.txt" \
@@ -99,6 +101,7 @@ jobs:
           test -n "$probe_result"
           test -n "$suite_result"
           test -s "$EVIDENCE_PATH/current-output.llzk"
+          test -s "$EVIDENCE_PATH/current-output.filecheck-input.llzk"
           test -s "$EVIDENCE_PATH/generated-current-checks.txt"
           test -s "$EVIDENCE_PATH/generated-current-checks.normalized.txt"
           test ! -s "$EVIDENCE_PATH/current-stderr.txt"

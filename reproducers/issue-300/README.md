@@ -36,7 +36,8 @@ seven split modules, and then enforces all of these conditions:
    delta matches the committed evidence-only path allowlist.
 2. The analysis probe runs and passes in the 1,327-test CTest suite.
 3. The complete transformed output exactly matches the freshly generated FileCheck block in
-   `current-output.full-check.llzk` after normalizing the generator's extra terminal blank line.
+   `current-output.full-check.llzk`. The replay ignores blank-only output lines, and the generated
+   block comparison normalizes only the generator's extra terminal blank line.
 4. The supported baseline has one fused conditional with both branch constraints and its result use
    preserved.
 5. Each issue-defined gap independently fails its intended fused-output check.
