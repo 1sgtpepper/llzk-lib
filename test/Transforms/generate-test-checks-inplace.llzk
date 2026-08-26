@@ -228,15 +228,15 @@ sys.argv = [
 ]
 raise SystemExit(generator.main())
 
-# Error outputs are the contract of their RUN lines.  Keep these shared
-# FileCheck expectations after the final split input so split-file does not
-# create an unrelated payload.
-# // FAILURE: X: duplicate variable name
-# // OUTPUT-CONFLICT: error: --inplace cannot be used with --output
-# // INVALID-OUTPUT: error: argument -o/--output: can't open
-# // DIRTY: warning: refusing to modify a dirty Git worktree
-# // READONLY: error: source file is not writable:
-# // READONLYDIR: error: unable to replace source file:
-# // SYMLINK: warning: refusing to modify a dirty Git worktree
-# // SYMLINK-LINK: warning: refusing to modify a dirty Git worktree
-# // REPLACE-FAILURE: error: unable to replace source file: injected replace failure
+//--- checks
+// These error-output assertions apply to the RUN lines rather than one split
+// input, so the shared block follows the final split.
+// FAILURE: X: duplicate variable name
+// OUTPUT-CONFLICT: error: --inplace cannot be used with --output
+// INVALID-OUTPUT: error: argument -o/--output: can't open
+// DIRTY: warning: refusing to modify a dirty Git worktree
+// READONLY: error: source file is not writable:
+// READONLYDIR: error: unable to replace source file:
+// SYMLINK: warning: refusing to modify a dirty Git worktree
+// SYMLINK-LINK: warning: refusing to modify a dirty Git worktree
+// REPLACE-FAILURE: error: unable to replace source file: injected replace failure
