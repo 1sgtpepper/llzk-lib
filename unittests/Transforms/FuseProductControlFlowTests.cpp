@@ -853,8 +853,7 @@ TEST_F(FuseProductControlFlowTests, ComputeLoopResultDependenciesPreventFusion) 
   });
   ASSERT_TRUE(taggedUse);
   ASSERT_TRUE(unmarkedUse);
-  mlir::StringAttr taggedSource =
-      taggedUse->getAttrOfType<mlir::StringAttr>("product_source");
+  mlir::StringAttr taggedSource = taggedUse->getAttrOfType<mlir::StringAttr>("product_source");
   ASSERT_TRUE(taggedSource);
   EXPECT_EQ(taggedSource.getValue(), "constrain");
   EXPECT_FALSE(unmarkedUse->hasAttr("product_source"));
@@ -865,8 +864,7 @@ TEST_F(FuseProductControlFlowTests, ComputeLoopResultDependenciesPreventFusion) 
 
   ASSERT_EQ(upperBound7Loops.size(), 1U);
   mlir::scf::ForOp fusedLoop = upperBound7Loops.front();
-  mlir::StringAttr fusedSource =
-      fusedLoop->getAttrOfType<mlir::StringAttr>("product_source");
+  mlir::StringAttr fusedSource = fusedLoop->getAttrOfType<mlir::StringAttr>("product_source");
   ASSERT_TRUE(fusedSource);
   EXPECT_EQ(fusedSource.getValue(), "fused");
   ASSERT_EQ(fusedLoop.getRegionIterArgs().size(), 1U);
@@ -1041,8 +1039,7 @@ TEST_F(FuseProductControlFlowTests, EffectfulOperationsBetweenLoopsPreventFusion
   ASSERT_EQ(products.size(), 4U);
 
   for (llzk::function::FuncDefOp product : products) {
-    llzk::component::StructDefOp parent =
-        product->getParentOfType<llzk::component::StructDefOp>();
+    llzk::component::StructDefOp parent = product->getParentOfType<llzk::component::StructDefOp>();
     ASSERT_TRUE(parent);
 
     llvm::SmallVector<mlir::scf::ForOp> loops;
@@ -1052,10 +1049,8 @@ TEST_F(FuseProductControlFlowTests, EffectfulOperationsBetweenLoopsPreventFusion
       }
     });
     ASSERT_EQ(loops.size(), 2U);
-    mlir::StringAttr computeSource =
-        loops[0]->getAttrOfType<mlir::StringAttr>("product_source");
-    mlir::StringAttr constrainSource =
-        loops[1]->getAttrOfType<mlir::StringAttr>("product_source");
+    mlir::StringAttr computeSource = loops[0]->getAttrOfType<mlir::StringAttr>("product_source");
+    mlir::StringAttr constrainSource = loops[1]->getAttrOfType<mlir::StringAttr>("product_source");
     ASSERT_TRUE(computeSource);
     ASSERT_TRUE(constrainSource);
     EXPECT_EQ(computeSource.getValue(), "compute");
@@ -1067,9 +1062,7 @@ TEST_F(FuseProductControlFlowTests, EffectfulOperationsBetweenLoopsPreventFusion
     product.walk([&](llzk::global::GlobalWriteOp write) {
       barriers.push_back(write.getOperation());
     });
-    product.walk([&](llzk::ram::StoreOp store) {
-      barriers.push_back(store.getOperation());
-    });
+    product.walk([&](llzk::ram::StoreOp store) { barriers.push_back(store.getOperation()); });
     product.walk([&](llzk::global::GlobalReadOp read) { reads.push_back(read.getOperation()); });
     product.walk([&](llzk::ram::LoadOp load) { reads.push_back(load.getOperation()); });
     ASSERT_EQ(barriers.size(), 1U);
@@ -1082,8 +1075,7 @@ TEST_F(FuseProductControlFlowTests, EffectfulOperationsBetweenLoopsPreventFusion
     EXPECT_EQ(read->getBlock(), loops[1].getBody());
 
     mlir::StringRef caseName = parent.getName();
-    mlir::StringAttr barrierSource =
-        barrier->getAttrOfType<mlir::StringAttr>("product_source");
+    mlir::StringAttr barrierSource = barrier->getAttrOfType<mlir::StringAttr>("product_source");
     bool isRamCase = caseName == "RamCase";
     EXPECT_EQ(llvm::isa<llzk::ram::StoreOp>(barrier), isRamCase);
     EXPECT_EQ(llvm::isa<llzk::ram::LoadOp>(read), isRamCase);
