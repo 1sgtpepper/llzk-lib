@@ -316,7 +316,7 @@ def main():
         "--check-prefix", default="CHECK", help="Prefix to use from check file."
     )
     parser.add_argument(
-        "-o", "--output", nargs="?", type=argparse.FileType("w"), default=None
+        "-o", "--output", nargs="?", type=str, default=None
     )
     parser.add_argument(
         "input", nargs="?", type=argparse.FileType("r"), default=sys.stdin
@@ -356,6 +356,9 @@ def main():
         "commas, and leave empty entries for default names (e.g.: 'MAP0,,,MAP1')")
 
     args = parser.parse_args()
+
+    if args.inplace and args.output is not None:
+        parser.error("--inplace cannot be used with --output")
 
     source_path = None
     if args.inplace:
@@ -399,12 +402,14 @@ def main():
             )
 
     if args.inplace:
-        assert args.output is None
         output = io.StringIO()
-    elif args.output is None:
+    elif args.output is None or args.output == "-":
         output = sys.stdout
     else:
-        output = args.output
+        try:
+            output = open(args.output, "w")
+        except OSError as error:
+            parser.error(f"argument -o/--output: can't open {args.output!r}: {error}")
 
     output_segments = [[]]
 
