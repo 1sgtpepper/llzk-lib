@@ -62,12 +62,14 @@
 // RUN: cmp %t/read-only-dir-before.llzk %t/read-only-dir/source.llzk
 // RUN: chmod u+w %t/read-only-dir
 // RUN: FileCheck %s --check-prefix=READONLYDIR < %t/read-only-dir.err
-// RUN: git init --quiet %t/untracked-repo
-// RUN: git -C %t/untracked-repo config status.showUntrackedFiles no
+// The portable Git stub models untracked files hidden by status.showUntrackedFiles=no.
+// RUN: mkdir %t/untracked-repo
 // RUN: cp %t/idempotent-source.llzk %t/untracked-repo/source.llzk
 // RUN: cp %t/idempotent-input.llzk %t/untracked-repo/input.llzk
+// RUN: mkdir %t/untracked-repo/.git
+// RUN: touch %t/untracked-repo/.hidden-untracked
 // RUN: cp %t/untracked-repo/source.llzk %t/untracked-before.llzk
-// RUN: not python3 %S/../../scripts/generate-test-checks.py --source %t/untracked-repo/source.llzk --source_delim_regex='^module ' -i %t/untracked-repo/input.llzk 2>%t/untracked.err
+// RUN: not env PATH=%t:$PATH python3 %S/../../scripts/generate-test-checks.py --source %t/untracked-repo/source.llzk --source_delim_regex='^module ' -i %t/untracked-repo/input.llzk 2>%t/untracked.err
 // RUN: cmp %t/untracked-before.llzk %t/untracked-repo/source.llzk
 // RUN: FileCheck %s --check-prefix=DIRTY < %t/untracked.err
 // RUN: mkdir %t/dirty-repo
@@ -181,8 +183,19 @@ module {
 //--- git
 #!/bin/sh
 
-if [ "$#" -ne 5 ] || [ "$1" != "-C" ] || [ "$3" != "status" ] || [ "$4" != "--porcelain" ] || [ "$5" != "--untracked-files=all" ]; then
+if [ "$#" -ne 4 ] && [ "$#" -ne 5 ]; then
     exit 2
+fi
+if [ "$1" != "-C" ] || [ "$3" != "status" ] || [ "$4" != "--porcelain" ]; then
+    exit 2
+fi
+
+include_untracked=0
+if [ "$#" -eq 5 ]; then
+    if [ "$5" != "--untracked-files=all" ]; then
+        exit 2
+    fi
+    include_untracked=1
 fi
 
 if [ ! -e "$2/.git" ]; then
@@ -195,6 +208,11 @@ if [ -e "$2/.git/clean-source.llzk" ] && ! cmp -s "$2/source.llzk" "$2/.git/clea
     dirty=1
 fi
 if [ -e "$2/.dirty" ]; then
+    dirty=1
+fi
+# Model status.showUntrackedFiles=no: only the explicit command-line override
+# reports this untracked file.
+if [ "$include_untracked" -eq 1 ] && [ -e "$2/.hidden-untracked" ]; then
     dirty=1
 fi
 if [ "$dirty" -eq 1 ]; then
