@@ -48,9 +48,16 @@ jobs:
           mkdir -p "$EVIDENCE_PATH"
 
           test "$(git merge-base HEAD "$TARGET_HEAD")" = "$TARGET_HEAD"
-          git diff --exit-code "$TARGET_HEAD" -- include lib tools backends CMakeLists.txt flake.nix flake.lock
+          git diff --exit-code "$TARGET_HEAD" -- \
+            include lib tools backends CMakeLists.txt flake.nix flake.lock \
+            > "$EVIDENCE_PATH/production-input.diff"
+          git diff --name-status "$TARGET_HEAD" > "$EVIDENCE_PATH/reproduction-delta.txt"
+          git diff --name-only "$TARGET_HEAD" | sort > "$EVIDENCE_PATH/reproduction-paths.txt"
+          diff -u reproducers/issue-300/expected-delta.txt \
+            "$EVIDENCE_PATH/reproduction-paths.txt" \
+            > "$EVIDENCE_PATH/reproduction-paths.diff"
 
-          nix --print-build-logs build .#debugGCC
+          nix --print-build-logs build .#debugGCC 2>&1 | tee "$EVIDENCE_PATH/build.log"
 
           llzk_opt="$PWD/result/bin/llzk-opt"
           filecheck=$(find /nix/store -type f -path '*/bin/FileCheck' -executable -print -quit)
@@ -62,8 +69,67 @@ jobs:
             > "$EVIDENCE_PATH/current-output.llzk" 2> "$EVIDENCE_PATH/current-stderr.txt"
           python3 scripts/generate-test-checks.py < "$EVIDENCE_PATH/current-output.llzk" \
             > "$EVIDENCE_PATH/generated-current-checks.txt"
+          sed '${/^$/d;}' "$EVIDENCE_PATH/generated-current-checks.txt" \
+            > "$EVIDENCE_PATH/generated-current-checks.normalized.txt"
+
+          full_check="$PWD/reproducers/issue-300/current-output.full-check.llzk"
+          intended_check="$PWD/reproducers/issue-300/intended-behavior.check"
+          "$filecheck" "$full_check" < "$EVIDENCE_PATH/current-output.llzk" \
+            > "$EVIDENCE_PATH/current-output.filecheck.stdout.txt" \
+            2> "$EVIDENCE_PATH/current-output.filecheck.stderr.txt"
+          diff -u "$full_check" "$EVIDENCE_PATH/generated-current-checks.normalized.txt" \
+            > "$EVIDENCE_PATH/generated-current-checks.diff"
+
+          for prefix in EQUIVALENT RESULTFUL COMBINED; do
+            diagnostic="$EVIDENCE_PATH/${prefix,,}-intended-gap.txt"
+            if "$filecheck" --check-prefix="$prefix" "$intended_check" \
+                < "$EVIDENCE_PATH/current-output.llzk" > "$diagnostic" 2>&1; then
+              printf '%s intended fusion unexpectedly passed at the frozen head\n' "$prefix" >&2
+              exit 1
+            fi
+            grep -F "error: $prefix: expected string not found in input" "$diagnostic"
+          done
+
+          probe_result=$(grep -E \
+            'LLZKTest\.ComparisonPredicateIsMissingFromSignalIdentity .* Passed' \
+            "$EVIDENCE_PATH/build.log" | tail -n 1)
+          suite_result=$(grep -E \
+            '100% tests passed, 0 tests failed out of [0-9]+' \
+            "$EVIDENCE_PATH/build.log" | tail -n 1)
+          test -n "$probe_result"
+          test -n "$suite_result"
+          test -s "$EVIDENCE_PATH/current-output.llzk"
+          test -s "$EVIDENCE_PATH/generated-current-checks.txt"
+          test -s "$EVIDENCE_PATH/generated-current-checks.normalized.txt"
+          test ! -s "$EVIDENCE_PATH/current-stderr.txt"
+          test ! -s "$EVIDENCE_PATH/production-input.diff"
+          test ! -s "$EVIDENCE_PATH/reproduction-paths.diff"
+          test ! -s "$EVIDENCE_PATH/generated-current-checks.diff"
+
+          {
+            printf 'production_head=%s\n' "$TARGET_HEAD"
+            printf 'reproduction_head=%s\n' "$(git rev-parse HEAD)"
+            printf 'production_inputs_unchanged=PASS\n'
+            printf 'reproduction_delta_allowlist=PASS\n'
+            printf 'full_nix_build_and_test=PASS\n'
+            printf 'analysis_predicate_identity_probe=PASS\n'
+            printf 'complete_generated_output=PASS\n'
+            printf 'exact_ssa_resultless_baseline=FUSED\n'
+            printf 'equivalent_distinct_condition_gap=REPRODUCED\n'
+            printf 'matching_resultful_constrain_gap=REPRODUCED\n'
+            printf 'combined_gap=REPRODUCED\n'
+            printf 'different_predicate_control=RETAINED\n'
+            printf 'different_operand_control=RETAINED\n'
+            printf 'different_result_type_control=RETAINED\n'
+            printf 'compiler_stderr=EMPTY\n'
+            printf 'analysis_probe_ctest=%s\n' "$probe_result"
+            printf 'complete_ctest_suite=%s\n' "$suite_result"
+          } > "$EVIDENCE_PATH/summary.txt"
 
           cp "$input" "$EVIDENCE_PATH/control-flow-gaps.llzk"
+          cp "$full_check" "$EVIDENCE_PATH/current-output.full-check.llzk"
+          cp "$intended_check" "$EVIDENCE_PATH/intended-behavior.check"
+          cp "$PWD/reproducers/issue-300/README.md" "$EVIDENCE_PATH/README.md"
           cp result/artifacts/gcc-report.xml "$EVIDENCE_PATH/gcc-report.xml"
           git rev-parse HEAD > "$EVIDENCE_PATH/reproduction-head.txt"
           printf '%s\n' "$TARGET_HEAD" > "$EVIDENCE_PATH/production-head.txt"

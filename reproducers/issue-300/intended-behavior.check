@@ -1,0 +1,16 @@
+// Each prefix states one independently accepted condition from issue #300. The reproduction
+// workflow requires these checks to fail on the frozen PR #484 implementation. The complete
+// current-output check first proves that every named struct and control case is present, so a
+// missing label or truncated output cannot masquerade as a reproduced gap.
+
+// EQUIVALENT-LABEL: struct.def @EquivalentConditionGap
+// EQUIVALENT: } {product_source = "fused"}
+// EQUIVALENT-LABEL: struct.def @ResultfulConstrainGap
+
+// RESULTFUL-LABEL: struct.def @ResultfulConstrainGap
+// RESULTFUL: } {product_source = "fused"}
+// RESULTFUL-LABEL: struct.def @CombinedGap
+
+// COMBINED-LABEL: struct.def @CombinedGap
+// COMBINED: } {product_source = "fused"}
+// COMBINED-LABEL: struct.def @DifferentPredicateControl
