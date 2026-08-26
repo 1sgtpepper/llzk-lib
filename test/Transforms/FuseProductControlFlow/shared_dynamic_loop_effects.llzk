@@ -1,0 +1,62 @@
+// RUN: llzk-opt -split-input-file --llzk-fuse-product-control-flow %s | FileCheck --enable-var-scope %s
+
+// The shared dynamic bound alone cannot justify interleaving a compute write with a constrain
+// read: the first fused read would observe a prefix value instead of the final compute value.
+module attributes {llzk.lang = "llzk"} {
+  global.def @state : index = 0
+
+  struct.def @Effectful {
+    struct.member @out : index
+
+    function.def @product(%n: index) -> !struct.type<@Effectful> attributes {function.allow_constraint, function.allow_witness} {
+      %self = struct.new : <@Effectful>
+      %c0 = arith.constant 0 : index
+      %c1 = arith.constant 1 : index
+      %last = arith.subi %n, %c1 : index
+
+      scf.for %i = %c0 to %n step %c1 {
+        global.write @state = %i : index {product_source = "compute"}
+        scf.yield
+      } {product_source = "compute"}
+
+      scf.for %i = %c0 to %n step %c1 {
+        %current = global.read @state : index {product_source = "constrain"}
+        constrain.eq %current, %last : index, index
+        scf.yield
+      } {product_source = "constrain"}
+
+      struct.writem %self[@out] = %last : <@Effectful>, index
+      function.return %self : !struct.type<@Effectful>
+    }
+  }
+}
+
+// -----
+
+// Pure compute work and constraint emission remain fusible with the same shared dynamic bound.
+module attributes {llzk.lang = "llzk"} {
+  struct.def @Pure {
+    struct.member @out : index
+
+    function.def @product(%n: index) -> !struct.type<@Pure> attributes {function.allow_constraint, function.allow_witness} {
+      %self = struct.new : <@Pure>
+      %c0 = arith.constant 0 : index
+      %c1 = arith.constant 1 : index
+
+      scf.for %i = %c0 to %n step %c1 {
+        %computed = arith.addi %i, %c1 : index
+        scf.yield
+      } {product_source = "compute"}
+
+      scf.for %i = %c0 to %n step %c1 {
+        %expected = arith.addi %i, %c0 : index
+        constrain.eq %expected, %i : index, index
+        scf.yield
+      } {product_source = "constrain"}
+
+      struct.writem %self[@out] = %n : <@Pure>, index
+      function.return %self : !struct.type<@Pure>
+    }
+  }
+}
+// CHECK: placeholder
