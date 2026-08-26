@@ -25,14 +25,15 @@ TEST_F(LLZKTest, MemberReadReplacementIgnoresMemberIdentity) {
         struct.member @left : !felt.type
         struct.member @right : !felt.type
 
-        function.def @probe(%left_value: !felt.type, %right_value: !felt.type)
-            attributes {function.allow_witness} {
+        function.def @product(%left_value: !felt.type, %right_value: !felt.type)
+            -> !struct.type<@Pair>
+            attributes {function.allow_constraint, function.allow_witness} {
           %self = struct.new : !struct.type<@Pair>
           struct.writem %self[@left] = %left_value : !struct.type<@Pair>, !felt.type
           struct.writem %self[@right] = %right_value : !struct.type<@Pair>, !felt.type
           %left = struct.readm %self[@left] : !struct.type<@Pair>, !felt.type
           %right = struct.readm %self[@right] : !struct.type<@Pair>, !felt.type
-          function.return
+          function.return %self : !struct.type<@Pair>
         }
       }
     }
