@@ -10,6 +10,8 @@
 #include "../LLZKTestBase.h"
 
 #include "llzk/Dialect/Function/IR/Ops.h"
+#include "llzk/Dialect/Global/IR/Ops.h"
+#include "llzk/Dialect/RAM/IR/Ops.h"
 #include "llzk/Dialect/Struct/IR/Ops.h"
 #include "llzk/Transforms/LLZKTransformationPasses.h"
 
@@ -761,31 +763,144 @@ TEST_F(FuseProductControlFlowTests, ComputeLoopResultDependenciesPreventFusion) 
   });
   ASSERT_TRUE(product);
 
-  unsigned computeLoops = 0;
-  unsigned constrainLoops = 0;
-  unsigned fusedLoops = 0;
+  // Unique upper bounds identify every original pair, including the one legal fusion.
+  llvm::SmallVector<mlir::scf::ForOp> upperBound2Loops;
+  llvm::SmallVector<mlir::scf::ForOp> upperBound3Loops;
+  llvm::SmallVector<mlir::scf::ForOp> upperBound4Loops;
+  llvm::SmallVector<mlir::scf::ForOp> upperBound5Loops;
+  llvm::SmallVector<mlir::scf::ForOp> upperBound6Loops;
+  llvm::SmallVector<mlir::scf::ForOp> upperBound7Loops;
+  unsigned unexpectedMarkedLoopBounds = 0;
   product.walk([&](mlir::scf::ForOp loop) {
     mlir::StringAttr source = loop->getAttrOfType<mlir::StringAttr>("product_source");
     if (!source) {
       return;
     }
-    if (source.getValue() == "compute") {
-      ++computeLoops;
-    } else if (source.getValue() == "constrain") {
-      ++constrainLoops;
-    } else if (source.getValue() == "fused") {
-      ++fusedLoops;
+
+    auto upperBound = loop.getUpperBound().getDefiningOp<mlir::arith::ConstantIndexOp>();
+    if (!upperBound) {
+      ++unexpectedMarkedLoopBounds;
+      return;
+    }
+    switch (llvm::cast<mlir::IntegerAttr>(upperBound.getValue()).getInt()) {
+    case 2:
+      upperBound2Loops.push_back(loop);
+      break;
+    case 3:
+      upperBound3Loops.push_back(loop);
+      break;
+    case 4:
+      upperBound4Loops.push_back(loop);
+      break;
+    case 5:
+      upperBound5Loops.push_back(loop);
+      break;
+    case 6:
+      upperBound6Loops.push_back(loop);
+      break;
+    case 7:
+      upperBound7Loops.push_back(loop);
+      break;
+    default:
+      ++unexpectedMarkedLoopBounds;
+      break;
     }
   });
 
-  EXPECT_EQ(computeLoops, 5U);
-  EXPECT_EQ(constrainLoops, 5U);
-  EXPECT_EQ(fusedLoops, 1U);
+  EXPECT_EQ(unexpectedMarkedLoopBounds, 0U);
+
+  for (auto *loopPair : {
+           &upperBound2Loops,
+           &upperBound3Loops,
+           &upperBound4Loops,
+           &upperBound5Loops,
+           &upperBound6Loops,
+       }) {
+    ASSERT_EQ(loopPair->size(), 2U);
+    mlir::StringAttr computeSource =
+        (*loopPair)[0]->getAttrOfType<mlir::StringAttr>("product_source");
+    mlir::StringAttr constrainSource =
+        (*loopPair)[1]->getAttrOfType<mlir::StringAttr>("product_source");
+    ASSERT_TRUE(computeSource);
+    ASSERT_TRUE(constrainSource);
+    EXPECT_EQ(computeSource.getValue(), "compute");
+    EXPECT_EQ(constrainSource.getValue(), "constrain");
+    EXPECT_TRUE((*loopPair)[0]->isBeforeInBlock((*loopPair)[1]));
+  }
+
+  EXPECT_EQ(upperBound2Loops[0].getNumResults(), 1U);
+  EXPECT_EQ(upperBound2Loops[1].getNumResults(), 1U);
+  ASSERT_EQ(upperBound2Loops[1].getInitArgs().size(), 1U);
+  EXPECT_TRUE(upperBound2Loops[1].getInitArgs().front() == upperBound2Loops[0].getResult(0));
+  for (auto *loopPair : {
+           &upperBound3Loops,
+           &upperBound4Loops,
+           &upperBound5Loops,
+           &upperBound6Loops,
+       }) {
+    EXPECT_EQ((*loopPair)[0].getNumResults(), 1U);
+    EXPECT_EQ((*loopPair)[1].getNumResults(), 0U);
+  }
+
+  mlir::arith::AddIOp taggedUse;
+  mlir::arith::AddIOp unmarkedUse;
+  product.walk([&](mlir::arith::AddIOp add) {
+    if (add.getLhs() == upperBound5Loops[0].getResult(0)) {
+      taggedUse = add;
+    } else if (add.getLhs() == upperBound6Loops[0].getResult(0)) {
+      unmarkedUse = add;
+    }
+  });
+  ASSERT_TRUE(taggedUse);
+  ASSERT_TRUE(unmarkedUse);
+  mlir::StringAttr taggedSource =
+      taggedUse->getAttrOfType<mlir::StringAttr>("product_source");
+  ASSERT_TRUE(taggedSource);
+  EXPECT_EQ(taggedSource.getValue(), "constrain");
+  EXPECT_FALSE(unmarkedUse->hasAttr("product_source"));
+  EXPECT_TRUE(upperBound5Loops[0]->isBeforeInBlock(taggedUse));
+  EXPECT_TRUE(taggedUse->isBeforeInBlock(upperBound5Loops[1]));
+  EXPECT_TRUE(upperBound6Loops[0]->isBeforeInBlock(unmarkedUse));
+  EXPECT_TRUE(unmarkedUse->isBeforeInBlock(upperBound6Loops[1]));
+
+  ASSERT_EQ(upperBound7Loops.size(), 1U);
+  mlir::scf::ForOp fusedLoop = upperBound7Loops.front();
+  mlir::StringAttr fusedSource =
+      fusedLoop->getAttrOfType<mlir::StringAttr>("product_source");
+  ASSERT_TRUE(fusedSource);
+  EXPECT_EQ(fusedSource.getValue(), "fused");
+  ASSERT_EQ(fusedLoop.getRegionIterArgs().size(), 1U);
+  ASSERT_EQ(fusedLoop.getNumResults(), 1U);
+
+  llvm::SmallVector<mlir::arith::AddIOp> fusedBodyAdds;
+  for (mlir::Operation &op : *fusedLoop.getBody()) {
+    if (auto add = llvm::dyn_cast<mlir::arith::AddIOp>(&op)) {
+      fusedBodyAdds.push_back(add);
+    }
+  }
+  ASSERT_EQ(fusedBodyAdds.size(), 2U);
+  EXPECT_TRUE(fusedBodyAdds[0].getLhs() == fusedLoop.getRegionIterArgs().front());
+  EXPECT_TRUE(fusedBodyAdds[0].getRhs() == fusedLoop.getStep());
+  EXPECT_TRUE(fusedBodyAdds[1].getLhs() == fusedLoop.getInductionVar());
+  EXPECT_TRUE(fusedBodyAdds[1].getRhs() == fusedLoop.getLowerBound());
+  EXPECT_TRUE(fusedBodyAdds[0]->isBeforeInBlock(fusedBodyAdds[1]));
+
+  llvm::SmallVector<mlir::arith::AddIOp> sunkComputeUses;
+  product.walk([&](mlir::arith::AddIOp add) {
+    mlir::StringAttr source = add->getAttrOfType<mlir::StringAttr>("product_source");
+    if (source && source.getValue() == "compute") {
+      sunkComputeUses.push_back(add);
+    }
+  });
+  ASSERT_EQ(sunkComputeUses.size(), 1U);
+  EXPECT_TRUE(sunkComputeUses.front().getLhs() == fusedLoop.getResult(0));
+  EXPECT_TRUE(fusedLoop->isBeforeInBlock(sunkComputeUses.front()));
 }
 
 TEST_F(FuseProductControlFlowTests, EffectfulOperationsBetweenLoopsPreventFusion) {
   // Global and RAM operations between the loops must keep their source-local order, whether the
-  // interstitial write is constrain-sourced or unmarked.
+  // interstitial write is constrain-sourced or unmarked. Distinct parent structs and typed
+  // barriers identify each original loop pair independently.
   mlir::OwningOpRef<mlir::ModuleOp> module = mlir::parseSourceString<mlir::ModuleOp>(
       R"mlir(
     module attributes {llzk.lang = "llzk"} {
@@ -917,26 +1032,80 @@ TEST_F(FuseProductControlFlowTests, EffectfulOperationsBetweenLoopsPreventFusion
   pm.addPass(llzk::createFuseProductControlFlowPass());
   ASSERT_TRUE(mlir::succeeded(pm.run(*module)));
 
-  unsigned computeLoops = 0;
-  unsigned constrainLoops = 0;
-  unsigned fusedLoops = 0;
-  module->walk([&](mlir::scf::ForOp loop) {
-    mlir::StringAttr source = loop->getAttrOfType<mlir::StringAttr>("product_source");
-    if (!source) {
-      return;
-    }
-    if (source.getValue() == "compute") {
-      ++computeLoops;
-    } else if (source.getValue() == "constrain") {
-      ++constrainLoops;
-    } else if (source.getValue() == "fused") {
-      ++fusedLoops;
+  llvm::SmallVector<llzk::function::FuncDefOp> products;
+  module->walk([&](llzk::function::FuncDefOp func) {
+    if (func.isStructProduct()) {
+      products.push_back(func);
     }
   });
+  ASSERT_EQ(products.size(), 4U);
 
-  EXPECT_EQ(computeLoops, 4U);
-  EXPECT_EQ(constrainLoops, 4U);
-  EXPECT_EQ(fusedLoops, 0U);
+  for (llzk::function::FuncDefOp product : products) {
+    llzk::component::StructDefOp parent =
+        product->getParentOfType<llzk::component::StructDefOp>();
+    ASSERT_TRUE(parent);
+
+    llvm::SmallVector<mlir::scf::ForOp> loops;
+    product.walk([&](mlir::scf::ForOp loop) {
+      if (loop->hasAttr("product_source")) {
+        loops.push_back(loop);
+      }
+    });
+    ASSERT_EQ(loops.size(), 2U);
+    mlir::StringAttr computeSource =
+        loops[0]->getAttrOfType<mlir::StringAttr>("product_source");
+    mlir::StringAttr constrainSource =
+        loops[1]->getAttrOfType<mlir::StringAttr>("product_source");
+    ASSERT_TRUE(computeSource);
+    ASSERT_TRUE(constrainSource);
+    EXPECT_EQ(computeSource.getValue(), "compute");
+    EXPECT_EQ(constrainSource.getValue(), "constrain");
+    EXPECT_TRUE(loops[0]->isBeforeInBlock(loops[1]));
+
+    llvm::SmallVector<mlir::Operation *> barriers;
+    llvm::SmallVector<mlir::Operation *> reads;
+    product.walk([&](llzk::global::GlobalWriteOp write) {
+      barriers.push_back(write.getOperation());
+    });
+    product.walk([&](llzk::ram::StoreOp store) {
+      barriers.push_back(store.getOperation());
+    });
+    product.walk([&](llzk::global::GlobalReadOp read) { reads.push_back(read.getOperation()); });
+    product.walk([&](llzk::ram::LoadOp load) { reads.push_back(load.getOperation()); });
+    ASSERT_EQ(barriers.size(), 1U);
+    ASSERT_EQ(reads.size(), 1U);
+    mlir::Operation *barrier = barriers.front();
+    mlir::Operation *read = reads.front();
+    EXPECT_EQ(barrier->getBlock(), loops[0]->getBlock());
+    EXPECT_TRUE(loops[0]->isBeforeInBlock(barrier));
+    EXPECT_TRUE(barrier->isBeforeInBlock(loops[1]));
+    EXPECT_EQ(read->getBlock(), loops[1].getBody());
+
+    mlir::StringRef caseName = parent.getName();
+    mlir::StringAttr barrierSource =
+        barrier->getAttrOfType<mlir::StringAttr>("product_source");
+    bool isRamCase = caseName == "RamCase";
+    EXPECT_EQ(llvm::isa<llzk::ram::StoreOp>(barrier), isRamCase);
+    EXPECT_EQ(llvm::isa<llzk::ram::LoadOp>(read), isRamCase);
+    EXPECT_EQ(llvm::isa<llzk::global::GlobalWriteOp>(barrier), !isRamCase);
+    EXPECT_EQ(llvm::isa<llzk::global::GlobalReadOp>(read), !isRamCase);
+
+    mlir::StringRef expectedSource;
+    if (caseName == "GlobalCase" || isRamCase) {
+      expectedSource = "compute";
+    } else if (caseName == "ConstrainEffectCase") {
+      expectedSource = "constrain";
+    } else if (caseName != "UnmarkedEffectCase") {
+      ADD_FAILURE() << "unexpected effect case: " << caseName.str();
+    }
+
+    if (expectedSource.empty()) {
+      EXPECT_FALSE(barrierSource);
+    } else {
+      ASSERT_TRUE(barrierSource);
+      EXPECT_EQ(barrierSource.getValue(), expectedSource);
+    }
+  }
 }
 
 TEST_F(FuseProductControlFlowTests, MemberWriteSinkDoesNotCrossConstrainRead) {
