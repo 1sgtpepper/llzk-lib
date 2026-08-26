@@ -1,0 +1,236 @@
+// RUN: llzk-opt -split-input-file --llzk-fuse-product-control-flow %s
+
+// Baseline: the currently supported exact-SSA, resultless-constrain case fuses.
+module attributes {llzk.lang = "llzk"} {
+  struct.def @ExactSsaBaseline {
+    struct.member @value : !felt.type
+
+    function.def @product(%condition: i1) -> !struct.type<@ExactSsaBaseline> {
+      %self = struct.new : <@ExactSsaBaseline>
+      %computed = scf.if %condition -> !felt.type {
+        %then_value = felt.const 10
+        scf.yield %then_value : !felt.type
+      } else {
+        %else_value = felt.const 20
+        scf.yield %else_value : !felt.type
+      } {product_source = "compute"}
+
+      scf.if %condition {
+        %expected = felt.const 10
+        constrain.eq %computed, %expected : !felt.type
+      } else {
+        %expected = felt.const 20
+        constrain.eq %computed, %expected : !felt.type
+      } {product_source = "constrain"}
+
+      struct.writem %self[@value] = %computed : <@ExactSsaBaseline>, !felt.type
+      function.return %self : !struct.type<@ExactSsaBaseline>
+    }
+  }
+}
+
+// -----
+
+// Gap A: the conditions are distinct SSA values but are the same comparison of the same operands.
+// Issue #300 says provably identical conditions should be fusible.
+module attributes {llzk.lang = "llzk"} {
+  struct.def @EquivalentConditionGap {
+    struct.member @value : !felt.type
+
+    function.def @product(%lhs: index, %rhs: index) -> !struct.type<@EquivalentConditionGap> {
+      %self = struct.new : <@EquivalentConditionGap>
+      %compute_condition = arith.cmpi eq, %lhs, %rhs : index
+      %constrain_condition = arith.cmpi eq, %lhs, %rhs : index
+      %computed = scf.if %compute_condition -> !felt.type {
+        %then_value = felt.const 11
+        scf.yield %then_value : !felt.type
+      } else {
+        %else_value = felt.const 21
+        scf.yield %else_value : !felt.type
+      } {product_source = "compute"}
+
+      scf.if %constrain_condition {
+        %expected = felt.const 11
+        constrain.eq %computed, %expected : !felt.type
+      } else {
+        %expected = felt.const 21
+        constrain.eq %computed, %expected : !felt.type
+      } {product_source = "constrain"}
+
+      struct.writem %self[@value] = %computed : <@EquivalentConditionGap>, !felt.type
+      function.return %self : !struct.type<@EquivalentConditionGap>
+    }
+  }
+}
+
+// -----
+
+// Gap B: both conditionals have one result of the same type and the same else shape. Issue #300
+// states that this result shape is fusible, but the current pass requires the constrain if to be
+// resultless. Both results remain externally observable after the pair.
+module attributes {llzk.lang = "llzk"} {
+  struct.def @ResultfulConstrainGap {
+    struct.member @value : !felt.type
+
+    function.def @product(%condition: i1) -> !struct.type<@ResultfulConstrainGap> {
+      %self = struct.new : <@ResultfulConstrainGap>
+      %computed = scf.if %condition -> !felt.type {
+        %then_value = felt.const 12
+        scf.yield %then_value : !felt.type
+      } else {
+        %else_value = felt.const 22
+        scf.yield %else_value : !felt.type
+      } {product_source = "compute"}
+
+      %observed = scf.if %condition -> !felt.type {
+        %then_value = felt.const 12
+        constrain.eq %computed, %then_value : !felt.type
+        scf.yield %then_value : !felt.type
+      } else {
+        %else_value = felt.const 22
+        constrain.eq %computed, %else_value : !felt.type
+        scf.yield %else_value : !felt.type
+      } {product_source = "constrain"}
+
+      constrain.eq %observed, %computed : !felt.type
+      struct.writem %self[@value] = %computed : <@ResultfulConstrainGap>, !felt.type
+      function.return %self : !struct.type<@ResultfulConstrainGap>
+    }
+  }
+}
+
+// -----
+
+// Combined gap: both accepted conditions from issue #300 are present simultaneously.
+module attributes {llzk.lang = "llzk"} {
+  struct.def @CombinedGap {
+    struct.member @value : !felt.type
+
+    function.def @product(%lhs: index, %rhs: index) -> !struct.type<@CombinedGap> {
+      %self = struct.new : <@CombinedGap>
+      %compute_condition = arith.cmpi eq, %lhs, %rhs : index
+      %constrain_condition = arith.cmpi eq, %lhs, %rhs : index
+      %computed = scf.if %compute_condition -> !felt.type {
+        %then_value = felt.const 13
+        scf.yield %then_value : !felt.type
+      } else {
+        %else_value = felt.const 23
+        scf.yield %else_value : !felt.type
+      } {product_source = "compute"}
+
+      %observed = scf.if %constrain_condition -> !felt.type {
+        %then_value = felt.const 13
+        constrain.eq %computed, %then_value : !felt.type
+        scf.yield %then_value : !felt.type
+      } else {
+        %else_value = felt.const 23
+        constrain.eq %computed, %else_value : !felt.type
+        scf.yield %else_value : !felt.type
+      } {product_source = "constrain"}
+
+      constrain.eq %observed, %computed : !felt.type
+      struct.writem %self[@value] = %computed : <@CombinedGap>, !felt.type
+      function.return %self : !struct.type<@CombinedGap>
+    }
+  }
+}
+
+// -----
+
+// Negative control: equal operands do not make different comparison predicates equivalent.
+module attributes {llzk.lang = "llzk"} {
+  struct.def @DifferentPredicateControl {
+    struct.member @value : !felt.type
+
+    function.def @product(%lhs: index, %rhs: index) -> !struct.type<@DifferentPredicateControl> {
+      %self = struct.new : <@DifferentPredicateControl>
+      %compute_condition = arith.cmpi eq, %lhs, %rhs : index
+      %constrain_condition = arith.cmpi ne, %lhs, %rhs : index
+      %computed = scf.if %compute_condition -> !felt.type {
+        %then_value = felt.const 14
+        scf.yield %then_value : !felt.type
+      } else {
+        %else_value = felt.const 24
+        scf.yield %else_value : !felt.type
+      } {product_source = "compute"}
+
+      scf.if %constrain_condition {
+        %expected = felt.const 14
+        constrain.eq %computed, %expected : !felt.type
+      } else {
+        %expected = felt.const 24
+        constrain.eq %computed, %expected : !felt.type
+      } {product_source = "constrain"}
+
+      struct.writem %self[@value] = %computed : <@DifferentPredicateControl>, !felt.type
+      function.return %self : !struct.type<@DifferentPredicateControl>
+    }
+  }
+}
+
+// -----
+
+// Negative control: the same predicate over different operands is not equivalent.
+module attributes {llzk.lang = "llzk"} {
+  struct.def @DifferentOperandControl {
+    struct.member @value : !felt.type
+
+    function.def @product(
+        %lhs: index, %rhs: index, %other: index
+    ) -> !struct.type<@DifferentOperandControl> {
+      %self = struct.new : <@DifferentOperandControl>
+      %compute_condition = arith.cmpi eq, %lhs, %rhs : index
+      %constrain_condition = arith.cmpi eq, %lhs, %other : index
+      %computed = scf.if %compute_condition -> !felt.type {
+        %then_value = felt.const 15
+        scf.yield %then_value : !felt.type
+      } else {
+        %else_value = felt.const 25
+        scf.yield %else_value : !felt.type
+      } {product_source = "compute"}
+
+      scf.if %constrain_condition {
+        %expected = felt.const 15
+        constrain.eq %computed, %expected : !felt.type
+      } else {
+        %expected = felt.const 25
+        constrain.eq %computed, %expected : !felt.type
+      } {product_source = "constrain"}
+
+      struct.writem %self[@value] = %computed : <@DifferentOperandControl>, !felt.type
+      function.return %self : !struct.type<@DifferentOperandControl>
+    }
+  }
+}
+
+// -----
+
+// Negative control: matching conditions do not compensate for different result types.
+module attributes {llzk.lang = "llzk"} {
+  struct.def @DifferentResultTypeControl {
+    struct.member @value : !felt.type
+
+    function.def @product(%condition: i1) -> !struct.type<@DifferentResultTypeControl> {
+      %self = struct.new : <@DifferentResultTypeControl>
+      %computed = scf.if %condition -> !felt.type {
+        %then_value = felt.const 16
+        scf.yield %then_value : !felt.type
+      } else {
+        %else_value = felt.const 26
+        scf.yield %else_value : !felt.type
+      } {product_source = "compute"}
+
+      %observed = scf.if %condition -> index {
+        %then_value = arith.constant 16 : index
+        scf.yield %then_value : index
+      } else {
+        %else_value = arith.constant 26 : index
+        scf.yield %else_value : index
+      } {product_source = "constrain"}
+
+      %retained_use = arith.addi %observed, %observed : index
+      struct.writem %self[@value] = %computed : <@DifferentResultTypeControl>, !felt.type
+      function.return %self : !struct.type<@DifferentResultTypeControl>
+    }
+  }
+}

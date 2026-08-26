@@ -1,0 +1,81 @@
+name: Reproduce issue 300 control-flow gaps
+
+on:
+  push:
+    branches:
+      - repro/issue-300-control-flow-gaps
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  reproduce:
+    runs-on: ubuntu-24.04
+    env:
+      TARGET_HEAD: b7e9fae301040df771c669b7d7515fc0e5921b39
+      EVIDENCE_PATH: /home/runner/work/_temp/issue-300-control-flow-gaps
+
+    steps:
+      - name: Check out reproduction branch
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Install Nix
+        uses: cachix/install-nix-action@d1ca217b388ee87b2507a9a93bf01368bde7cec2
+        with:
+          install_url: https://releases.nixos.org/nix/nix-2.23.3/install
+          github_access_token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set Git credentials
+        run: |
+          git config --global 'url.https://api@github.com/'.insteadOf 'https://github.com/'
+          git config --global 'url.https://ssh@github.com/'.insteadOf 'ssh://git@github.com/'
+          git config --global 'url.https://git@github.com/'.insteadOf 'git@github.com:'
+
+      - name: Use project build cache
+        uses: cachix/cachix-action@v17
+        with:
+          name: veridise-public
+          skipPush: true
+
+      - name: Build and run the exact reproduction branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$EVIDENCE_PATH"
+
+          test "$(git merge-base HEAD "$TARGET_HEAD")" = "$TARGET_HEAD"
+          git diff --exit-code "$TARGET_HEAD" -- include lib tools backends CMakeLists.txt flake.nix flake.lock
+
+          nix --print-build-logs build .#debugGCC
+
+          llzk_opt="$PWD/result/bin/llzk-opt"
+          filecheck=$(find /nix/store -type f -path '*/bin/FileCheck' -executable -print -quit)
+          test -x "$llzk_opt"
+          test -n "$filecheck"
+
+          input="$PWD/reproducers/issue-300/control-flow-gaps.llzk"
+          "$llzk_opt" -split-input-file --llzk-fuse-product-control-flow "$input" \
+            > "$EVIDENCE_PATH/current-output.llzk" 2> "$EVIDENCE_PATH/current-stderr.txt"
+          python3 scripts/generate-test-checks.py < "$EVIDENCE_PATH/current-output.llzk" \
+            > "$EVIDENCE_PATH/generated-current-checks.txt"
+
+          cp "$input" "$EVIDENCE_PATH/control-flow-gaps.llzk"
+          cp result/artifacts/gcc-report.xml "$EVIDENCE_PATH/gcc-report.xml"
+          git rev-parse HEAD > "$EVIDENCE_PATH/reproduction-head.txt"
+          printf '%s\n' "$TARGET_HEAD" > "$EVIDENCE_PATH/production-head.txt"
+          "$llzk_opt" --version > "$EVIDENCE_PATH/llzk-opt.version.txt"
+          printf '%s\n' "$filecheck" > "$EVIDENCE_PATH/filecheck-path.txt"
+
+      - name: Upload reproduction evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: issue-300-control-flow-gaps-${{ github.sha }}
+          path: /home/runner/work/_temp/issue-300-control-flow-gaps
+          if-no-files-found: error
+          retention-days: 30
+          compression-level: 0
