@@ -448,6 +448,27 @@ fuseMatchingIfPairs(Region &body, MLIRContext *context, SymbolTableCollection &s
 /// global/RAM accesses, allocations, calls, traps, and unknown effects remain ordered.
 static bool isSafeToSinkComputeOp(Operation *op) { return isa<MemberWriteOp>(op) || isPure(op); }
 
+/// Return whether the pair shares a control that is neither an integer constant nor
+/// `poly.read_const`.
+///
+/// Exact SSA identity admits controls beyond the established constant and `poly.read_const`
+/// product-loop cases. Those broader candidates need an explicit body-interleaving proof.
+static bool hasSharedDynamicLoopControl(scf::ForOp a, scf::ForOp b) {
+  auto isSharedDynamic = [](Value lhs, Value rhs) {
+    if (lhs != rhs) {
+      return false;
+    }
+
+    llvm::APInt constant;
+    return !matchPattern(lhs, m_ConstantInt(&constant)) &&
+           !lhs.getDefiningOp<polymorphic::ConstReadOp>();
+  };
+
+  return isSharedDynamic(a.getLowerBound(), b.getLowerBound()) ||
+         isSharedDynamic(a.getUpperBound(), b.getUpperBound()) ||
+         isSharedDynamic(a.getStep(), b.getStep());
+}
+
 /// Collect compute-sourced operations between sibling loops that must move after `constrainLoop`.
 /// Fail if the compute loop is not before its constrain partner in the same block, a crossed
 /// non-compute operation is not recursively pure, a sunk member write would cross an unsafe
@@ -577,6 +598,16 @@ fuseMatchingLoopPairs(Region &body, MLIRContext *context, SymbolTableCollection 
       continue;
     }
     auto [computeLoop, constrainLoop] = *candidate;
+
+    // Arbitrary shared SSA controls are broader than the established constant/template cases.
+    // Interleave those bodies only when MLIR proves the compute loop recursively pure and the
+    // constrain body contains only operations already admitted by this pass's crossing contract.
+    if (hasSharedDynamicLoopControl(computeLoop, constrainLoop) &&
+        (!isPure(computeLoop.getOperation()) ||
+         hasUnsafeCrossedConstrainOp(constrainLoop.getOperation()))) {
+      continue;
+    }
+
     Attribute unsignedCmpAttr = computeLoop->getAttr("unsignedCmp");
     if (!unsignedCmpAttr) {
       unsignedCmpAttr = constrainLoop->getAttr("unsignedCmp");
