@@ -14,7 +14,7 @@ jobs:
     runs-on: ubuntu-24.04
     env:
       BASE_HEAD: d2c8ece96581416010972c778e75866903bc9568
-      TARGET_HEAD: acd2b2d141ae4e9a7344d7048ab9740cf88937f2
+      TARGET_HEAD: 17e5cda72ab965cc989771381a32c68e5ce34562
       OUTPUT_PATH: /home/runner/work/_temp/llzk-pr484-exact-head
 
     steps:
@@ -82,6 +82,7 @@ jobs:
           )
           full_check_mismatches=()
           line_count_mismatches=()
+          filecheck_mismatches=()
 
           for test_file in "${test_files[@]}"; do
             name=$(basename "$test_file" .llzk)
@@ -136,6 +137,7 @@ jobs:
               filecheck_result=PASS
             else
               filecheck_result=FAIL
+              filecheck_mismatches+=("$test_file")
             fi
 
             grep '^// CHECK' "$tested_path/$test_file" \
@@ -276,10 +278,12 @@ jobs:
             echo "transform_complete_check_line_counts=$complete_check_line_counts"
             echo "transform_full_committed_check_blocks=$full_committed_check_blocks"
             echo "transform_full_committed_check_block_mismatches=${full_check_mismatches[*]}"
+            echo "transform_filecheck_mismatches=${filecheck_mismatches[*]}"
           } > "$OUTPUT_PATH/summary.txt"
 
           test "${#line_count_mismatches[@]}" -eq 0
           test "${#full_check_mismatches[@]}" -eq 0
+          test "${#filecheck_mismatches[@]}" -eq 0
 
       - name: Upload replay evidence
         if: always()
