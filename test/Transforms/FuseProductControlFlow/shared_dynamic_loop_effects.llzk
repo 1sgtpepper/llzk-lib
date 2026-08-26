@@ -53,6 +53,70 @@ module attributes {llzk.lang = "llzk"} {
 // CHECK-NEXT:  }
 // -----
 
+// An impure compute body blocks fusion with a shared dynamic bound even when the constrain body is
+// otherwise safe to interleave.
+module attributes {llzk.lang = "llzk"} {
+  global.def @compute_state : index = 0
+
+  struct.def @ImpureCompute {
+    struct.member @out : index
+
+    function.def @product(%n: index) -> !struct.type<@ImpureCompute> attributes {function.allow_constraint, function.allow_witness} {
+      %self = struct.new : <@ImpureCompute>
+      %c0 = arith.constant 0 : index
+      %c1 = arith.constant 1 : index
+
+      scf.for %i = %c0 to %n step %c1 {
+        global.write @compute_state = %i : index {product_source = "compute"}
+        scf.yield
+      } {product_source = "compute"}
+
+      scf.for %i = %c0 to %n step %c1 {
+        %expected = arith.addi %i, %c0 : index
+        constrain.eq %expected, %i : index, index
+        scf.yield
+      } {product_source = "constrain"}
+
+      struct.writem %self[@out] = %n : <@ImpureCompute>, index
+      function.return %self : !struct.type<@ImpureCompute>
+    }
+  }
+}
+// CHECK: bootstrap
+// -----
+
+// An unsafe constrain-body read blocks fusion with a shared dynamic bound even when the compute
+// body is pure.
+module attributes {llzk.lang = "llzk"} {
+  global.def @constrain_state : index = 0
+
+  struct.def @UnsafeConstrain {
+    struct.member @out : index
+
+    function.def @product(%n: index) -> !struct.type<@UnsafeConstrain> attributes {function.allow_constraint, function.allow_witness} {
+      %self = struct.new : <@UnsafeConstrain>
+      %c0 = arith.constant 0 : index
+      %c1 = arith.constant 1 : index
+
+      scf.for %i = %c0 to %n step %c1 {
+        %computed = arith.addi %i, %c1 : index
+        scf.yield
+      } {product_source = "compute"}
+
+      scf.for %i = %c0 to %n step %c1 {
+        %current = global.read @constrain_state : index {product_source = "constrain"}
+        constrain.eq %current, %i : index, index
+        scf.yield
+      } {product_source = "constrain"}
+
+      struct.writem %self[@out] = %n : <@UnsafeConstrain>, index
+      function.return %self : !struct.type<@UnsafeConstrain>
+    }
+  }
+}
+// CHECK: bootstrap
+// -----
+
 // Pure compute work and constraint emission remain fusible with the same shared dynamic bound.
 module attributes {llzk.lang = "llzk"} {
   struct.def @Pure {
