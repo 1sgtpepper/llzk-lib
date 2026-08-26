@@ -62,6 +62,14 @@
 // RUN: cmp %t/read-only-dir-before.llzk %t/read-only-dir/source.llzk
 // RUN: chmod u+w %t/read-only-dir
 // RUN: FileCheck %s --check-prefix=READONLYDIR < %t/read-only-dir.err
+// RUN: git init --quiet %t/untracked-repo
+// RUN: git -C %t/untracked-repo config status.showUntrackedFiles no
+// RUN: cp %t/idempotent-source.llzk %t/untracked-repo/source.llzk
+// RUN: cp %t/idempotent-input.llzk %t/untracked-repo/input.llzk
+// RUN: cp %t/untracked-repo/source.llzk %t/untracked-before.llzk
+// RUN: not python3 %S/../../scripts/generate-test-checks.py --source %t/untracked-repo/source.llzk --source_delim_regex='^module ' -i %t/untracked-repo/input.llzk 2>%t/untracked.err
+// RUN: cmp %t/untracked-before.llzk %t/untracked-repo/source.llzk
+// RUN: FileCheck %s --check-prefix=DIRTY < %t/untracked.err
 // RUN: mkdir %t/dirty-repo
 // RUN: cp %t/idempotent-source.llzk %t/dirty-repo/source.llzk
 // RUN: cp %t/idempotent-input.llzk %t/dirty-repo/input.llzk
@@ -170,21 +178,10 @@ module {
   }
 }
 
-//--- checks
-// FAILURE: X: duplicate variable name
-// OUTPUT-CONFLICT: error: --inplace cannot be used with --output
-// INVALID-OUTPUT: error: argument -o/--output: can't open
-// DIRTY: warning: refusing to modify a dirty Git worktree
-// READONLY: error: source file is not writable:
-// READONLYDIR: error: unable to replace source file:
-// SYMLINK: warning: refusing to modify a dirty Git worktree
-// SYMLINK-LINK: warning: refusing to modify a dirty Git worktree
-// REPLACE-FAILURE: error: unable to replace source file: injected replace failure
-
 //--- git
 #!/bin/sh
 
-if [ "$#" -ne 4 ] || [ "$1" != "-C" ] || [ "$3" != "status" ] || [ "$4" != "--porcelain" ]; then
+if [ "$#" -ne 5 ] || [ "$1" != "-C" ] || [ "$3" != "status" ] || [ "$4" != "--porcelain" ] || [ "$5" != "--untracked-files=all" ]; then
     exit 2
 fi
 
@@ -230,3 +227,16 @@ sys.argv = [
     input_path,
 ]
 raise SystemExit(generator.main())
+
+# Error outputs are the contract of their RUN lines.  Keep these shared
+# FileCheck expectations after the final split input so split-file does not
+# create an unrelated payload.
+# // FAILURE: X: duplicate variable name
+# // OUTPUT-CONFLICT: error: --inplace cannot be used with --output
+# // INVALID-OUTPUT: error: argument -o/--output: can't open
+# // DIRTY: warning: refusing to modify a dirty Git worktree
+# // READONLY: error: source file is not writable:
+# // READONLYDIR: error: unable to replace source file:
+# // SYMLINK: warning: refusing to modify a dirty Git worktree
+# // SYMLINK-LINK: warning: refusing to modify a dirty Git worktree
+# // REPLACE-FAILURE: error: unable to replace source file: injected replace failure

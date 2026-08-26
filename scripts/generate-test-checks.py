@@ -14,8 +14,8 @@ $ llzk-opt foo.llzk -transformation | generate-test-checks.py --source foo.llzk
 $ llzk-opt foo.llzk -transformation | generate-test-checks.py --source foo.llzk -i
 $ llzk-opt foo.llzk -transformation | generate-test-checks.py --source foo.llzk -i --source_delim_regex='gpu.func @'
 
-In-place updates refuse to modify a dirty Git worktree unless --allow-dirty is
-specified.
+In-place updates refuse to modify a dirty Git worktree, including untracked
+files, unless --allow-dirty is specified.
 
 The script will heuristically generate CHECK-NEXT/CHECK-LABEL commands for each line
 within the file. By default this script will also try to insert string
@@ -243,7 +243,7 @@ def process_source_lines(source_lines, note, args):
 
 
 def workspace_is_dirty(path):
-    """Return whether the Git worktree containing path has uncommitted changes."""
+    """Return whether the Git worktree containing path has changes."""
     result = subprocess.run(
         [
             "git",
@@ -251,6 +251,7 @@ def workspace_is_dirty(path):
             os.path.dirname(os.path.abspath(path)),
             "status",
             "--porcelain",
+            "--untracked-files=all",
         ],
         capture_output=True,
         text=True,
