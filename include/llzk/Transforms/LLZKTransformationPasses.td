@@ -131,7 +131,10 @@ def FuseProductControlFlowPass : LLZKPass<"llzk-fuse-product-control-flow"> {
     counts with different bounds, steps, or comparison modes remain separate. Every crossed
     non-compute operation must be recursively pure, every relocated loop result must remain
     dominated by the fused loop's insertion point, and a sunk member write may cross only an
-    admissible constrain-loop body. The LLZK comparison-mode attribute is retained on a fused loop.
+    admissible constrain-loop body. A pair using an arbitrary shared SSA control value additionally
+    requires a recursively pure compute loop and a constrain loop without storage access, calls,
+    allocation, traps, unsupported structured control flow, or unknown effects. The LLZK
+    comparison-mode attribute is retained on a fused loop.
     `scf.if` pairs
     must be same-block siblings where the compute op precedes the constrain op, both use the same
     SSA condition value and have the same else-region presence, and the constrain op is resultless.
