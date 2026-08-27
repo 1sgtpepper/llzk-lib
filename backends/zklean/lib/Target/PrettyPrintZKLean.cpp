@@ -470,7 +470,7 @@ emitLeanFunc(FuncOpTy func, raw_ostream &os, const llvm::DenseSet<StringRef> &st
       os << " (" << argName << " : " << *structTypeName << " f)";
       continue;
     }
-    os << " (" << argName << " : " << formatLeanType(arg.getType()) << ")";
+    os << " (" << argName << " : " << formatLeanType(arg.getType()) << ')';
   }
   os << " : ZKBuilder f PUnit := do\n";
   for (auto &stmt : statements) {
@@ -507,7 +507,6 @@ collectZKLeanStructDefs(ModuleOp module, llvm::DenseSet<StringRef> &structNames)
     if (structNames.insert(name).second) {
       structDefs.push_back(def);
     }
-    return WalkResult::advance();
   });
   return structDefs;
 }

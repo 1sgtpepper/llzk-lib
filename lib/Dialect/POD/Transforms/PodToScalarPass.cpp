@@ -270,28 +270,28 @@ inline static bool isSamePodRecord(WritePodOp writeOp, Value podRef, StringAttr 
 
 /// Return whether `op` contains a nested write to `podRef.recordName`.
 static bool hasNestedWriteToRecord(Operation &op, Value podRef, StringAttr recordName) {
-  return walkContainsMatch<WritePodOp>(op, [&](WritePodOp writeOp) {
+  return walkContains<WritePodOp>(op, [&](WritePodOp writeOp) {
     return writeOp.getOperation() != &op && isSamePodRecord(writeOp, podRef, recordName);
   });
 }
 
 /// Return whether `op` contains a nested write to any record of `podRef`.
 static bool hasNestedWriteToPod(Operation &op, Value podRef) {
-  return walkContainsMatch<WritePodOp>(op, [&](WritePodOp writeOp) {
+  return walkContains<WritePodOp>(op, [&](WritePodOp writeOp) {
     return writeOp.getOperation() != &op && writeOp.getPodRef() == podRef;
   });
 }
 
 /// Return whether `op` contains any read from `podRef.recordName`.
 static bool hasReadFromRecord(Operation &op, Value podRef, StringAttr recordName) {
-  return walkContainsMatch<ReadPodOp>(op, [&podRef, &recordName](ReadPodOp readOp) {
+  return walkContains<ReadPodOp>(op, [&podRef, &recordName](ReadPodOp readOp) {
     return isSamePodRecord(readOp, podRef, recordName);
   });
 }
 
 /// Return whether `op` or any nested operation uses `value` as an operand.
 static bool hasValueUse(Operation &op, Value value) {
-  return walkContainsMatch<Operation *>(op, [&value](Operation *nestedOp) {
+  return walkContains<Operation *>(op, [&value](Operation *nestedOp) {
     return llvm::is_contained(nestedOp->getOperands(), value);
   });
 }
@@ -3909,30 +3909,23 @@ public:
 /// reifying the aggregate array-of-POD value or rewriting surrounding function/template
 /// signatures.
 static LogicalResult rejectUnsupportedPodArrayUnifiableCasts(ModuleOp modOp) {
-  WalkResult result = modOp.walk([](UnifiableCastOp op) {
+  auto result = modOp.walk([](UnifiableCastOp op) -> WalkResult {
     ArrayType inputArrTy = splittablePodArray(op.getInput().getType());
     ArrayType resultArrTy = splittablePodArray(op.getType());
     if (!inputArrTy && !resultArrTy) {
       return WalkResult::advance();
     }
     if (!inputArrTy && resultArrTy) {
-      op.emitOpError()
-          .append(
-              "cannot lower a generic input to a split array-of-POD result without rewriting "
-              "the surrounding function/template signature"
-          )
-          .report();
-      return WalkResult::interrupt();
+      return op.emitOpError(
+          "cannot lower a generic input to a split array-of-POD result without rewriting "
+          "the surrounding function/template signature"
+      );
     }
     if (inputArrTy && !resultArrTy) {
-      op.emitOpError()
-          .append(
-              "cannot lower a split array-of-POD input to a non-array result without "
-              "materializing the aggregate or rewriting the surrounding function/template "
-              "signature"
-          )
-          .report();
-      return WalkResult::interrupt();
+      return op.emitOpError(
+          "cannot lower a split array-of-POD input to a non-array result without materializing "
+          "the aggregate or rewriting the surrounding function/template signature"
+      );
     }
     return WalkResult::advance();
   });
@@ -5320,7 +5313,7 @@ void Step3Resolver::configureLateVirtualPodLegality(ConversionTarget &target) co
 }
 
 bool Step3Resolver::hasResolvableLateVirtualPodOps(ModuleOp modOp) const {
-  return walkContainsMatch<Operation *>(*modOp, [this](Operation *op) {
+  return walkContains<Operation *>(*modOp, [this](Operation *op) {
     return TypeSwitch<Operation *, bool>(op)
         .Case<WritePodOp>([this](auto writeOp) {
       return lookupVirtualPodLeafMap(writeOp.getPodRef(), virtualPods) &&
@@ -6375,22 +6368,21 @@ static size_t countResidualPodIR(ModuleOp modOp) {
 
 /// Reject any `array.len` that still targets a tagged ragged nested leaf array.
 static LogicalResult rejectRaggedNestedLeafArrayLengths(ModuleOp modOp) {
-  WalkResult result = modOp.walk([](ArrayLengthOp op) {
+  auto result = modOp.walk([](ArrayLengthOp op) -> WalkResult {
     StringRef raggedKind = getTaggedRaggedNestedLeafKind(op.getArrRef());
     if (raggedKind.empty()) {
       return WalkResult::advance();
     }
-    op.emitOpError() << "cannot lower nested " << raggedKind
-                     << " array leaf length after reading an array-of-POD element without "
-                        "per-element shape witnesses";
-    return WalkResult::interrupt();
+    return op.emitOpError() << "cannot lower nested " << raggedKind
+                            << " array leaf length after reading an array-of-POD element "
+                               "without per-element shape witnesses";
   });
   return failure(result.wasInterrupted());
 }
 
 /// Reject any `constrain.eq` that still compares a tagged ragged nested leaf array.
 static LogicalResult rejectRaggedNestedLeafArrayEqualities(ModuleOp modOp) {
-  WalkResult result = modOp.walk([](constrain::EmitEqualityOp op) {
+  auto result = modOp.walk([](constrain::EmitEqualityOp op) -> WalkResult {
     StringRef raggedKind = getTaggedRaggedNestedLeafKind(op.getLhs());
     if (raggedKind.empty()) {
       raggedKind = getTaggedRaggedNestedLeafKind(op.getRhs());
@@ -6398,60 +6390,55 @@ static LogicalResult rejectRaggedNestedLeafArrayEqualities(ModuleOp modOp) {
     if (raggedKind.empty()) {
       return WalkResult::advance();
     }
-    op.emitOpError() << "cannot lower nested " << raggedKind
-                     << " array leaf equality after reading an array-of-POD element without "
-                        "per-element shape witnesses";
-    return WalkResult::interrupt();
+    return op.emitOpError() << "cannot lower nested " << raggedKind
+                            << " array leaf equality after reading an array-of-POD element "
+                               "without per-element shape witnesses";
   });
   return failure(result.wasInterrupted());
 }
 
 /// Reject any `constrain.in` that still contains a tagged ragged nested leaf array.
 static LogicalResult rejectRaggedNestedLeafArrayContainments(ModuleOp modOp) {
-  WalkResult result = modOp.walk([](constrain::EmitContainmentOp op) {
-    if (succeeded(rejectRaggedNestedLeafContainment(op))) {
-      return WalkResult::advance();
-    }
-    return WalkResult::interrupt();
+  auto result = modOp.walk([](constrain::EmitContainmentOp op) -> WalkResult {
+    return rejectRaggedNestedLeafContainment(op);
   });
   return failure(result.wasInterrupted());
 }
 
 /// Reject tagged ragged nested leaf arrays before function or SCF boundaries strip the tag source.
 static LogicalResult rejectRaggedNestedLeafBoundaryCrossings(ModuleOp modOp) {
-  WalkResult result = modOp.walk([](Operation *op) {
-    LogicalResult check = TypeSwitch<Operation *, LogicalResult>(op)
-                              .Case<CallOp>([](CallOp callOp) {
+  auto result = modOp.walk([](Operation *op) -> WalkResult {
+    return TypeSwitch<Operation *, LogicalResult>(op)
+        .Case<CallOp>([](CallOp callOp) {
       return rejectRaggedNestedLeafBoundaryCrossing(
           callOp.getOperation(), callOp.getArgOperands(), "across a function call"
       );
     })
-                              .Case<ReturnOp>([](ReturnOp returnOp) {
+        .Case<ReturnOp>([](ReturnOp returnOp) {
       return rejectRaggedNestedLeafBoundaryCrossing(
           returnOp.getOperation(), returnOp.getOperands(), "across a function return"
       );
     })
-                              .Case<scf::ForOp>([](scf::ForOp forOp) {
+        .Case<scf::ForOp>([](scf::ForOp forOp) {
       return rejectRaggedNestedLeafBoundaryCrossing(
           forOp.getOperation(), forOp.getInitArgs(), "into an scf.for region"
       );
     })
-                              .Case<scf::WhileOp>([](scf::WhileOp whileOp) {
+        .Case<scf::WhileOp>([](scf::WhileOp whileOp) {
       return rejectRaggedNestedLeafBoundaryCrossing(
           whileOp.getOperation(), whileOp.getInits(), "into an scf.while region"
       );
     })
-                              .Case<scf::ConditionOp>([](scf::ConditionOp conditionOp) {
+        .Case<scf::ConditionOp>([](scf::ConditionOp conditionOp) {
       return rejectRaggedNestedLeafBoundaryCrossing(
           conditionOp.getOperation(), conditionOp.getArgs(), "across an scf.condition boundary"
       );
     })
-                              .Case<scf::YieldOp>([](scf::YieldOp yieldOp) {
+        .Case<scf::YieldOp>([](scf::YieldOp yieldOp) {
       return rejectRaggedNestedLeafBoundaryCrossing(
           yieldOp.getOperation(), yieldOp.getOperands(), "across an scf.yield boundary"
       );
     }).Default([](Operation *) { return success(); });
-    return failed(check) ? WalkResult::interrupt() : WalkResult::advance();
   });
   return failure(result.wasInterrupted());
 }
@@ -6469,6 +6456,76 @@ static LogicalResult rejectRemainingRaggedNestedLeafUses(ModuleOp modOp) {
   }
   return rejectRaggedNestedLeafBoundaryCrossings(modOp);
 }
+
+// In MLIR 20.1.8, the `RemoveDeadValues` pass did not handle branching regions as aggressively
+// as the `RunLivenessAnalysis` that it depends on. The liveness analysis can conclude an `scf.if`
+// branch is dead and thus its `scf.yield` operand is also dead. However, RDV does not end up
+// removing that branch but does remove the definition of the `scf.yield` operand, leaving a NULL
+// operand in the `scf.yield` op.
+//
+// The bug is fixed in MLIR 22.1.0 but there is a temporary solution: before running the RDV pass,
+// run "Sparse Conditional Constant Propagation" (SCCP) plus a custom pass that folds `scf.if` with
+// static conditions.
+//
+// Portions adapted from mlir/lib/Dialect/SCF/IR/SCF.cpp
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+namespace temp_fix_pre_mlir_22 {
+
+static void replaceOpWithRegion(
+    PatternRewriter &rewriter, Operation *op, Region &region, ValueRange blockArgs = {}
+) {
+  assert(llvm::hasSingleElement(region) && "expected single-region block");
+  Block *block = &region.front();
+  Operation *terminator = block->getTerminator();
+  ValueRange results = terminator->getOperands();
+  rewriter.inlineBlockBefore(block, op, blockArgs);
+  rewriter.replaceOp(op, results);
+  rewriter.eraseOp(terminator);
+}
+
+struct RemoveStaticCondition : public OpRewritePattern<scf::IfOp> {
+  using OpRewritePattern<scf::IfOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(scf::IfOp op, PatternRewriter &rewriter) const override {
+    BoolAttr condition;
+    if (!matchPattern(op.getCondition(), m_Constant(&condition))) {
+      return failure();
+    }
+    if (condition.getValue()) {
+      replaceOpWithRegion(rewriter, op, op.getThenRegion());
+    } else if (!op.getElseRegion().empty()) {
+      replaceOpWithRegion(rewriter, op, op.getElseRegion());
+    } else {
+      rewriter.eraseOp(op);
+    }
+    return success();
+  }
+};
+
+struct FlattenStaticIfPass : PassWrapper<FlattenStaticIfPass, OperationPass<ModuleOp>> {
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(FlattenStaticIfPass)
+
+  void runOnOperation() override {
+    RewritePatternSet patterns(&getContext());
+    patterns.add<RemoveStaticCondition>(&getContext());
+
+    if (failed(applyPatternsGreedily(
+            getOperation(), std::move(patterns),
+            GreedyRewriteConfig {.fold = false, .cseConstants = false}
+        ))) {
+      signalPassFailure();
+    }
+  }
+};
+
+void add(OpPassManager &pm) {
+  pm.addPass(createSCCPPass());
+  pm.addPass(std::make_unique<FlattenStaticIfPass>());
+}
+
+} // namespace temp_fix_pre_mlir_22
 
 /// Pass driver for the full POD-to-scalar lowering pipeline described above.
 class PassImpl : public llzk::pod::impl::PodToScalarPassBase<PassImpl> {
@@ -6496,6 +6553,7 @@ class PassImpl : public llzk::pod::impl::PodToScalarPassBase<PassImpl> {
             .allocatorOpName = NewPodOp::getOperationName().str()
         }
     ));
+    temp_fix_pre_mlir_22::add(cleanupPM);
     cleanupPM.addPass(createRemoveDeadValuesWorkaroundPass());
 
     size_t podAllocWeight = podAllocScalarizationWeight(module);
