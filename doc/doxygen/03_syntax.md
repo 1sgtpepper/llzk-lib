@@ -43,11 +43,11 @@ module attributes {llzk.lang = "circom"} {
   - a type used to instantiate a `poly.tvar<@N>` (see below); or
   - an [affine_map](https://mlir.llvm.org/docs/Dialects/Affine/#polyhedral-structures) used when the argument depends on a loop iteration variable.
 
-  For example, a fieldless felt constant may be materialized in the field required by the
-  template parameter:
+  For example, given `poly.template @T` with `poly.param @P : !felt.type<"bn128">`
+  and a nested `struct.def @S`, these arguments select the same value and field:
 
   ```llzk
-  // A fieldless constant can be materialized in the template's field.
+  // The fieldless constant is materialized as bn128 for @P.
   !struct.type<@T::@S<[#felt<const 35>]>>
   // The field can also be written explicitly.
   !struct.type<@T::@S<[#felt<const 35 : !felt.type<"bn128">>]>>
@@ -66,7 +66,7 @@ LLZK supports arrays where the element type is not truly homogeneous, specifical
 - Felt-valued template arguments on `struct.type`, templated free-function calls, and `verif.include` may be integer literals, felt constants, or symbols.
   A fieldless felt restriction accepts any felt field. For a fielded restriction, a fieldless felt constant or integer is materialized in the required field; an explicitly fielded constant or a symbol with a known field must use that field, and an untyped symbol does not establish one.
   If a call or inclusion signature independently infers the same parameter from multiple positions, its known field, concrete value, and type must agree.
-  The `?` wildcard is valid only for a `poly.tvar` restriction and defers that type until the callee body provides the remaining inference. Symbolic arguments must resolve to an enclosing template binding or a constant global; unknown, mutable-global, and wrong-kind symbols are rejected.
+  The `?` wildcard is valid only for a `poly.tvar` restriction and defers its concrete type to a later type-inference pass. Symbolic arguments must resolve to an enclosing template binding or a constant global; unknown, mutable-global, and wrong-kind symbols are rejected.
 - A `function.def` argument may have `function.arg_name = "..."` to preserve the source-level argument name independently from the SSA name printed by MLIR. The value must be a non-empty, untyped string attribute; typed string attributes such as `"x" : i1` are rejected. Attached argument names must be unique within the function. Argument-splitting transforms derive names for generated arguments, such as `input[0]` for array elements or `self.member` for struct members.
 - Ops marked with the `WitnessGen` trait can only be used in functions with the `allow_witness` attribute (`compute()` within `struct.def` has this by default). Similarly, ops marked with the `ConstraintGen` trait can only be used in functions with the `allow_constraint` attribute (`constrain()` within `struct.def` has this by default).
 - Functions with the `allow_witness` attribute can only call other functions marked with `allow_witness`. Likewise for `allow_constraint`.
