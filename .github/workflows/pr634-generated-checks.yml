@@ -13,7 +13,7 @@ jobs:
         uses: actions/checkout@v6
         with:
           persist-credentials: false
-          ref: 40029ae56b3bfa2173de1075153b16ebef3a2534
+          ref: 41c633512d8f8974c3271f9ba86c8e6fd3146a95
 
       - uses: cachix/install-nix-action@d1ca217b388ee87b2507a9a93bf01368bde7cec2
         with:
@@ -39,6 +39,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p artifacts
+          printf '%s\n' 41c633512d8f8974c3271f9ba86c8e6fd3146a95 > artifacts/target-head.txt
           tests=(
             test/Dialect/Function/call_with_symbolic_felt_restriction_pass.llzk
             test/Dialect/Function/call_with_template_params_pass.llzk
@@ -50,8 +51,19 @@ jobs:
           for test in "${tests[@]}"; do
             stem="${test##*/}"
             stem="${stem%.llzk}"
-            result/bin/llzk-opt -I test -split-input-file "$test" > "artifacts/${stem}.raw.llzk"
+            run_line=$(sed -n '1p' "$test")
+            producer_pipeline=${run_line#*llzk-opt }
+            producer_pipeline=${producer_pipeline%% %s*}
+            producer_pipeline=${producer_pipeline//%input_dir/test}
+            producer_pipeline=${producer_pipeline//\"/}
+            read -r -a producer_args <<< "$producer_pipeline"
+            printf 'result/bin/llzk-opt %s %s\n' "$producer_pipeline" "$test" \
+              > "artifacts/${stem}.producer-command.txt"
+            result/bin/llzk-opt "${producer_args[@]}" "$test" \
+              > "artifacts/${stem}.raw.llzk" 2>&1
             scripts/generate-test-checks.py < "artifacts/${stem}.raw.llzk" > "artifacts/${stem}.checks.llzk"
+            printf 'scripts/generate-test-checks.py < artifacts/%s.raw.llzk\n' "$stem" \
+              > "artifacts/${stem}.generator-command.txt"
             cp "$test" "artifacts/${stem}.source.llzk"
           done
 
@@ -60,6 +72,7 @@ jobs:
           for test in "${tests[@]}"; do
             stem="${test##*/}"
             stem="${stem%.llzk}"
+            run_line=$(sed -n '1p' "$test")
             python3 - "$test" "artifacts/${stem}.checks.llzk" \
                 > "artifacts/${stem}.comparison.txt" <<'PY'
           import difflib
@@ -117,9 +130,12 @@ jobs:
               raise SystemExit(1)
           print(f"CHECK block matches fresh generator output for {source}")
           PY
-            set -o pipefail
-            result/bin/llzk-opt -I test -split-input-file "$test" \
-              | result/bin/FileCheck --enable-var-scope "$test"
+            filecheck_pipeline=${run_line#*FileCheck }
+            filecheck_pipeline=${filecheck_pipeline//%s/$test}
+            read -r -a filecheck_args <<< "$filecheck_pipeline"
+            result/bin/FileCheck "${filecheck_args[@]}" \
+              < "artifacts/${stem}.raw.llzk" \
+              > "artifacts/${stem}.filecheck-output.txt" 2>&1
           done
 
       - name: Upload generated checks
