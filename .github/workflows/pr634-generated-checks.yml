@@ -39,6 +39,8 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p artifacts
+          filecheck=$(find /nix/store -type f -path '*/bin/FileCheck' -executable -print -quit)
+          test -n "$filecheck"
           printf '%s\n' 41c633512d8f8974c3271f9ba86c8e6fd3146a95 > artifacts/target-head.txt
           tests=(
             test/Dialect/Function/call_with_symbolic_felt_restriction_pass.llzk
@@ -133,7 +135,9 @@ jobs:
             filecheck_pipeline=${run_line#*FileCheck }
             filecheck_pipeline=${filecheck_pipeline//%s/$test}
             read -r -a filecheck_args <<< "$filecheck_pipeline"
-            result/bin/FileCheck "${filecheck_args[@]}" \
+            printf '%s %s\n' "$filecheck" "$filecheck_pipeline" \
+              > "artifacts/${stem}.filecheck-command.txt"
+            "$filecheck" "${filecheck_args[@]}" \
               < "artifacts/${stem}.raw.llzk" \
               > "artifacts/${stem}.filecheck-output.txt" 2>&1
           done
