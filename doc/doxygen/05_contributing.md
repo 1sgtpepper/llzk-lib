@@ -70,6 +70,30 @@ issues must be marked `approved` before implementation begins.
 2. Install or update LLZK development dependencies. For more information, see \ref setup "the development guide"
 3. Create a working branch and start with your changes!
 
+#### Generate FileCheck checks
+
+The `scripts/generate-test-checks.py` utility generates heuristic FileCheck assertions from parsed
+LLZK IR. Use it to bootstrap checks, then review and edit the generated patterns so they assert the
+behavior the test is intended to cover:
+
+```sh
+llzk-opt input.llzk --canonicalize | scripts/generate-test-checks.py
+llzk-opt input.llzk --canonicalize | scripts/generate-test-checks.py --source input.llzk
+```
+
+When `--source` is provided, `--source_delim_regex` selects the boundaries before which generated
+check blocks are inserted. Use `-i`/`--inplace` only after checking the generated output. In-place
+mode requires `--source`, cannot be combined with `--output`, and refuses to modify a dirty Git
+worktree, including untracked files. Use `--allow-dirty` only when that safeguard is intentional.
+The script generates the complete result before writing a temporary file in the source directory
+and replacing the source, preserving its permission bits.
+
+Repeated runs remove the generator's note and matching `CHECK`, `CHECK-NEXT`, `CHECK-LABEL`, and
+`CHECK-SAME` directives for the selected prefix. Other source text and comments, including text
+that merely contains the prefix, are preserved. The generated checks are not authoritative; verify
+that they cover the relevant behavior and retain complete transformed output where the IR is the
+test contract.
+
 ### Commit your update
 
 Commit the changes once you are happy with them.

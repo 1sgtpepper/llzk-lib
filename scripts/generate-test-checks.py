@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """A script to generate FileCheck statements for LLZK lit tests.
 
-This script is a utility to add FileCheck patterns to an mlir file. It was
+This script is a utility to add FileCheck patterns to an MLIR/LLZK file. It was
 adapted from the LLVM project's mlir/utils/generate-test-checks.py script.
 
 NOTE: The input .mlir/.llzk is expected to be the output from the parser, not a
@@ -9,15 +9,20 @@ stripped down variant.
 
 Example usage:
 $ generate-test-checks.py foo.llzk
-$ llzk-opt foo.llzk -transformation | generate-test-checks.py
-$ llzk-opt foo.llzk -transformation | generate-test-checks.py --source foo.llzk
-$ llzk-opt foo.llzk -transformation | generate-test-checks.py --source foo.llzk -i
-$ llzk-opt foo.llzk -transformation | generate-test-checks.py --source foo.llzk -i --source_delim_regex='gpu.func @'
+$ llzk-opt foo.llzk --canonicalize | generate-test-checks.py
+$ llzk-opt foo.llzk --canonicalize | generate-test-checks.py --source foo.llzk
+$ llzk-opt foo.llzk --canonicalize | generate-test-checks.py --source foo.llzk -i
+$ llzk-opt foo.llzk --canonicalize | generate-test-checks.py --source foo.llzk -i --source_delim_regex='gpu.func @'
 
 In-place updates refuse to modify a dirty Git worktree, including untracked
 files, unless --allow-dirty is specified.
 
-The script will heuristically generate CHECK-NEXT/CHECK-LABEL commands for each line
+In-place updates require --source, cannot be combined with --output, build the
+complete generated result before replacing the source, and preserve its
+permission bits. Review generated checks before using --inplace; they are
+heuristic and are not authoritative test specifications.
+
+The script will heuristically generate CHECK-NEXT/CHECK-LABEL directives for each line
 within the file. By default this script will also try to insert string
 substitution blocks for all SSA value names. If --source file is specified, the
 script will attempt to insert the generated CHECKs to the source file by looking
@@ -201,8 +206,13 @@ def process_line(line_chunks, variable_namer):
     return output_line.rstrip() + "\n"
 
 
-# Process the source file lines. The source file doesn't have to be .mlir.
 def process_source_lines(source_lines, note, args):
+    """Return source segments after removing prior generated notes and check directives.
+
+    Source text and comments are preserved unless they match the generator note or a FileCheck
+    directive for the selected check prefix. A new segment begins wherever the configured source
+    delimiter matches.
+    """
     source_split_re = re.compile(args.source_delim_regex)
     check_line_re = re.compile(
         r"^\s*//\s*"
@@ -243,7 +253,10 @@ def process_source_lines(source_lines, note, args):
 
 
 def workspace_is_dirty(path):
-    """Return whether the Git worktree containing path has changes."""
+    """Return whether Git reports tracked or untracked changes for path's worktree.
+
+    Paths outside a Git worktree are treated as clean.
+    """
     result = subprocess.run(
         [
             "git",
@@ -264,8 +277,8 @@ def workspace_is_dirty(path):
     raise RuntimeError(result.stderr.strip() or "git status failed")
 
 
-# Keep the definition check in the output segment containing its source definition.
 def process_attribute_definition(line, attribute_namer, output_segment, check_prefix):
+    """Append an attribute-definition check using the selected FileCheck prefix."""
     m = ATTR_DEF_RE.match(line)
     if m:
         attribute_name = attribute_namer.generate_name(m.group(1))
@@ -335,7 +348,13 @@ def main():
         default=0,
         help="Omit the top specified level of content. Includes all levels by default."
     )
-    parser.add_argument("-i", "--inplace", action="store_true", default=False)
+    parser.add_argument(
+        "-i",
+        "--inplace",
+        action="store_true",
+        default=False,
+        help="Update --source in place after successful generation.",
+    )
     parser.add_argument(
         "--allow-dirty",
         action="store_true",
