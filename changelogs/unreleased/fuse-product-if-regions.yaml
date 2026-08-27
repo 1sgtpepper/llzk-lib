@@ -1,7 +1,6 @@
 added:
-  - Fusion for matching compute/constrain `scf.if` operations in product programs
+  - Fusion for matching compute/constrain control flow in product programs
 
 changed:
-  - Preserve matching constrain-side signal member reads in source order when fusing compute/constrain `scf.if` operations; skip fusion for unmarked, offset, or otherwise unsafe reads and for explicitly non-compute-sourced member writes
-  - Preserve matching non-`product_source` attributes and combine source locations on fused `scf.if` and `scf.yield` operations; leave attribute conflicts unfused
-  - Attempt matching `scf.for` fusion before `scf.if` fusion in each region so eligible legacy loop opportunities are preserved when compute-side movement is legal; require the same induction sequence and effective LLZK comparison mode, recursively pure crossed non-compute operations, and relocated-result dominance, while allowing a sunk member write only across a constrain-loop body without reads, writes, calls, traps, or unknown effects and requiring safe body interleaving for arbitrary shared SSA controls
+  - Preserve matching signal reads, compatible attributes, source locations, and loop comparison modes during product control-flow fusion; leave unsafe or ambiguous crossings unfused
+  - Attempt matching `scf.for` pairs before `scf.if` pairs in each region when compute-side movement is legal

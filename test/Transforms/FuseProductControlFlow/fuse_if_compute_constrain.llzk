@@ -1,5 +1,6 @@
 // RUN: llzk-opt -split-input-file --llzk-compute-constrain-to-product="root-struct=A" --llzk-fuse-product-control-flow %s | FileCheck --enable-var-scope %s
 
+// Matching compute/constrain conditionals fuse into one product conditional.
 module attributes {llzk.lang = "llzk"} {
   struct.def @A {
     struct.member @foo : !felt.type

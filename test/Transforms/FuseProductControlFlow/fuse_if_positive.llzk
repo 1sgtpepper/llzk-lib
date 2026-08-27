@@ -446,6 +446,8 @@ module attributes {llzk.lang = "llzk"} {
 // CHECK-NEXT:  }
 // -----
 
+// An unused allocation in the constrain branch is observable, so the matching conditionals
+// stay separate.
 module attributes {llzk.lang = "llzk"} {
   struct.def @A {
     struct.member @foo : !felt.type
@@ -463,7 +465,6 @@ module attributes {llzk.lang = "llzk"} {
 
       struct.writem %self[@foo] = %computed : <@A>, !felt.type
 
-      // Allocation is observable even when its result is unused, so this branch cannot move.
       scf.if %condition {
         %then_array = array.new : !array.type<1 x !felt.type>
         constrain.eq %value, %value : !felt.type
@@ -986,6 +987,7 @@ module attributes {llzk.lang = "llzk"} {
 // CHECK-NEXT:  }
 // -----
 
+// An unsupported `scf.while` in the constrain branch prevents movement and fusion.
 module attributes {llzk.lang = "llzk"} {
   struct.def @A {
     struct.member @foo : !felt.type
@@ -1005,7 +1007,6 @@ module attributes {llzk.lang = "llzk"} {
 
       struct.writem %self[@foo] = %computed : <@A>, !felt.type
 
-      // scf.while is unsupported structured control flow and must block movement.
       scf.if %b {
         %then_result = scf.while (%i = %zero) : (index) -> index {
           %condition = arith.cmpi slt, %i, %one : index
@@ -1193,6 +1194,7 @@ module attributes {llzk.lang = "llzk"} {
 // CHECK-NEXT:  }
 // -----
 
+// A potentially trapping constrain-side operation blocks movement and fusion.
 module attributes {llzk.lang = "llzk"} {
   struct.def @A {
     struct.member @foo : !felt.type
@@ -1210,7 +1212,6 @@ module attributes {llzk.lang = "llzk"} {
 
       struct.writem %self[@foo] = %computed : <@A>, !felt.type
 
-      // A dynamic divisor keeps this operation potentially trapping.
       scf.if %b {
         %quotient = arith.divui %lhs, %divisor : index
       } else {
@@ -1518,6 +1519,7 @@ module attributes {llzk.lang = "llzk"} {
 // CHECK-NEXT:  }
 // -----
 
+// A crossing write that is not sourced from the compute-if result blocks fusion.
 module attributes {llzk.lang = "llzk"} {
   struct.def @A {
     struct.member @foo : !felt.type
@@ -1533,7 +1535,6 @@ module attributes {llzk.lang = "llzk"} {
         scf.yield %one : !felt.type
       } {product_source = "compute"}
 
-      // The only crossing write is not sourced from the compute-if result.
       struct.writem %self[@foo] = %other : <@A>, !felt.type
 
       scf.if %b {
@@ -1574,11 +1575,11 @@ module attributes {llzk.lang = "llzk"} {
 // CHECK-NEXT:  }
 // -----
 
+// Conditionals in different parent blocks are not siblings and cannot fuse.
 module attributes {llzk.lang = "llzk"} {
   struct.def @DifferentBlocks {
     struct.member @foo : !felt.type
 
-    // Marked conditionals in mutually exclusive parent blocks are not siblings and cannot fuse.
     function.def @product(%outer: i1, %condition: i1, %value: !felt.type) -> !struct.type<@DifferentBlocks> {
       %self = struct.new : <@DifferentBlocks>
 
@@ -1723,6 +1724,7 @@ module attributes {llzk.lang = "llzk"} {
 // CHECK-NEXT:  }
 // -----
 
+// An explicitly conflicting source annotation on the crossing write blocks fusion.
 module attributes {llzk.lang = "llzk"} {
   struct.def @A {
     struct.member @foo : !felt.type
@@ -1738,8 +1740,6 @@ module attributes {llzk.lang = "llzk"} {
         scf.yield %one : !felt.type
       } {product_source = "compute"}
 
-      // The member write is intentionally marked as constrain-sourced; fusion must not cross an
-      // explicitly conflicting source annotation, even though its value is a compute-if result.
       struct.writem %self[@foo] = %0 : <@A>, !felt.type {product_source = "constrain"}
 
       scf.if %b {
@@ -1828,6 +1828,7 @@ module attributes {llzk.lang = "llzk"} {
 
 // -----
 
+// Nested conditional cases cover movable and unsupported inner control-flow arrangements.
 module attributes {llzk.lang = "llzk"} {
   struct.def @A {
     struct.member @foo : !felt.type
