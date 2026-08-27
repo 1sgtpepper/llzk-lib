@@ -34,7 +34,24 @@ module attributes {llzk.lang = "circom"} {
 - `index`: (MLIR builtin) Machine integer.
 - `felt.type`: Finite field element.
 - `array.type<N x E>`: Aggregate type with indexed [pseudo-homogeneous](\ref pseudo-homogeneous) elements. Element type cannot be another array type, instead multi-dimensional arrays are specified with a comma-separated list of dimension sizes. Each dimension size can be specified as an integer literal, a symbol (referring to a template parameter within a templated `struct.def`), or an [affine_map](https://mlir.llvm.org/docs/Dialects/Affine/#polyhedral-structures) (used when creating arrays within a loop where the dimension size depends on the loop iteration variable).
-- `struct.type<@Name<[...]>>`: Aggregate type whose named heterogeneous elements are declared within `struct.def @Name`. Generally correlates to components/functions in the source language. For a definition nested in a `poly.template`, an optional instantiation list supplies one argument per `poly.param` in declaration order; for a definition with no parameters, the list may be omitted or explicitly written as `[]`. An argument can be an integer literal, a felt constant such as `#felt<const 35>`, a symbol that resolves to an enclosing template parameter or global constant, a type used to instantiate a `poly.tvar<@N>` (see below), or an [affine_map](https://mlir.llvm.org/docs/Dialects/Affine/#polyhedral-structures) used when the argument depends on a loop iteration variable.
+- `struct.type<@Name<[...]>>`: Aggregate type whose named heterogeneous elements are declared within `struct.def @Name`. It generally correlates to a component or function in the source language.
+  For a definition nested in a `poly.template`, an optional instantiation list supplies one argument per `poly.param`, in declaration order. For a definition with no parameters, the list may be omitted or explicitly written as `[]`.
+  Each argument is one of the following:
+  - an integer literal;
+  - a felt constant such as `#felt<const 35>`;
+  - a symbol that resolves to an enclosing template parameter or constant global;
+  - a type used to instantiate a `poly.tvar<@N>` (see below); or
+  - an [affine_map](https://mlir.llvm.org/docs/Dialects/Affine/#polyhedral-structures) used when the argument depends on a loop iteration variable.
+
+  For example, a fieldless felt constant may be materialized in the field required by the
+  template parameter:
+
+  ```llzk
+  // A fieldless constant can be materialized in the template's field.
+  !struct.type<@T::@S<[#felt<const 35>]>>
+  // The field can also be written explicitly.
+  !struct.type<@T::@S<[#felt<const 35 : !felt.type<"bn128">>]>>
+  ```
 - `pod.type<..>`: Plain Old Data aggregate type with named heterogeneous elements. Unlike `struct.type`, there is no associated named declaration, the type itself specifies all constituent element types. It can be used more freely than `struct.type` since it has fewer restrictions on modifications.
 - `poly.tvar<@N>`: Placeholder type variable within a templated `struct.def` that may be instantiated with different types.
 - `string.type`: Sequence of characters.
@@ -46,7 +63,10 @@ LLZK supports arrays where the element type is not truly homogeneous, specifical
 ## Semantic Rules
 
 - Each `array.new` operation creates a fresh mutable array allocation. Two identical `array.new` operations are not interchangeable when either result may be read or written. The same is true for `pod.new`.
-- Felt-valued template arguments on `struct.type`, templated free-function calls, and `verif.include` may be integer literals, felt constants, or symbols. A felt restriction without an explicit field accepts any felt field. For a fielded restriction, a fieldless felt constant or integer is materialized in the required field; an explicitly fielded constant or a symbol with a known field must use that field, and an untyped symbol does not establish one. If a call or inclusion signature independently infers the same parameter from multiple positions, its known field, concrete value, and type must agree. Symbolic arguments must resolve to an enclosing template binding or a constant global; unknown, mutable-global, and wrong-kind symbols are rejected.
+- Felt-valued template arguments on `struct.type`, templated free-function calls, and `verif.include` may be integer literals, felt constants, or symbols.
+  A fieldless felt restriction accepts any felt field. For a fielded restriction, a fieldless felt constant or integer is materialized in the required field; an explicitly fielded constant or a symbol with a known field must use that field, and an untyped symbol does not establish one.
+  If a call or inclusion signature independently infers the same parameter from multiple positions, its known field, concrete value, and type must agree.
+  The `?` wildcard is valid only for a `poly.tvar` restriction and defers that type until the callee body provides the remaining inference. Symbolic arguments must resolve to an enclosing template binding or a constant global; unknown, mutable-global, and wrong-kind symbols are rejected.
 - A `function.def` argument may have `function.arg_name = "..."` to preserve the source-level argument name independently from the SSA name printed by MLIR. The value must be a non-empty, untyped string attribute; typed string attributes such as `"x" : i1` are rejected. Attached argument names must be unique within the function. Argument-splitting transforms derive names for generated arguments, such as `input[0]` for array elements or `self.member` for struct members.
 - Ops marked with the `WitnessGen` trait can only be used in functions with the `allow_witness` attribute (`compute()` within `struct.def` has this by default). Similarly, ops marked with the `ConstraintGen` trait can only be used in functions with the `allow_constraint` attribute (`constrain()` within `struct.def` has this by default).
 - Functions with the `allow_witness` attribute can only call other functions marked with `allow_witness`. Likewise for `allow_constraint`.
