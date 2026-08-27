@@ -88,8 +88,8 @@ worktree, including untracked files. Use `--allow-dirty` only when that safeguar
 The script generates the complete result before writing a temporary file in the source directory
 and replacing the source, preserving its permission bits.
 
-Repeated runs remove the generator's note and matching `CHECK`, `CHECK-NEXT`, `CHECK-LABEL`, and
-`CHECK-SAME` directives for the selected prefix. Other source text and comments, including text
+Repeated runs remove the generator's note and directives using the selected prefix, either plain or
+with a `-NEXT`, `-LABEL`, or `-SAME` suffix. Other source text and comments, including text
 that merely contains the prefix, are preserved. The generated checks are not authoritative; verify
 that they cover the relevant behavior and retain complete transformed output where the IR is the
 test contract.
