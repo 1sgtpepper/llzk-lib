@@ -2,4 +2,4 @@ changed:
   - "In-place FileCheck generation now refuses dirty Git worktrees unless --allow-dirty is specified."
 
 fixed:
-  - "In-place FileCheck generation is now atomic and idempotent, preserves source mode bits, retains comments that merely contain the CHECK prefix, and honors custom check prefixes."
+  - "In-place FileCheck generation now replaces the source only after successful generation, is idempotent, preserves source mode bits, retains comments that merely contain the selected check prefix, and honors custom check prefixes."
