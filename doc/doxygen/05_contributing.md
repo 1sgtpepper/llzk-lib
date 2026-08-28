@@ -88,6 +88,8 @@ worktree, including untracked files. Use `--allow-dirty` only when that safeguar
 The script generates the complete result before writing a temporary file in the source directory
 and replacing the source, preserving its permission bits.
 
+Run the utility's unit tests with `python3 -m unittest scripts/generate-test-checks.py -v`.
+
 Repeated runs remove the generator's note and directives using the selected prefix, either plain or
 with a `-NEXT`, `-LABEL`, or `-SAME` suffix. Other source text and comments, including text
 that merely contains the prefix, are preserved. The generated checks are not authoritative; verify
