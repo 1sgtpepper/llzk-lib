@@ -261,6 +261,93 @@ TEST_F(FuseProductControlFlowTests, UnmarkedSignalMemberReadPreventsFusion) {
   EXPECT_TRUE(write->isBeforeInBlock(read));
 }
 
+TEST_F(FuseProductControlFlowTests, RepeatedMemberWritesPreventReadHoisting) {
+  // A hoisted signal read must have one matching write. Matching any one of repeated writes would
+  // make the read's signal identity ambiguous after the writes remain outside the fused if.
+  mlir::OwningOpRef<mlir::ModuleOp> module = mlir::parseSourceString<mlir::ModuleOp>(
+      R"mlir(
+    module attributes {llzk.lang = "llzk"} {
+      struct.def @A {
+        struct.member @value : !felt.type {signal}
+
+        function.def @product(%condition: i1) -> !struct.type<@A> {
+          %self = struct.new : <@A>
+
+          %computed = scf.if %condition -> !felt.type {
+            %zero = felt.const 0
+            scf.yield %zero : !felt.type
+          } else {
+            %one = felt.const 1
+            scf.yield %one : !felt.type
+          } {product_source = "compute"}
+
+          struct.writem %self[@value] = %computed : <@A>, !felt.type {
+            product_source = "compute"
+          }
+          %observed = struct.readm %self[@value] : <@A>, !felt.type {
+            product_source = "constrain"
+          }
+          struct.writem %self[@value] = %computed : <@A>, !felt.type {
+            product_source = "compute"
+          }
+
+          scf.if %condition {
+            %expected = felt.const 0
+            constrain.eq %observed, %expected : !felt.type, !felt.type
+          } else {
+            %expected = felt.const 1
+            constrain.eq %observed, %expected : !felt.type, !felt.type
+          } {product_source = "constrain"}
+
+          function.return %self : !struct.type<@A>
+        }
+      }
+    }
+  )mlir",
+      &ctx
+  );
+  ASSERT_TRUE(module);
+
+  mlir::PassManager pm(&ctx);
+  pm.addPass(llzk::createFuseProductControlFlowPass());
+  ASSERT_TRUE(mlir::succeeded(pm.run(*module)));
+
+  llzk::function::FuncDefOp product;
+  module->walk([&](llzk::function::FuncDefOp func) {
+    if (func.isStructProduct()) {
+      product = func;
+    }
+  });
+  ASSERT_TRUE(product);
+
+  llvm::SmallVector<llzk::component::MemberWriteOp> writes;
+  llzk::component::MemberReadOp read;
+  unsigned computeIfs = 0;
+  unsigned constrainIfs = 0;
+  unsigned fusedIfs = 0;
+  product.walk([&](llzk::component::MemberWriteOp write) { writes.push_back(write); });
+  product.walk([&](llzk::component::MemberReadOp memberRead) { read = memberRead; });
+  product.walk([&](mlir::scf::IfOp ifOp) {
+    if (auto source = ifOp->getAttrOfType<mlir::StringAttr>("product_source"); source) {
+      if (source.getValue() == "compute") {
+        ++computeIfs;
+      } else if (source.getValue() == "constrain") {
+        ++constrainIfs;
+      } else if (source.getValue() == "fused") {
+        ++fusedIfs;
+      }
+    }
+  });
+
+  ASSERT_EQ(writes.size(), 2U);
+  ASSERT_TRUE(read);
+  EXPECT_EQ(computeIfs, 1U);
+  EXPECT_EQ(constrainIfs, 1U);
+  EXPECT_EQ(fusedIfs, 0U);
+  EXPECT_TRUE(writes[0]->isBeforeInBlock(read));
+  EXPECT_TRUE(read->isBeforeInBlock(writes[1]));
+}
+
 TEST_F(FuseProductControlFlowTests, NestedLoopControlMismatchPreventsFusion) {
   // The outer conditionals may fuse, but equal-count loops with different bounds or steps must
   // retain each source induction sequence because their bodies observe the induction variable.
