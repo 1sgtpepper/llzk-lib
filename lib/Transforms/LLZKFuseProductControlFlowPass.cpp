@@ -270,8 +270,8 @@ static bool collectConstrainValueMappings(
     valueToResult[result] = idx;
   }
 
-  // A hoisted read must identify one unambiguous write. If another matching write occurs after
-  // the read, the original read observes a different write order than the hoisted read would.
+  // A hoisted read must identify one unambiguous write. Any additional matching write in the
+  // interval leaves the pass unable to preserve which write the original read observed.
   for (MemberReadOp read : readsToHoist) {
     if (llvm::count_if(candidateWrites, [read](MemberWriteOp write) {
       return isMatchingComputeWrite(write, read);

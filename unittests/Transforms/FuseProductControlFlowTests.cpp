@@ -273,21 +273,23 @@ TEST_F(FuseProductControlFlowTests, RepeatedMemberWritesPreventReadHoisting) {
         function.def @product(%condition: i1) -> !struct.type<@A> {
           %self = struct.new : <@A>
 
-          %computed = scf.if %condition -> !felt.type {
+          %first, %second = scf.if %condition -> (!felt.type, !felt.type) {
             %zero = felt.const 0
-            scf.yield %zero : !felt.type
+            %two = felt.const 2
+            scf.yield %zero, %two : !felt.type, !felt.type
           } else {
             %one = felt.const 1
-            scf.yield %one : !felt.type
+            %three = felt.const 3
+            scf.yield %one, %three : !felt.type, !felt.type
           } {product_source = "compute"}
 
-          struct.writem %self[@value] = %computed : <@A>, !felt.type {
+          struct.writem %self[@value] = %first : <@A>, !felt.type {
             product_source = "compute"
           }
           %observed = struct.readm %self[@value] : <@A>, !felt.type {
             product_source = "constrain"
           }
-          struct.writem %self[@value] = %computed : <@A>, !felt.type {
+          struct.writem %self[@value] = %second : <@A>, !felt.type {
             product_source = "compute"
           }
 
@@ -341,6 +343,7 @@ TEST_F(FuseProductControlFlowTests, RepeatedMemberWritesPreventReadHoisting) {
 
   ASSERT_EQ(writes.size(), 2U);
   ASSERT_TRUE(read);
+  EXPECT_NE(writes[0].getVal(), writes[1].getVal());
   EXPECT_EQ(computeIfs, 1U);
   EXPECT_EQ(constrainIfs, 1U);
   EXPECT_EQ(fusedIfs, 0U);
