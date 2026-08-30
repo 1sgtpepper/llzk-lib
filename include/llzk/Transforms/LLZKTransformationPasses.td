@@ -147,8 +147,10 @@ def FuseProductControlFlowPass : LLZKPass<"llzk-fuse-product-control-flow"> {
     appear between the pair only when their value is a direct compute-if result. Constrain-side
     signal member reads with no table offset that resolve to those writes, have dominating
     operands, and are used only in the constrain branch are hoisted before the fused conditional
-    so emitted constraints retain the member signal. Other member reads and explicitly
-    non-compute-sourced member writes prevent fusion.
+    so emitted constraints retain the member signal. Each hoisted read must have exactly one
+    matching direct compute-side write between the paired conditionals; repeated matching writes
+    for that read keep the pair unfused. Other member reads and explicitly non-compute-sourced
+    member writes prevent fusion.
 
     Conditional fusion is skipped if moved constrain code reads or writes storage, calls functions,
     allocates, may trap, has unknown effects, or contains unsupported structured control flow such

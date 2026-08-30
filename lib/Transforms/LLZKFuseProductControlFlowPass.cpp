@@ -132,13 +132,22 @@ static bool operandsDominateInsertion(Operation *op, Operation *insertionPoint) 
   return true;
 }
 
+/// Return whether `write` targets the same member as `read` and is eligible as its compute-side
+/// direct write.
+static bool isMatchingComputeWrite(MemberWriteOp write, MemberReadOp read) {
+  std::optional<llvm::StringRef> source = getProductSource(write);
+  return (!source || *source == FUNC_NAME_COMPUTE) &&
+         write.getComponent() == read.getComponent() &&
+         write.getMemberNameAttr() == read.getMemberNameAttr();
+}
+
 /// Return whether a signal member read can be hoisted before `computeIf` without changing the
 /// constraint's signal identity. The referenced member must resolve to an explicit signal
 /// definition, match a preceding direct compute-if-result write, have no table offset, have
 /// operands available before the compute if, and be used only inside the paired constrain if.
 static bool canHoistMemberRead(
     MemberReadOp read, scf::IfOp computeIf, scf::IfOp constrainIf,
-    ArrayRef<MemberWriteOp> precedingWrites, SymbolTableCollection &symbolTables
+    ArrayRef<MemberWriteOp> priorWrites, SymbolTableCollection &symbolTables
 ) {
   if (!hasProductSource(read, FUNC_NAME_CONSTRAIN) || read.getTableOffset().has_value() ||
       read.getVal().use_empty() || !operandsDominateInsertion(read, computeIf)) {
@@ -150,12 +159,9 @@ static bool canHoistMemberRead(
     return false;
   }
 
-  bool matchesWrite = llvm::any_of(precedingWrites, [&](MemberWriteOp write) {
-    std::optional<llvm::StringRef> source = getProductSource(write);
-    return (!source || *source == FUNC_NAME_COMPUTE) &&
-           write.getComponent() == read.getComponent() &&
-           write.getMemberNameAttr() == read.getMemberNameAttr();
-  });
+  bool matchesWrite = llvm::any_of(
+      priorWrites, [read](MemberWriteOp write) { return isMatchingComputeWrite(write, read); }
+  );
   if (!matchesWrite) {
     return false;
   }
@@ -234,7 +240,7 @@ static bool collectConstrainValueMappings(
     scf::IfOp computeIf, scf::IfOp constrainIf, llvm::DenseMap<Value, unsigned> &valueToResult,
     SmallVector<MemberReadOp> &readsToHoist, SymbolTableCollection &symbolTables
 ) {
-  SmallVector<MemberWriteOp> precedingWrites;
+  SmallVector<MemberWriteOp> candidateWrites;
   for (Operation *op = computeIf->getNextNode(); op != constrainIf; op = op->getNextNode()) {
     if (auto writeOp = dyn_cast<MemberWriteOp>(op)) {
       if (std::optional<llvm::StringRef> source = getProductSource(writeOp);
@@ -244,12 +250,12 @@ static bool collectConstrainValueMappings(
       if (!llvm::is_contained(computeIf.getResults(), writeOp.getVal())) {
         return false;
       }
-      precedingWrites.push_back(writeOp);
+      candidateWrites.push_back(writeOp);
       continue;
     }
 
     if (auto readOp = dyn_cast<MemberReadOp>(op)) {
-      if (!canHoistMemberRead(readOp, computeIf, constrainIf, precedingWrites, symbolTables)) {
+      if (!canHoistMemberRead(readOp, computeIf, constrainIf, candidateWrites, symbolTables)) {
         return false;
       }
       readsToHoist.push_back(readOp);
@@ -263,6 +269,16 @@ static bool collectConstrainValueMappings(
 
   for (auto [idx, result] : llvm::enumerate(computeIf.getResults())) {
     valueToResult[result] = idx;
+  }
+
+  // A hoisted read must identify one unambiguous write. If another matching write occurs after
+  // the read, the original read observes a different write order than the hoisted read would.
+  for (MemberReadOp read : readsToHoist) {
+    if (llvm::count_if(candidateWrites, [read](MemberWriteOp write) {
+          return isMatchingComputeWrite(write, read);
+        }) != 1) {
+      return false;
+    }
   }
 
   return !hasUnsafeCrossedConstrainOp(constrainIf.getOperation());
