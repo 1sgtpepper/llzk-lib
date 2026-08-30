@@ -13,8 +13,8 @@ jobs:
   replay:
     runs-on: ubuntu-24.04
     env:
-      BASE_HEAD: e5bb0ed1ec0b4ad032424f6a5c6369a718723cbd
-      TARGET_HEAD: 3baf854eeffa7d2deac9513afa7acf9c8876179e
+      BASE_HEAD: d2c8ece96581416010972c778e75866903bc9568
+      TARGET_HEAD: 6be221f8833af3234f7871966e370643cce83ecd
       OUTPUT_PATH: /home/runner/work/_temp/llzk-pr484-exact-head
 
     steps:
@@ -73,11 +73,14 @@ jobs:
             test/Transforms/FuseProductControlFlow/fuse_if_positive.llzk
             test/Transforms/FuseProductControlFlow/fuse_if_preserves_locations.llzk
             test/Transforms/FuseProductControlFlow/fuse_if_compute_constrain.llzk
-            test/Transforms/FuseProductControlFlow/no_fuse_if_internal_unknown_effect_in_product.llzk
-            test/Transforms/FuseProductControlFlow/no_fuse_single.llzk
             test/Transforms/FuseProductControlFlow/fuse_outer.llzk
+            test/Transforms/FuseProductControlFlow/fuse_outer_inner.llzk
             test/Transforms/FuseProductControlFlow/fuse_single.llzk
             test/Transforms/FuseProductControlFlow/fuse_with_compute_suffix.llzk
+            test/Transforms/FuseProductControlFlow/no_fuse_if_internal_unknown_effect_in_product.llzk
+            test/Transforms/FuseProductControlFlow/no_fuse_inner.llzk
+            test/Transforms/FuseProductControlFlow/no_fuse_region_mismatch.llzk
+            test/Transforms/FuseProductControlFlow/no_fuse_single.llzk
             test/Transforms/FuseProductControlFlow/shared_dynamic_loop_effects.llzk
           )
           full_check_mismatches=()
