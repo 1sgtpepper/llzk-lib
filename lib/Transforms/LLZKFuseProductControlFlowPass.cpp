@@ -136,8 +136,7 @@ static bool operandsDominateInsertion(Operation *op, Operation *insertionPoint) 
 /// direct write.
 static bool isMatchingComputeWrite(MemberWriteOp write, MemberReadOp read) {
   std::optional<llvm::StringRef> source = getProductSource(write);
-  return (!source || *source == FUNC_NAME_COMPUTE) &&
-         write.getComponent() == read.getComponent() &&
+  return (!source || *source == FUNC_NAME_COMPUTE) && write.getComponent() == read.getComponent() &&
          write.getMemberNameAttr() == read.getMemberNameAttr();
 }
 
@@ -159,9 +158,9 @@ static bool canHoistMemberRead(
     return false;
   }
 
-  bool matchesWrite = llvm::any_of(
-      priorWrites, [read](MemberWriteOp write) { return isMatchingComputeWrite(write, read); }
-  );
+  bool matchesWrite = llvm::any_of(priorWrites, [read](MemberWriteOp write) {
+    return isMatchingComputeWrite(write, read);
+  });
   if (!matchesWrite) {
     return false;
   }
@@ -275,8 +274,8 @@ static bool collectConstrainValueMappings(
   // the read, the original read observes a different write order than the hoisted read would.
   for (MemberReadOp read : readsToHoist) {
     if (llvm::count_if(candidateWrites, [read](MemberWriteOp write) {
-          return isMatchingComputeWrite(write, read);
-        }) != 1) {
+      return isMatchingComputeWrite(write, read);
+    }) != 1) {
       return false;
     }
   }
