@@ -85,16 +85,18 @@ When `--source` is provided, `--source_delim_regex` selects the boundaries befor
 check blocks are inserted. Use `-i`/`--inplace` only after checking the generated output. In-place
 mode requires `--source`, cannot be combined with `--output`, and refuses to modify a dirty Git
 worktree, including untracked files. Use `--allow-dirty` only when that safeguard is intentional.
-The script generates the complete result before writing a temporary file in the source directory
-and replacing the source, preserving its permission bits.
+The script writes the complete generated result to a temporary file in the source directory and
+replaces the source only after that temporary file is complete, preserving its permission bits.
+Generation or replacement failures leave the original source in place; temporary-file cleanup
+failures are also reported.
 
 Run the utility's unit tests with `python3 -m unittest scripts/generate-test-checks.py -v`.
 
 Repeated runs remove the generator's note and directives using the selected prefix, either plain or
-with a `-NEXT`, `-LABEL`, or `-SAME` suffix. Other source text and comments, including text
-that merely contains the prefix, are preserved. The generated checks are not authoritative; verify
-that they cover the relevant behavior and retain complete transformed output where the IR is the
-test contract.
+with a `-NEXT`, `-LABEL`, or `-SAME` suffix. Other source text and comments, including trailing
+whitespace, line endings, and text that merely contains the prefix, are preserved. The generated
+checks are not authoritative; verify that they cover the relevant behavior and retain complete
+transformed output where the IR is the test contract.
 
 ### Commit your update
 
