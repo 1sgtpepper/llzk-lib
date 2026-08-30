@@ -757,6 +757,22 @@ evaluateExpr(TemplateExprOp exprOp, const DenseMap<Attribute, Attribute> &paramN
 /// Return whether `target` may use `exprOp`. Symbol-use analysis stops at symbol-table boundaries,
 /// so inspect target regions separately. An unknown result is conservatively treated as a use.
 static bool targetMayUseTemplateExpr(Operation *target, TemplateExprOp exprOp) {
+  // MemberDefOp stores its type as a native property rather than an operation attribute, so the
+  // generic symbol-use walker cannot see an expression used only in a member's type. These members
+  // belong directly to the target StructDefOp; do not walk into nested symbol-table scopes here.
+  if (auto structDef = llvm::dyn_cast<StructDefOp>(target)) {
+    SymbolRefAttr exprRef = FlatSymbolRefAttr::get(exprOp.getSymNameAttr());
+    SymbolTableCollection tables;
+    for (MemberDefOp memberDef : structDef.getBodyRegion().getOps<MemberDefOp>()) {
+      for (SymbolRefAttr usedRef : getSymbolsUsedIn(memberDef.getType())) {
+        if (usedRef == exprRef ||
+            tables.lookupNearestSymbolFrom(memberDef.getOperation(), usedRef) ==
+                exprOp.getOperation()) {
+          return true;
+        }
+      }
+    }
+  }
   if (!symbolKnownUseEmpty(exprOp.getOperation(), target)) {
     return true;
   }
