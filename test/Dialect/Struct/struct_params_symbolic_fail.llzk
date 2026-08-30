@@ -189,47 +189,6 @@ module attributes {llzk.lang} {
 
 // -----
 
-// An untyped local parameter cannot establish the integer-like restriction of a struct argument.
-module attributes {llzk.lang} {
-  poly.template @Target {
-    // expected-note@+1 {{template parameter declared here}}
-    poly.param @N : index
-    struct.def @S {
-      function.def @compute() -> !struct.type<@Target::@S<[@N]>> {
-        %self = struct.new : <@Target::@S<[@N]>>
-        function.return %self : !struct.type<@Target::@S<[@N]>>
-      }
-      function.def @constrain(%self: !struct.type<@Target::@S<[@N]>>) {
-        function.return
-      }
-    }
-  }
-  poly.template @Caller {
-    // expected-note@+1 {{template parameter declared here}}
-    poly.param @U
-    // expected-error@+1 {{ref "@U" in type '!struct.type<@Target::@S<[@U]>>' refers to a 'poly.param' that must have type 'index'}}
-    function.def @useLocal(%value: !struct.type<@Target::@S<[@U]>>) {
-      function.return
-    }
-  }
-}
-
-// -----
-
-// An untyped local parameter cannot establish an array dimension's integer-like restriction.
-module attributes {llzk.lang} {
-  poly.template @Caller {
-    // expected-note@+1 {{template parameter declared here}}
-    poly.param @U
-    // expected-error@+1 {{ref "@U" in type '!array.type<@U x index>' refers to a 'poly.param' that must have type 'index'}}
-    function.def @useLocal(%value: !array.type<@U x index>) {
-      function.return
-    }
-  }
-}
-
-// -----
-
 // An initialized mutable global is not compile-time evidence for a struct parameter.
 module attributes {llzk.lang} {
   poly.template @MutableGlobalInitializedTarget {

@@ -88,8 +88,9 @@ module attributes {llzk.lang} {
 // CHECK-NEXT:  }
 // -----
 
-// A qualified global with a concrete type satisfies an index restriction, while a local type-only
-// parameter satisfies a type-only restriction.
+// A qualified global with a concrete type satisfies an index restriction, a local type-only
+// parameter satisfies a type-only restriction, and an unrestricted local may defer an index
+// restriction until its caller is specialized.
 module attributes {llzk.lang} {
   poly.template @IndexTarget {
     poly.param @N : index
@@ -118,6 +119,14 @@ module attributes {llzk.lang} {
   poly.template @TypeCaller {
     poly.param @U : !poly.tvar<@U>
     function.def @useLocal(%value: !struct.type<@TypeTarget::@S<[@U]>>) {
+      function.return
+    }
+  }
+  poly.template @UntypedCaller {
+    poly.param @U
+    function.def @useForwarded(
+        %struct: !struct.type<@IndexTarget::@S<[@U]>>, %array: !array.type<@U x index>
+    ) {
       function.return
     }
   }
@@ -160,10 +169,16 @@ module attributes {llzk.lang} {
 // CHECK-NEXT:        function.return
 // CHECK-NEXT:      }
 // CHECK-NEXT:    }
+// CHECK-NEXT:    poly.template @UntypedCaller {
+// CHECK-NEXT:      poly.param @U
+// CHECK-NEXT:      function.def @useForwarded(%[[VAL_5:[0-9a-zA-Z_\.]+]]: !struct.type<@IndexTarget::@S<[@U]>>, %[[VAL_6:[0-9a-zA-Z_\.]+]]: !array.type<@U x index>) {
+// CHECK-NEXT:        function.return
+// CHECK-NEXT:      }
+// CHECK-NEXT:    }
 // CHECK-NEXT:    module @globals {
 // CHECK-NEXT:      global.def const @G : index = 35
 // CHECK-NEXT:    }
-// CHECK-NEXT:    function.def @useIndex(%[[VAL_5:[0-9a-zA-Z_\.]+]]: !struct.type<@IndexTarget::@S<[@globals::@G]>>) {
+// CHECK-NEXT:    function.def @useIndex(%[[VAL_7:[0-9a-zA-Z_\.]+]]: !struct.type<@IndexTarget::@S<[@globals::@G]>>) {
 // CHECK-NEXT:      function.return
 // CHECK-NEXT:    }
 // CHECK-NEXT:  }
