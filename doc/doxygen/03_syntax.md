@@ -41,7 +41,7 @@ module attributes {llzk.lang = "circom"} {
   - a felt constant such as `#felt<const 35>`;
   - a symbol that resolves to an enclosing template parameter or constant global;
   - a type used to instantiate a `poly.tvar<@N>` (see below); or
-  - an [affine_map](https://mlir.llvm.org/docs/Dialects/Affine/#polyhedral-structures) used when the argument depends on a loop iteration variable.
+  - a single-result [affine_map](https://mlir.llvm.org/docs/Dialects/Affine/#polyhedral-structures) for an integer-like argument that depends on a loop iteration variable.
 
   For example, given `poly.template @T` with `poly.param @P : !felt.type<"bn128">`
   and a nested `struct.def @S`, these arguments select the same value and field:

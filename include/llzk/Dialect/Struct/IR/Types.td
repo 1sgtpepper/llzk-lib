@@ -38,8 +38,8 @@ def LLZK_StructType : StructDialectType<"Struct", "type"> {
       - FeltConstAttr, specifying a fixed finite-field parameter value
       - SymbolRefAttr, specifying a parameter value defined by an enclosing template parameter
         or global constant
-      - AffineMapAttr, specifying a single-result affine expression for an argument that varies
-        across an array of struct elements
+      - AffineMapAttr, specifying a single-result affine expression for an integer-like argument
+        that varies across an array of struct elements
       - TypeAttr, specifying a type parameter
 
     ```llzk

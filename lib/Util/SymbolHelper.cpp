@@ -221,7 +221,10 @@ LogicalResult verifyTemplateSymbolType(
 ) {
   if (requiredParamType) {
     std::optional<Type> actualType = binding.getTypeOpt();
-    if (!isTemplateParamTypeCompatible(actualType, *requiredParamType)) {
+    // A symbolic argument embedded in a StructType or ArrayType must establish the
+    // restriction at this type-resolution site. Operation template-argument validation
+    // separately retains absent-type forwarding for symbols specialized by their caller.
+    if (!actualType || !isTemplateParamTypeCompatible(*actualType, *requiredParamType)) {
       if (!actualType) {
         auto diag = origin->emitError().append(
             "ref \"", param, "\" in type ", parameterizedType, " refers to a '", binding->getName(),

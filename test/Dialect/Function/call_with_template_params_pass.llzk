@@ -39,6 +39,42 @@ module attributes {llzk.lang} {
 // CHECK-NEXT:      }
 // CHECK-NEXT:    }
 // CHECK-NEXT:  }
+
+// -----
+
+// An explicit untyped caller binding remains forwardable to a typed function parameter before
+// the caller itself is specialized.
+module attributes {llzk.lang} {
+  poly.template @ForwardTarget {
+    poly.param @N : index
+    function.def @accept() {
+      function.return
+    }
+  }
+
+  poly.template @ForwardCaller {
+    poly.param @U
+    function.def @forward() {
+      function.call @ForwardTarget::@accept<[@U]>() : () -> ()
+      function.return
+    }
+  }
+}
+// CHECK-LABEL: module attributes {llzk.lang} {
+// CHECK-NEXT:    poly.template @ForwardTarget {
+// CHECK-NEXT:      poly.param @N : index
+// CHECK-NEXT:      function.def @accept() {
+// CHECK-NEXT:        function.return
+// CHECK-NEXT:      }
+// CHECK-NEXT:    }
+// CHECK-NEXT:    poly.template @ForwardCaller {
+// CHECK-NEXT:      poly.param @U
+// CHECK-NEXT:      function.def @forward() {
+// CHECK-NEXT:        function.call @ForwardTarget::@accept<[@U]>() : () -> ()
+// CHECK-NEXT:        function.return
+// CHECK-NEXT:      }
+// CHECK-NEXT:    }
+// CHECK-NEXT:  }
 // -----
 
 // Same-spelled type-only parameters in separate templates are distinct bindings, but a matching
