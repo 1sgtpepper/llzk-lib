@@ -288,7 +288,8 @@ bool isTemplateParamTypeCompatible(mlir::Type actualType, mlir::Type requiredTyp
 /// satisfy a fielded required felt type because it does not establish the field needed by that
 /// restriction. It also cannot satisfy a type-only TypeVarType restriction because an unrestricted
 /// binding does not establish that the eventual argument is a type. For other required types,
-/// preserve the existing unrestricted-binding behavior.
+/// preserve the existing unrestricted-binding behavior. Direct array dimensions separately
+/// require an index-typed binding at their type-resolution site.
 bool isTemplateParamTypeCompatible(std::optional<mlir::Type> actualType, mlir::Type requiredType);
 
 /// Check a template argument against an optional restriction and return the representation used by

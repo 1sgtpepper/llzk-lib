@@ -221,7 +221,11 @@ LogicalResult verifyTemplateSymbolType(
 ) {
   if (requiredParamType) {
     std::optional<Type> actualType = binding.getTypeOpt();
-    if (!isTemplateParamTypeCompatible(actualType, *requiredParamType)) {
+    // A direct array-dimension symbol must establish its index kind at the use site. Other
+    // template arguments may remain unrestricted until their enclosing caller is specialized.
+    bool missingArrayDimensionType = !actualType && llvm::isa<array::ArrayType>(parameterizedType);
+    if (missingArrayDimensionType ||
+        !isTemplateParamTypeCompatible(actualType, *requiredParamType)) {
       if (!actualType) {
         auto diag = origin->emitError().append(
             "ref \"", param, "\" in type ", parameterizedType, " refers to a '", binding->getName(),
