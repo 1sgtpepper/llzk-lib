@@ -918,8 +918,8 @@ public:
 
 namespace Step1_InstantiateStructs {
 
-/// Implements cloning a `StructDefOp` for a specific instantiation site, using the concrete
-/// parameters from the instantiation to replace parameters from the original `StructDefOp`.
+/// Clone a `StructDefOp` for one specialization, replacing every known template binding in the
+/// cloned definition while retaining unresolved bindings.
 class StructCloner {
   ConversionTracker &tracker_;
   ModuleOp rootMod;
@@ -933,7 +933,7 @@ class StructCloner {
   public:
     MappedTypeConverter(
         StructType originalType, StructType newType,
-        /// Instantiated values for the parameter names in `originalType`
+        /// Known values for template binding names referenced by `originalType`
         const DenseMap<Attribute, Attribute> &paramNameToInstantiatedValue
     )
         : TemplateParamTypeConverter(paramNameToInstantiatedValue), origTy(originalType),
@@ -999,7 +999,8 @@ class StructCloner {
       return failure();
     }
 
-    // Map of StructDefOp parameter name to concrete Attribute at the current instantiation site.
+    // Concrete template bindings for this specialization. Parameter values populate the map first;
+    // expression values are added once their dependencies become concrete.
     DenseMap<Attribute, Attribute> paramNameToConcrete;
     // Reduced from `typeAtCallerParams` to contain only the non-concrete Attributes.
     ArrayAttr reducedCallerParams = nullptr;
@@ -1735,7 +1736,8 @@ public:
                      << debug::toStringList(unifyResult.value()) << '\n'
     );
 
-    // Maps template parameter symbols to the instantiation value at the call site.
+    // Concrete template bindings for this specialization. Parameters are collected first;
+    // expression values are added once their dependencies become concrete.
     DenseMap<Attribute, Attribute> paramNameToConcrete;
     if (failed(collectConcreteTemplateParams(
             op, rewriter, symTables, callTgt, parentTemplate, unifyResult.value(),
@@ -1843,8 +1845,8 @@ private:
     });
   }
 
-  /// Populate the concrete subset of template parameters chosen for this instantiation, using
-  /// explicit call-site arguments when present and otherwise relying on unification.
+  /// Populate the concrete subset of template parameters for this specialization using explicit
+  /// arguments, signature unification, or body inference for wildcard type parameters.
   static LogicalResult collectConcreteTemplateParams(
       CallOp op, PatternRewriter &rewriter, SymbolTableCollection &symTables, FuncDefOp callTgt,
       TemplateOp parentTemplate, const UnificationMap &unifyResult,

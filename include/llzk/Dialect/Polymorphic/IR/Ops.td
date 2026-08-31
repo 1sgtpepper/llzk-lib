@@ -185,8 +185,9 @@ def LLZK_TemplateExprOp
                    IsolatedFromAbove, NoRegionArguments, SingleBlock]> {
   let summary = "declares a named expression in a polymorphic template";
   let description = [{
-    Declares an expression over parameters of a `poly.template` that can be used just like
-    a parameter within the function and/or struct definitions within the template.
+    Declares an expression over zero or more parameters of a `poly.template`. A `poly.read_const`
+    operation in a function or struct definition within the template may read the yielded value by
+    name.
 
     The body of a `poly.expr` cannot contain any symbols defined via `poly.expr` to prevent
     cyclic initialization. The body must also have no side effects to ensure it can be safely
@@ -196,9 +197,11 @@ def LLZK_TemplateExprOp
     Example:
     ```llzk
     poly.template @TemplateName {
-      poly.expr @ExprName {
-        %0 = some_op %param1, %param2 : (!felt.type, !felt.type) -> !felt.type
-        poly.yield %0 : !felt.type
+      poly.param @N : index
+      poly.expr @DoubleN {
+        %n = poly.read_const @N : index
+        %double = arith.addi %n, %n : index
+        poly.yield %double : index
       }
     }
     ```
@@ -235,20 +238,21 @@ def LLZK_YieldOp
 def LLZK_ConstReadOp
     : PolymorphicDialectOp<"read_const", [Pure, DeclareOpInterfaceMethods<
                                                     SymbolUserOpInterface>]> {
-  let summary = "read value of a template parameter";
+  let summary = "read a template parameter or expression";
   let description = [{
-    This operation reads the value from the named constant parameter of the template
-    in which this op appears. The op itself puts a type restriction on the value,
-    but leaves it to a later type-checking pass to ensure the template parameters are
-    instantiated with types matching the uses of the parameter within the template.
+    This operation reads a named `poly.param` or `poly.expr` binding from the enclosing template.
+    Its result type must match a concrete parameter restriction or expression result type. For an
+    unrestricted parameter, the result type states the type required at that use. A parameter whose
+    restriction is a `poly.tvar` cannot be read directly.
 
     Examples:
     ```llzk
-    // Read a `!felt.type` value from struct parameter "@A"
+    // Read a `!felt.type` value from template parameter "@A".
     %0 = poly.read_const @A : !felt.type
-    // Read a value from struct parameter "@B" where its type is
-    // specified by struct parameter "@T"
-    %1 = poly.read_const @B : !poly.tvar<@T>
+    // Read an index value from template parameter "@B".
+    %1 = poly.read_const @B : index
+    // Read the index value yielded by template expression "@DoubleB".
+    %2 = poly.read_const @DoubleB : index
     ```
   }];
 
