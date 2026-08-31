@@ -1,2 +1,2 @@
 fixed:
-  - Reuse fully instantiated free-function clones only when the source definition and ordered concrete parameter bindings match
+  - Prevent fully instantiated free functions from being reused for a different source definition or ordered parameter binding when generated names collide

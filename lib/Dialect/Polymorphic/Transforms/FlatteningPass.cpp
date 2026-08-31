@@ -125,8 +125,10 @@ class ConversionTracker {
   /// Tracks original free function definitions for which instantiated clones were created.
   DenseSet<SymbolRefAttr> funcInstantiations;
   /// Full function specializations are keyed by source definition and exact concrete bindings.
-  /// Generated symbol spelling is only a value because user symbols can collide with it.
-  /// These caches are queried during instantiation, before cleanup can erase source definitions.
+  /// Generated symbol spelling is only a value because user symbols or other valid bindings can
+  /// produce the same spelling.
+  /// The tracker survives every fixpoint iteration so repeated requests reuse the same clone; the
+  /// cache is cleared before cleanup can erase its source definitions.
   DenseMap<FuncInstantiationKey, StringAttr> fullFuncInstantiations;
   /// Successful partial functions keyed by their source operation and exact concrete bindings.
   /// The rendered symbol names are only values; they are never used as cache identity.
