@@ -201,7 +201,7 @@ static bool isSafeToMoveConstrainOp(Operation *op) {
 /// An operation is crossable only when this pass explicitly admits it or MLIR proves it pure; the
 /// walk rejects reads, writes, calls, traps, and unknown effects.
 static bool hasUnsafeCrossedConstrainOp(Operation *root) {
-  auto result = root->walk([&](Operation *op) {
+  auto result = root->walk([](Operation *op) {
     if (op == root || isa<scf::YieldOp>(op)) {
       return WalkResult::advance();
     }
@@ -430,7 +430,7 @@ static void fuseIfPair(
 static void
 fuseMatchingIfPairs(Region &body, MLIRContext *context, SymbolTableCollection &symbolTables) {
   llvm::SmallVector<scf::IfOp> computeIfs, constrainIfs;
-  body.walk<WalkOrder::PreOrder>([&](scf::IfOp ifOp) {
+  body.walk<WalkOrder::PreOrder>([&computeIfs, &constrainIfs](scf::IfOp ifOp) {
     std::optional<llvm::StringRef> productSource = getProductSource(ifOp);
     if (!productSource) {
       return WalkResult::advance();
@@ -446,7 +446,7 @@ fuseMatchingIfPairs(Region &body, MLIRContext *context, SymbolTableCollection &s
 
   auto fusionCandidates = *alignmentHelpers::getMatchingPairs<scf::IfOp>(
       computeIfs, constrainIfs,
-      [&](scf::IfOp a, scf::IfOp b) { return canIfsBeFused(a, b, symbolTables); },
+      [&symbolTables](scf::IfOp a, scf::IfOp b) { return canIfsBeFused(a, b, symbolTables); },
       /*allowPartial=*/true
   );
 
@@ -462,27 +462,6 @@ fuseMatchingIfPairs(Region &body, MLIRContext *context, SymbolTableCollection &s
 /// the existing product layout. Every other moved operation must be recursively pure so
 /// global/RAM accesses, allocations, calls, traps, and unknown effects remain ordered.
 static bool isSafeToSinkComputeOp(Operation *op) { return isa<MemberWriteOp>(op) || isPure(op); }
-
-/// Return whether the pair shares a control that is neither an integer constant nor
-/// `poly.read_const`.
-///
-/// Exact SSA identity admits controls beyond the established constant and `poly.read_const`
-/// product-loop cases. Those broader candidates need an explicit body-interleaving proof.
-static bool hasSharedDynamicLoopControl(scf::ForOp a, scf::ForOp b) {
-  auto isSharedDynamic = [](Value lhs, Value rhs) {
-    if (lhs != rhs) {
-      return false;
-    }
-
-    llvm::APInt constant;
-    return !matchPattern(lhs, m_ConstantInt(&constant)) &&
-           !lhs.getDefiningOp<polymorphic::ConstReadOp>();
-  };
-
-  return isSharedDynamic(a.getLowerBound(), b.getLowerBound()) ||
-         isSharedDynamic(a.getUpperBound(), b.getUpperBound()) ||
-         isSharedDynamic(a.getStep(), b.getStep());
-}
 
 /// Collect compute-sourced operations between sibling loops that must move after `constrainLoop`.
 /// Fail if the compute loop is not before its constrain partner in the same block, a crossed
@@ -529,7 +508,7 @@ canPrepareForFusion(scf::ForOp computeLoop, scf::ForOp constrainLoop) {
       return sink == user || sink->isAncestor(user);
     });
   };
-  auto hasLegalUsers = [&](Value result) {
+  auto hasLegalUsers = [&isMovedWithSink, constrainLoop, &dominanceInfo](Value result) {
     for (Operation *user : result.getUsers()) {
       if (isMovedWithSink(user)) {
         continue;
@@ -606,7 +585,7 @@ fuseMatchingLoopPairs(Region &body, MLIRContext *context, SymbolTableCollection 
   // applying pairs, so the result does not depend on container iteration order.
   IRRewriter rewriter {context};
   for (scf::ForOp lexicalComputeLoop : computeLoops) {
-    auto candidate = llvm::find_if(fusionCandidates, [&](auto pair) {
+    auto candidate = llvm::find_if(fusionCandidates, [lexicalComputeLoop](auto pair) {
       return pair.first == lexicalComputeLoop;
     });
     if (candidate == fusionCandidates.end()) {
@@ -614,12 +593,11 @@ fuseMatchingLoopPairs(Region &body, MLIRContext *context, SymbolTableCollection 
     }
     auto [computeLoop, constrainLoop] = *candidate;
 
-    // Arbitrary shared SSA controls are broader than the established constant/template cases.
-    // Interleave those bodies only when MLIR proves the compute loop recursively pure and the
-    // constrain body contains only operations already admitted by this pass's crossing contract.
-    if (hasSharedDynamicLoopControl(computeLoop, constrainLoop) &&
-        (!isPure(computeLoop.getOperation()) ||
-         hasUnsafeCrossedConstrainOp(constrainLoop.getOperation()))) {
+    // Fusion interleaves the two loop bodies. Require the compute body to be recursively pure and
+    // the constrain body to contain only operations admitted by the crossing contract, regardless
+    // of how the shared controls are represented.
+    if (!isPure(computeLoop.getOperation()) ||
+        hasUnsafeCrossedConstrainOp(constrainLoop.getOperation())) {
       continue;
     }
 
