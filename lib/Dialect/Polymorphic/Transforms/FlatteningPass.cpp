@@ -2008,41 +2008,44 @@ private:
       ConversionTracker &tracker
   ) {
     MLIRContext *ctx = op.getContext();
-    std::string newFuncName =
-        (mlir::Twine(templateNameWithAttrs) + "_" + callTgt.getSymName()).str();
-    StringRef actualNewFuncName = newFuncName;
+    StringAttr instantiatedName;
     if (std::optional<StringAttr> cached =
             tracker.getFullFuncInstantiation(callTgt, concreteParamKey)) {
-      actualNewFuncName = cached->getValue();
+      instantiatedName = *cached;
       LLVM_DEBUG(
           llvm::dbgs() << "[InstantiateFuncAtCallOp]  reusing full instantiation function: "
-                       << actualNewFuncName << '\n'
+                       << instantiatedName.getValue() << '\n'
       );
     } else {
+      std::string newFuncName =
+          (mlir::Twine(templateNameWithAttrs) + "_" + callTgt.getSymName()).str();
       FuncDefOp newFunc = callTgt.clone();
       newFunc.setSymName(newFuncName);
       convertCalleesInPlace(newFunc, paramNameToConcrete);
       // Insert before the TemplateOp; symbol table may adjust the name to ensure uniqueness.
       symTables.getSymbolTable(parentModule).insert(newFunc, Block::iterator(parentTemplate));
-      actualNewFuncName = newFunc.getSymName();
+      instantiatedName = newFunc.getSymNameAttr();
       LLVM_DEBUG(
           llvm::dbgs() << "[InstantiateFuncAtCallOp]  created full instantiation function: "
-                       << actualNewFuncName << '\n'
+                       << instantiatedName.getValue() << '\n'
       );
       if (failed(applyBodyConversions(op, newFunc, paramNameToConcrete))) {
         LLVM_DEBUG(
             llvm::dbgs() << "[InstantiateFuncAtCallOp]   body conversion failed for "
-                         << actualNewFuncName << '\n'
+                         << instantiatedName.getValue() << '\n'
         );
         // Remove the operation through the table that inserted it so a failed clone leaves no
         // stale symbol entry for a later specialization with the same preferred name.
         symTables.getSymbolTable(parentModule).erase(newFunc);
         return rewriter.notifyMatchFailure(op, [&](Diagnostic &diag) {
-          diag.append("failure while creating instantiated function '", actualNewFuncName, '\'');
+          diag.append(
+              "failure while creating instantiated function '", instantiatedName.getValue(), '\''
+          );
         });
       }
-      tracker.recordFullFuncInstantiation(callTgt, concreteParamKey, newFunc.getSymNameAttr());
+      tracker.recordFullFuncInstantiation(callTgt, concreteParamKey, instantiatedName);
     }
+    StringRef actualNewFuncName = instantiatedName.getValue();
 
     // Callee: drop template & original function names, add the new module-level function name.
     // Original: @[prefix...]::@TemplateName::@funcName

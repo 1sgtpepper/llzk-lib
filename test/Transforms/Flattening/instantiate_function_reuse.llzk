@@ -74,9 +74,9 @@ module attributes {llzk.lang} {
 
 // -----
 
-// Deferred expression preservation, canonical felt materialization, and source-based reuse meet
-// here. Equivalent felt spellings must converge on the same uniquified specialization without
-// retargeting to the user function that occupies its preferred generated name.
+// Deferred expression preservation, equivalent felt spellings, and function reuse meet here. All
+// three spellings must use the same uniquified specialization without retargeting to the user
+// function that occupies its preferred generated name.
 module attributes {llzk.lang} {
   poly.template @Seam {
     poly.param @F : !felt.type<"bn128">
