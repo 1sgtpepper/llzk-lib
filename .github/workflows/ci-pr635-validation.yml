@@ -1,9 +1,9 @@
-name: LLZK validation evidence
+name: LLZK PR 637 validation evidence
 
 on:
   push:
     branches:
-      - ci/verify-pr635-output-20260810
+      - ci/verify-pr637-output-20260831
 
 permissions:
   contents: read
@@ -45,7 +45,7 @@ jobs:
           rm -rf "$OUTPUT_PATH"
           mkdir -p "$OUTPUT_PATH"
 
-          pr635_head=9d63951b6f55684c37d1705a15e61b6fc02b3b25
+          pr637_head=5cff0c56a7d5176d23bd962d1d184f7fc0d068d2
           filecheck=
           full_check_results=()
           focused_results=()
@@ -450,9 +450,9 @@ jobs:
             focused_results+=("$name=PASS")
           }
 
-          prepare_head pr635 "$pr635_head"
-          pr635_path="$tested_path"
-          replay_pr635_suite() {
+          prepare_head pr637 "$pr637_head"
+          pr637_path="$tested_path"
+          replay_pr637_suite() {
             local source_root="$1"
             local name_prefix="$2"
             replay_test "${name_prefix}-expr-blocked-default" "$source_root" \
@@ -499,41 +499,47 @@ jobs:
             replay_test "${name_prefix}-struct-pass3" "$source_root" \
               test/Transforms/Flattening/instantiate_structs_pass_3.llzk \
               CHECK --enable-var-scope -split-input-file -llzk-flatten -verify-diagnostics
+            replay_test "${name_prefix}-function-order" "$source_root" \
+              test/Transforms/Flattening/instantiate_function_order.llzk \
+              CHECK -split-input-file -llzk-flatten=cleanup=disabled
+            replay_test "${name_prefix}-function-reuse" "$source_root" \
+              test/Transforms/Flattening/instantiate_function_reuse.llzk \
+              CHECK -split-input-file -llzk-flatten=cleanup=disabled
           }
 
-          replay_pr635_suite "$pr635_path" pr635
+          replay_pr637_suite "$pr637_path" pr637
 
-          replay_focused_test pr635-expr-blocked-order "$pr635_path" \
+          replay_focused_test pr637-expr-blocked-order "$pr637_path" \
             test/Transforms/Flattening/instantiate_expr_blocked_order.llzk \
             NONE nonzero -llzk-flatten -verify-diagnostics
-          replay_focused_test pr635-expr-fail "$pr635_path" \
+          replay_focused_test pr637-expr-fail "$pr637_path" \
             test/Transforms/Flattening/instantiate_expr_fail.llzk \
             CHECK pipeline --enable-var-scope -split-input-file -llzk-flatten \
             -verify-diagnostics
-          replay_focused_test pr635-expr-func-fail "$pr635_path" \
+          replay_focused_test pr637-expr-func-fail "$pr637_path" \
             test/Transforms/Flattening/instantiate_expr_func_fail.llzk \
             CHECK pipeline -split-input-file -llzk-flatten -verify-diagnostics
-          replay_focused_test pr635-felt-normalization-fail "$pr635_path" \
+          replay_focused_test pr637-felt-normalization-fail "$pr637_path" \
             test/Transforms/Flattening/instantiate_func_felt_normalization_fail.llzk \
             NONE zero -llzk-flatten -verify-diagnostics
-          replay_focused_test pr635-funcs-fail "$pr635_path" \
+          replay_focused_test pr637-funcs-fail "$pr637_path" \
             test/Transforms/Flattening/instantiate_funcs_fail.llzk \
             CHECK pipeline --enable-var-scope -split-input-file -llzk-flatten \
             -verify-diagnostics
-          replay_focused_test pr635-struct-rollback "$pr635_path" \
+          replay_focused_test pr637-struct-rollback "$pr637_path" \
             test/Transforms/Flattening/instantiate_struct_rollback.llzk \
             CHECK pipeline --enable-var-scope -split-input-file -llzk-flatten \
             -verify-diagnostics
 
-          if test "${#full_check_results[@]}" -eq 14; then
+          if test "${#full_check_results[@]}" -eq 16; then
             full_check_blocks=PASS
           else
             full_check_blocks=FAIL
           fi
           {
-            echo "pr635_head=$pr635_head"
-            echo "pr635_output_replays=14"
-            echo "full_output_replays=14"
+            echo "pr637_head=$pr637_head"
+            echo "pr637_output_replays=16"
+            echo "full_output_replays=16"
             echo "focused_replays=6"
             echo "full_committed_check_blocks=$full_check_blocks"
             echo "full_check_results=${full_check_results[*]}"
@@ -545,7 +551,7 @@ jobs:
             fi
           } > "$OUTPUT_PATH/summary.txt"
 
-          test "${#full_check_results[@]}" -eq 14
+          test "${#full_check_results[@]}" -eq 16
           test "${#focused_results[@]}" -eq 6
 
       - name: Upload validation evidence
