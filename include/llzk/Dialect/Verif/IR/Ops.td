@@ -449,9 +449,9 @@ def IncludeOp
     inclusion operand types. Every explicit or inferred argument must satisfy its declared type
     restriction. If both forms provide a value for the same parameter, the values must satisfy the
     generic unification rules. For felt-valued parameters, known fields and concrete values must
-    also agree; other symbolic equality remains subject to the generic unifier. The `?` wildcard
-    is valid for any parameter with a `poly.tvar` restriction and leaves that type for later
-    inference based on the callee.
+    also agree; symbols without known concrete values use the generic type-unification rules. The
+    `?` wildcard is valid for any parameter with a `poly.tvar` restriction and leaves that type for
+    later inference based on the callee.
 
     When a target is loaded through an `include.from` alias, struct types in its signature resolve
     under that alias during both explicit-template validation and omitted-template inference.

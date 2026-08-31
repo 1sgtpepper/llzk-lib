@@ -435,6 +435,33 @@ module attributes {llzk.lang} {
     }
   }
 }
+// -----
+
+// Type-only include arguments must resolve symbols nested in their TypeAttr while accepting a
+// concrete type argument.
+module attributes {llzk.lang} {
+  poly.template @TypeTarget {
+    poly.param @T : !poly.tvar<@T>
+
+    function.def @token() { function.return }
+
+    verif.contract @Base for @TypeTarget::@token () {
+      %ok = arith.constant true
+      verif.ensure_compute %ok
+    }
+  }
+
+  function.def @entry() { function.return }
+
+  verif.contract @ValidTypeArgument for @entry () {
+    verif.include @TypeTarget::@Base<[!felt.type]>() : () -> ()
+  }
+
+  verif.contract @MissingTypeArgument for @entry () {
+    // expected-error@+1 {{'verif.include' op references unknown symbol "@MissingType"}}
+    verif.include @TypeTarget::@Base<[!poly.tvar<@MissingType>]>() : () -> ()
+  }
+}
 
 // Symbolic include arguments must resolve to local template bindings or constant globals even when
 // the target parameter has no type restriction.

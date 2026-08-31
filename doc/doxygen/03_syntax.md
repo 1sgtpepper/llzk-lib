@@ -33,7 +33,7 @@ module attributes {llzk.lang = "circom"} {
 - `i1`: (MLIR builtin) Boolean value [0,1].
 - `index`: (MLIR builtin) Machine integer.
 - `felt.type`: Finite field element.
-- `array.type<N x E>`: Aggregate type with indexed [pseudo-homogeneous](\ref pseudo-homogeneous) elements. Element type cannot be another array type, instead multi-dimensional arrays are specified with a comma-separated list of dimension sizes. Each dimension size can be specified as an integer literal, a symbol (referring to a template parameter within a templated `struct.def`), or an [affine_map](https://mlir.llvm.org/docs/Dialects/Affine/#polyhedral-structures) (used when creating arrays within a loop where the dimension size depends on the loop iteration variable).
+- `array.type<N x E>`: Aggregate type with indexed [pseudo-homogeneous](\ref pseudo-homogeneous) elements. Element type cannot be another array type, instead multi-dimensional arrays are specified with a comma-separated list of dimension sizes. Each dimension size can be specified as an integer literal, a symbol that resolves to an index-typed enclosing template parameter or constant global, or an [affine_map](https://mlir.llvm.org/docs/Dialects/Affine/#polyhedral-structures) (used when creating arrays within a loop where the dimension size depends on the loop iteration variable).
 - `struct.type<@Name<[...]>>`: Aggregate type whose named heterogeneous elements are declared within `struct.def @Name`. It generally correlates to a component or function in the source language.
   For a definition nested in a `poly.template`, an optional instantiation list supplies one argument per `poly.param`, in declaration order. For a definition with no parameters, the list may be omitted or explicitly written as `[]`.
   Each argument is one of the following:
@@ -47,7 +47,7 @@ module attributes {llzk.lang = "circom"} {
   and a nested `struct.def @S`, these arguments select the same value and field:
 
   ```llzk
-  // The fieldless constant is materialized as bn128 for @P.
+  // The fieldless constant is accepted as a bn128 value for @P.
   !struct.type<@T::@S<[#felt<const 35>]>>
   // The field can also be written explicitly.
   !struct.type<@T::@S<[#felt<const 35 : !felt.type<"bn128">>]>>
@@ -64,7 +64,7 @@ LLZK supports arrays where the element type is not truly homogeneous, specifical
 
 - Each `array.new` operation creates a fresh mutable array allocation. Two identical `array.new` operations are not interchangeable when either result may be read or written. The same is true for `pod.new`.
 - Felt-valued template arguments on `struct.type`, templated free-function calls, and `verif.include` may be integer literals, felt constants, or symbols.
-  A fieldless felt restriction accepts any felt field. For a fielded restriction, a fieldless felt constant or integer is materialized in the required field; an explicitly fielded constant or a symbol with a known field must use that field, and an untyped symbol does not establish one.
+  A fieldless felt restriction accepts any felt field. For a fielded restriction, a fieldless felt constant or integer is accepted as a value in the required field; an explicitly fielded constant or a symbol with a known field must use that field, and an untyped symbol does not establish one.
   If a call or inclusion signature independently infers the same parameter from multiple positions, its known field, concrete value, and type must agree.
   The `?` wildcard is valid only for a `poly.tvar` restriction and defers its concrete type to a later type-inference pass. Symbolic arguments must resolve to an enclosing template binding or a constant global; unknown, mutable-global, and wrong-kind symbols are rejected.
 - A `function.def` argument may have `function.arg_name = "..."` to preserve the source-level argument name independently from the SSA name printed by MLIR. The value must be a non-empty, untyped string attribute; typed string attributes such as `"x" : i1` are rejected. Attached argument names must be unique within the function. Argument-splitting transforms derive names for generated arguments, such as `input[0]` for array elements or `self.member` for struct members.

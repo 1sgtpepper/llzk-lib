@@ -1002,9 +1002,10 @@ FunctionType CallOp::getTypeSignature() {
   return FunctionType::get(getContext(), getArgOperands().getTypes(), getResultTypes());
 }
 
-FailureOr<UnificationMap> CallOp::unifyTypeSignature(FunctionType other) {
+FailureOr<UnificationMap>
+CallOp::unifyTypeSignature(FunctionType other, UnificationCandidateFn recordCandidate) {
   UnificationMap unifications;
-  if (functionTypesUnify(getTypeSignature(), other, {}, &unifications)) {
+  if (functionTypesUnify(getTypeSignature(), other, {}, &unifications, recordCandidate)) {
     return unifications;
   } else {
     return failure();

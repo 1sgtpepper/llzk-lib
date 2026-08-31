@@ -531,6 +531,16 @@ LogicalResult verifyTemplateParamValueCompatibility(
         compatible = isTemplateParamTypeCompatible(global.getType(), *declaredType);
       }
     }
+  } else if (declaredType && llvm::isa<TypeVarType>(*declaredType)) {
+    TypeAttr typeValue = llvm::dyn_cast<TypeAttr>(value);
+    compatible = typeValue;
+    if (typeValue) {
+      // Resolve nested symbols now, while a valid TypeVarType remains deferred for inference.
+      SymbolTableCollection tables;
+      if (failed(verifyTypeResolution(tables, origin, typeValue.getValue()))) {
+        return failure();
+      }
+    }
   } else if (declaredType) {
     compatible = succeeded(materializeTemplateParamValue(value, declaredType));
   }

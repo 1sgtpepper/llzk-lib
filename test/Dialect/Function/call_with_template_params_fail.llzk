@@ -23,6 +23,40 @@ module attributes {llzk.lang} {
     function.def @constrain(%self: !struct.type<@MissingTemplateParams>) { function.return }
   }
 }
+// -----
+
+// TypeAttr call arguments must resolve nested type symbols while concrete types and caller
+// template type variables remain accepted for a TypeVar restriction.
+module attributes {llzk.lang} {
+  poly.template @TypeTarget {
+    poly.param @T : !poly.tvar<@T>
+
+    function.def @id() -> index {
+      %value = arith.constant 0 : index
+      function.return %value : index
+    }
+  }
+
+  function.def @missing_type_argument() -> index {
+    // expected-error@+1 {{'function.call' op references unknown symbol "@MissingType"}}
+    %value = function.call @TypeTarget::@id<[!poly.tvar<@MissingType>]>() : () -> index
+    function.return %value : index
+  }
+
+  function.def @valid_type_argument() -> index {
+    %value = function.call @TypeTarget::@id<[!felt.type]>() : () -> index
+    function.return %value : index
+  }
+
+  poly.template @Caller {
+    poly.param @U : !poly.tvar<@U>
+
+    function.def @valid_type_variable() -> index {
+      %value = function.call @TypeTarget::@id<[!poly.tvar<@U>]>() : () -> index
+      function.return %value : index
+    }
+  }
+}
 
 // Symbolic call arguments must resolve to local template bindings or constant globals even when
 // the target parameter has no type restriction.

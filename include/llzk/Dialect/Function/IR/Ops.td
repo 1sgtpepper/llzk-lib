@@ -359,8 +359,8 @@ def CallOp : FunctionDialectOp<
     Every explicit or inferred argument must satisfy its `poly.param` type restriction. If the
     function signature independently infers a value for an explicitly supplied parameter, the
     values must satisfy the generic unification rules. For felt-valued parameters, known fields
-    and concrete values must also agree; other symbolic equality remains subject to the generic
-    unifier.
+    and concrete values must also agree; symbols without known concrete values use the generic
+    type-unification rules.
 
     When a target is loaded through an `include.from` alias, struct types in its signature resolve
     under that alias during both explicit-template validation and omitted-template inference. Call
@@ -481,8 +481,11 @@ def CallOp : FunctionDialectOp<
 
     /// Attempt type unification between the inferred FunctionType from this CallOp (as LHS) and
     /// the given FunctionType (as RHS). If successful, return a UnificationMap containing the
-    /// unifications that were made. Otherwise, return failure.
-    ::mlir::FailureOr<UnificationMap> unifyTypeSignature(::mlir::FunctionType other);
+    /// unifications that were made. When provided, `recordCandidate` receives every symbolic
+    /// mapping before repeated conflicts are collapsed in that map. Otherwise, return failure.
+    ::mlir::FailureOr<UnificationMap> unifyTypeSignature(
+        ::mlir::FunctionType other, UnificationCandidateFn recordCandidate = nullptr
+    );
 
     /// Return `true` iff the callee function name is `FUNC_NAME_COMPUTE` (this
     /// does not check if the callee function is located within a StructDefOp).

@@ -103,6 +103,33 @@ TEST_F(TypeHelperTests, test_functionTypesUnify_equalSymbolsDoNotChangeGenericUn
   EXPECT_TRUE(unifications.empty());
 }
 
+TEST_F(TypeHelperTests, test_functionTypesUnify_recordsRepeatedCandidates) {
+  FlatSymbolRefAttr param = FlatSymbolRefAttr::get(&ctx, "F");
+  FlatSymbolRefAttr global = FlatSymbolRefAttr::get(&ctx, "G");
+  FeltConstAttr literal = FeltConstAttr::get(
+      &ctx, APInt(8, 35), FeltType::get(&ctx, "bn128")
+  );
+  FlatSymbolRefAttr box = FlatSymbolRefAttr::get(&ctx, "Box");
+  StructType globalType = StructType::get(box, ArrayRef<Attribute> {global});
+  StructType literalType = StructType::get(box, ArrayRef<Attribute> {literal});
+  StructType parameterType = StructType::get(box, ArrayRef<Attribute> {param});
+  FunctionType caller = FunctionType::get(&ctx, {globalType, literalType}, {});
+  FunctionType callee = FunctionType::get(&ctx, {parameterType, parameterType}, {});
+  UnificationMap unifications;
+  llvm::DenseMap<std::pair<SymbolRefAttr, Side>, SmallVector<Attribute, 2>> candidates;
+  auto recordCandidate = [&](SymbolRefAttr symbol, Side side, Attribute value) {
+    candidates[{symbol, side}].push_back(value);
+  };
+
+  ASSERT_TRUE(functionTypesUnify(caller, callee, {}, &unifications, recordCandidate));
+  auto key = std::make_pair<SymbolRefAttr, Side>(param, Side::RHS);
+  ASSERT_TRUE(unifications.contains(key));
+  EXPECT_FALSE(unifications.lookup(key));
+  ASSERT_EQ(candidates.lookup(key).size(), 2);
+  EXPECT_EQ(candidates.lookup(key)[0], global);
+  EXPECT_EQ(candidates.lookup(key)[1], literal);
+}
+
 TEST_F(TypeHelperTests, test_functionTypesUnify_Input_Fail) {
   IndexType tyIndex = IndexType::get(&ctx);
   FunctionType a = FunctionType::get(&ctx, {IntegerType::get(&ctx, 8)}, {tyIndex});

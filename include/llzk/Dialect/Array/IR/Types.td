@@ -37,8 +37,8 @@ def LLZK_ArrayType
     The dimensions of the array are specified using a list of attributes, one
     per dimension. Each attribute must be one of the following:
       - IntegerAttr (with IndexType), specifying a fixed dimension size
-      - SymbolRefAttr, specifying a dimension size defined by a struct parameter or
-        global constant
+      - SymbolRefAttr, specifying a dimension size defined by an index-typed enclosing template
+        parameter or constant global
       - AffineMapAttr, specifying a dimension size computed from surrounding loop
         induction variables
 
