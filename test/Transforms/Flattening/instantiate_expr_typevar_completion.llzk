@@ -1,6 +1,6 @@
 // RUN: llzk-opt -split-input-file -llzk-flatten %s | FileCheck %s
 
-// A fully concrete type-variable expression is normalized before direct evaluation.
+// A type-variable expression is evaluated after its value and result types become concrete.
 module attributes {llzk.lang} {
   poly.template @InnerDirect {
     poly.param @Num
@@ -39,7 +39,7 @@ module attributes {llzk.lang} {
 
 // -----
 
-// A partially specialized expression is normalized when retained and can be evaluated when the
+// A partially specialized expression retains its known bindings and is evaluated when the
 // remaining binding becomes concrete through the enclosing specialization.
 module attributes {llzk.lang} {
   poly.template @InnerPartial {

@@ -1,7 +1,7 @@
 // RUN: llzk-opt -split-input-file -llzk-flatten %s | FileCheck %s
 
-// A fieldless FeltConstAttr is materialized to the converted fielded type during direct
-// specialization of a free function.
+// A fieldless felt constant is materialized in the required field during direct specialization of
+// a free function.
 module attributes {llzk.lang} {
   poly.template @FeltDirect {
     poly.param @Num

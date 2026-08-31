@@ -111,9 +111,8 @@ class ConversionTracker {
 
   /// Tracks if some step performed a modification of the code such that another pass should be run.
   bool modified;
-  /// Maps original remote (i.e., use site) type to new remote type.
-  /// Expression-only struct templates may have an unparameterized source key. A partial
-  /// specialization value retains its remaining parameters.
+  /// Maps original remote (i.e., use site) type to new remote type. A partially specialized result
+  /// retains its remaining parameters.
   DenseMap<StructType, StructType> structInstantiations;
   /// Maps each instantiated type to its canonical source type for legal conversion checks.
   /// An explicit empty parameter list is a representation alias of an absent parameter list in the
@@ -129,23 +128,22 @@ class ConversionTracker {
   /// Maps new remote type (i.e., the values in 'structInstantiations') to a list of Diagnostic
   /// to report at the location(s) of the compute() that causes the instantiation to the StructType.
   DenseMap<StructType, SmallVector<Diagnostic>> delayedDiagnostics;
-  /// Names of source structs in templates that have expressions but no poly.param operations.
-  /// These are the only unparameterized struct types eligible for expression-only cloning.
-  DenseSet<SymbolRefAttr> expressionOnlyStructNames;
+  /// Original `StructDefOp`s directly inside a template with `poly.expr` bindings and no
+  /// `poly.param` operations. Store operation identity because root-relative symbol paths do not
+  /// identify a definition across separate modules.
+  DenseSet<Operation *> originalStructsWithExprsAndNoParams;
 
 public:
-  /// Index expression-only struct sources before rewriting begins. Generated templates must not
-  /// become new source candidates merely because earlier specialization removed their parameters.
+  /// Index eligible source definitions before rewriting begins. Generated templates must not
+  /// become eligible merely because an earlier specialization removed their parameters.
   explicit ConversionTracker(ModuleOp root) : modified(false) {
     root.walk([this](TemplateOp templateOp) {
       if (templateOp.hasConstOps<TemplateParamOp>() || !templateOp.hasConstOps<TemplateExprOp>()) {
         return;
       }
-      templateOp.getBodyRegion().walk([this, templateOp](StructDefOp structDef) {
-        if (getParentOfType<TemplateOp>(structDef) == templateOp) {
-          expressionOnlyStructNames.insert(structDef.getType().getNameRef());
-        }
-      });
+      for (StructDefOp structDef : templateOp.getBodyRegion().front().getOps<StructDefOp>()) {
+        originalStructsWithExprsAndNoParams.insert(structDef.getOperation());
+      }
     });
   }
 
@@ -153,8 +151,10 @@ public:
   void resetModifiedFlag() { modified = false; }
   void updateModifiedFlag(bool currStepModified) { modified |= currStepModified; }
 
-  bool isExpressionOnlyStruct(SymbolRefAttr name) const {
-    return expressionOnlyStructNames.contains(name);
+  /// Return whether `structDef` was originally inside a template with expressions and no
+  /// parameters.
+  bool isOriginalStructWithExprsAndNoParams(StructDefOp structDef) const {
+    return originalStructsWithExprsAndNoParams.contains(structDef.getOperation());
   }
 
   void recordInstantiation(StructType oldType, StructType newType) {
@@ -761,8 +761,8 @@ evaluateExpr(TemplateExprOp exprOp, const DenseMap<Attribute, Attribute> &paramN
 }
 
 /// Return whether `target` may reference `exprOp`. Symbol-use analysis stops at symbol-table
-/// boundaries, so inspect target regions separately. An unknown result is conservatively treated
-/// as a reference.
+/// boundaries, so inspect target regions separately. If analysis cannot prove that `target` has no
+/// use, conservatively treat the expression as referenced.
 static bool targetMayReferenceTemplateExpr(Operation *target, TemplateExprOp exprOp) {
   // MemberDefOp stores its type as a native property rather than an operation attribute, so the
   // generic symbol-use walker cannot see an expression used only in a member's type. These members
@@ -790,9 +790,9 @@ static bool targetMayReferenceTemplateExpr(Operation *target, TemplateExprOp exp
 
 /// Evaluate `TemplateExprOp`s referenced by `target` whose dependencies are concrete, adding their
 /// values to `paramNameToConcrete`. Skip unreferenced expressions. A failed result is a fatal
-/// normalization or evaluation error; a successful empty optional means a referenced value or type
+/// conversion or evaluation error; a successful empty optional means a referenced value or type
 /// dependency is unresolved, so the caller should make no progress after the complete scan. A
-/// successful value contains normalized detached clones for expressions that still depend on
+/// successful value contains detached, converted clones for expressions that still depend on
 /// remaining parameters, which the caller must insert or destroy. Any concrete but malformed or
 /// non-foldable expression is a failure.
 static FailureOr<std::optional<SmallVector<TemplateExprOp>>> evaluateTemplateExprs(
@@ -818,28 +818,28 @@ static FailureOr<std::optional<SmallVector<TemplateExprOp>>> evaluateTemplateExp
     // Evaluation and preservation must observe the same concrete type substitutions. In
     // particular, a type-variable binding can make an otherwise non-foldable cast an identity
     // cast, so folding the original expression would be route-dependent.
-    FailureOr<std::optional<TemplateExprOp>> normalizedExpr =
+    FailureOr<std::optional<TemplateExprOp>> convertedExpr =
         cloneDeferredExpr(exprOp, paramNameToConcrete, deferredExprDiagnostics);
-    if (failed(normalizedExpr)) {
+    if (failed(convertedExpr)) {
       destroyDeferredExprs();
       return failure();
     }
-    if (!normalizedExpr->has_value()) {
-      // A temporarily blocked expression prevents this specialization, but independent
+    if (!convertedExpr->has_value()) {
+      // An expression with an unresolved dependency prevents this specialization, but independent
       // referenced expressions still need to be checked for fatal evaluation errors.
       hasBlockedExpression = true;
       continue;
     }
-    TemplateExprOp normalizedExprOp = **normalizedExpr;
+    TemplateExprOp convertedExprOp = **convertedExpr;
     FailureOr<std::optional<Attribute>> result =
-        evaluateExpr(normalizedExprOp, paramNameToConcrete);
+        evaluateExpr(convertedExprOp, paramNameToConcrete);
     if (failed(result)) {
-      normalizedExprOp->destroy();
+      convertedExprOp->destroy();
       destroyDeferredExprs();
       return failure();
     }
     if (*result) {
-      normalizedExprOp->destroy();
+      convertedExprOp->destroy();
       Attribute value = result->value();
       auto exprNameAttr = FlatSymbolRefAttr::get(exprOp.getSymNameAttr());
       paramNameToConcrete.try_emplace(exprNameAttr, value);
@@ -848,9 +848,9 @@ static FailureOr<std::optional<SmallVector<TemplateExprOp>>> evaluateTemplateExp
                        << " evaluated to " << value << '\n'
       );
     } else {
-      // Keep the normalized detached clone. The caller transfers it into the reduced template,
-      // so later specialization starts from the same representation that was just evaluated.
-      deferredExprs.push_back(normalizedExprOp);
+      // Keep the converted detached clone. The caller transfers it into the reduced template, so
+      // later specialization starts from the same representation that was just evaluated.
+      deferredExprs.push_back(convertedExprOp);
     }
   }
   if (hasBlockedExpression) {
@@ -931,9 +931,9 @@ class StructCloner {
     StructType newTy;
 
   public:
+    /// Convert `originalType` to `newType` and apply known template bindings to nested types.
     MappedTypeConverter(
         StructType originalType, StructType newType,
-        /// Known values for template binding names referenced by `originalType`
         const DenseMap<Attribute, Attribute> &paramNameToInstantiatedValue
     )
         : TemplateParamTypeConverter(paramNameToInstantiatedValue), origTy(originalType),
@@ -1212,21 +1212,12 @@ public:
 
   FailureOr<StructType> createInstantiatedClone(StructType orig) {
     LLVM_DEBUG(llvm::dbgs() << "[StructCloner] orig: " << orig << '\n');
-    if (ArrayAttr params = orig.getParams()) {
-      if (params.empty() && !tracker_.isExpressionOnlyStruct(orig.getNameRef())) {
-        LLVM_DEBUG(llvm::dbgs() << "[StructCloner]   skip: ordinary empty parameter list\n");
-        return failure();
-      }
+    if (ArrayAttr params = orig.getParams(); params && !params.empty()) {
       return genClone(orig, params.getValue());
     }
 
-    // An unparameterized type is normally already concrete. It still needs a clone when its
-    // enclosing template contains a referenced expression, because expression materialization
-    // is independent of poly.param substitution.
-    if (!tracker_.isExpressionOnlyStruct(orig.getNameRef())) {
-      LLVM_DEBUG(llvm::dbgs() << "[StructCloner]   skip: not an expression-only source\n");
-      return failure();
-    }
+    // A type with no arguments is normally already concrete. It still needs a clone when its
+    // original definition's template has no parameters and the struct references an expression.
     SymbolTableCollection tables;
     FailureOr<SymbolLookupResult<StructDefOp>> definition =
         orig.getDefinition(tables, rootMod, /*reportMissing=*/false);
@@ -1235,6 +1226,14 @@ public:
       return failure();
     }
     StructDefOp structDef = definition->get();
+    if (!tracker_.isOriginalStructWithExprsAndNoParams(structDef)) {
+      LLVM_DEBUG(
+          llvm::dbgs()
+          << "[StructCloner]   skip: definition was not originally in a template with expressions "
+             "and no parameters\n"
+      );
+      return failure();
+    }
     TemplateOp parentTemplate = getParentOfType<TemplateOp>(structDef);
     if (!parentTemplate || parentTemplate.getConstOps<TemplateExprOp>().empty() ||
         !llvm::any_of(parentTemplate.getConstOps<TemplateExprOp>(), [&](TemplateExprOp exprOp) {
@@ -1352,10 +1351,10 @@ public:
   }
 };
 
-// This one ensures MemberDefOp types are converted even if there are no reads/writes to them.
+/// Convert a `MemberDefOp`'s native type property even when no body operation reads or writes it.
 class MemberDefOpPattern : public OpConversionPattern<MemberDefOp> {
 public:
-  MemberDefOpPattern(TypeConverter &converter, MLIRContext *ctx, ConversionTracker &)
+  MemberDefOpPattern(TypeConverter &converter, MLIRContext *ctx)
       // benefit>0 so this applies instead of GeneralTypeReplacePattern<MemberDefOp>
       : OpConversionPattern<MemberDefOp>(converter, ctx, /*benefit=*/1) {}
 
@@ -1369,7 +1368,7 @@ public:
     if (oldMemberType == newMemberType) {
       return failure(); // nothing changed
     }
-    rewriter.modifyOpInPlace(op, [&op, &newMemberType]() { op.setType(newMemberType); });
+    rewriter.modifyOpInPlace(op, [op, newMemberType]() { op.setType(newMemberType); });
     return success();
   }
 };
@@ -1392,15 +1391,16 @@ LogicalResult run(ModuleOp modOp, ConversionTracker &tracker) {
   ParameterizedStructUseTypeConverter tyConv(tracker, modOp);
   DisableReportMissing drm(tyConv);
   ConversionTarget target = newConverterDefinedTargetWithCallback<>(tyConv, ctx, drm);
-  // Keep source expression-only templates out of type conversion. TypeConverter caches results by
-  // Type, so preserving a source type based on the enclosing operation would leak into external
-  // uses of the same type and hide a cached specialization.
+  // Keep source templates with expressions and no parameters out of type conversion. TypeConverter
+  // caches results by Type, so preserving a source type based on the enclosing operation would
+  // leak into external uses of the same type and hide a cached specialization.
   target.addLegalOp<TemplateOp>();
   target.markOpRecursivelyLegal<TemplateOp>([](TemplateOp op) {
     return !op.hasConstOps<TemplateParamOp>() && op.hasConstOps<TemplateExprOp>();
   });
   RewritePatternSet patterns = newGeneralRewritePatternSet(tyConv, ctx, target);
-  patterns.add<CallStructFuncPattern, MemberDefOpPattern>(tyConv, ctx, tracker);
+  patterns.add<CallStructFuncPattern>(tyConv, ctx, tracker);
+  patterns.add<MemberDefOpPattern>(tyConv, ctx);
   return applyPartialConversion(modOp, target, std::move(patterns));
 }
 
@@ -1418,9 +1418,6 @@ LogicalResult instantiateMainStruct(ModuleOp modOp, ConversionTracker &tracker) 
   }
 
   if (isNullOrEmpty(mainType.getParams())) {
-    if (!tracker.isExpressionOnlyStruct(mainType.getNameRef())) {
-      return success();
-    }
     SymbolTableCollection tables;
     FailureOr<SymbolLookupResult<StructDefOp>> definition =
         mainType.getDefinition(tables, modOp, /*reportMissing=*/false);
@@ -1428,6 +1425,9 @@ LogicalResult instantiateMainStruct(ModuleOp modOp, ConversionTracker &tracker) 
       return success();
     }
     StructDefOp structDef = definition->get();
+    if (!tracker.isOriginalStructWithExprsAndNoParams(structDef)) {
+      return success();
+    }
     TemplateOp parentTemplate = getParentOfType<TemplateOp>(structDef);
     if (!parentTemplate || parentTemplate.getConstOps<TemplateExprOp>().empty() ||
         !llvm::any_of(parentTemplate.getConstOps<TemplateExprOp>(), [&](TemplateExprOp exprOp) {
@@ -1683,9 +1683,9 @@ static LogicalResult applyBodyConversions(
   return success();
 }
 
-/// Specialize calls whose target is a free function inside a `poly.template`. The rewrite
-/// materializes every known binding, creates a full clone or a reduced template when concrete
-/// progress is possible, and leaves the call unchanged when no parameter can yet be specialized.
+/// Specialize calls whose target is a free function inside a `poly.template`. Materialize every
+/// known binding, create a full clone or reduced template when a concrete binding or referenced
+/// expression makes progress, and leave the call unchanged when no such progress is possible.
 class InstantiateFuncAtCallOp final : public OpRewritePattern<CallOp> {
   ConversionTracker &tracker_;
 
@@ -3051,8 +3051,9 @@ class PassImpl : public llzk::polymorphic::impl::FlatteningPassBase<PassImpl> {
     OpPassManager universalCleanup(ModuleOp::getOperationName());
     universalCleanup.addPass(createEmptyTemplateRemovalPass());
 
-    // Run universal cleanup as a preliminary step so ordinary templates without bindings are
-    // normalized before specialization; expression-only templates remain eligible for cloning.
+    // Run universal cleanup first so templates without `poly.param` or `poly.expr` bindings are
+    // converted to modules before specialization; templates with expressions and no parameters
+    // must remain eligible for cloning.
     if (failed(runPipeline(universalCleanup, modOp))) {
       return failure();
     }

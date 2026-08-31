@@ -147,8 +147,8 @@ witness generation concrete and executable:
 - affine lowering for execution-engine mode
 - subcomponent inlining for execution-engine mode
 
-Template parameters and affine instantiations are therefore supported only when
-they can be fully resolved by the preprocessing pipeline before execution.
+Template parameters, template expressions, and affine instantiations are therefore supported only
+when they can be fully resolved by the preprocessing pipeline before execution.
 
 # llzk-smt-check {#llzk-smt-check}
 

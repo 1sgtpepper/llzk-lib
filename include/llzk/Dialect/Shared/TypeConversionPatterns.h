@@ -39,9 +39,9 @@
 
 namespace llzk {
 
-/// Check whether an op is legal with respect to the given type converter, including TypeAttr
-/// attributes and MemberDefOp type properties (with special handling for FunctionType stored inside
-/// a TypeAttr).
+/// Check whether an op is legal with respect to the given type converter, including `TypeAttr`
+/// attributes and the `type` property of `component::MemberDefOp` (with special handling for
+/// `FunctionType` stored inside a `TypeAttr`).
 inline bool defaultLegalityCheck(const mlir::TypeConverter &tyConv, mlir::Operation *op) {
   // Check operand types and result types
   if (!tyConv.isLegal(op)) {

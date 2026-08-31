@@ -1,7 +1,7 @@
 // RUN: llzk-opt -split-input-file -llzk-flatten -verify-diagnostics %s | FileCheck --enable-var-scope %s
 
-// Signature-inferred index bindings create concrete free-function clones and materialize their
-// parameter reads.
+// Signature unification creates concrete free-function clones and materializes their parameter
+// reads.
 module attributes {llzk.lang} {
   poly.template @template_f1 {
     poly.param @N : index

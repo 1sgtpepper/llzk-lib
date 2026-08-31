@@ -185,9 +185,8 @@ def LLZK_TemplateExprOp
                    IsolatedFromAbove, NoRegionArguments, SingleBlock]> {
   let summary = "declares a named expression in a polymorphic template";
   let description = [{
-    Declares an expression over zero or more parameters of a `poly.template`. A `poly.read_const`
-    operation in a function or struct definition within the template may read the yielded value by
-    name.
+    Declares an expression over zero or more parameters of a `poly.template`. Its name can be used
+    by `poly.read_const` and as a symbolic array dimension or struct argument within the template.
 
     The body of a `poly.expr` cannot contain any symbols defined via `poly.expr` to prevent
     cyclic initialization. The body must also have no side effects to ensure it can be safely
@@ -241,9 +240,9 @@ def LLZK_ConstReadOp
   let summary = "read a template parameter or expression";
   let description = [{
     This operation reads a named `poly.param` or `poly.expr` binding from the enclosing template.
-    Its result type must match a concrete parameter restriction or expression result type. For an
-    unrestricted parameter, the result type states the type required at that use. A parameter whose
-    restriction is a `poly.tvar` cannot be read directly.
+    Its result type must match the result of a `poly.expr` or the restriction on a `poly.param`.
+    For an unrestricted parameter, the result type states the type required at that use. A
+    `poly.param` restricted to `poly.tvar` cannot be read directly.
 
     Examples:
     ```llzk
@@ -265,8 +264,8 @@ def LLZK_ConstReadOp
 def LLZK_UnifiableCastOp : PolymorphicDialectOp<"unifiable_cast", [Pure]> {
   let summary = "cast between two unifiable types";
   let description = [{
-    This operation reinterprets a value as a different type with the restriction
-    that the input and output types of the cast are unifiable.
+    This operation represents a value with a different type, with the restriction that the input
+    and output types of the cast are unifiable.
 
     Most operations that accept LLZK types also accept operands whose types unify, so an explicit
     cast is normally unnecessary. Use this operation when neither the input nor result type can be
@@ -274,9 +273,9 @@ def LLZK_UnifiableCastOp : PolymorphicDialectOp<"unifiable_cast", [Pure]> {
     this operation instead of an `unrealized_conversion_cast` while preserving the requirement that
     the unequal types unify.
 
-    During constant folding, this operation returns its input constant only when the input and
-    result types are identical. Non-constant inputs do not fold. Merely unifiable but unequal
-    types do not fold because the input has a different type from the result.
+    When constant folding has a constant input and the input and result types are identical, this
+    operation folds to that input. Merely unifiable unequal types do not fold because the
+    replacement would have the wrong result type.
 
     Example:
     ```llzk

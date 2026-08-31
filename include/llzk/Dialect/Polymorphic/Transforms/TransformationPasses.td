@@ -58,27 +58,21 @@ def FlatteningPass : LLZKPass<"llzk-flatten"> {
   let description = [{
     Iterates the following transformations to a fixpoint, bounded by `max-iter`:
 
-    - Instantiate parameterized structs reached from `llzk.main` or struct uses. Specialize free
-      functions from concrete explicit arguments, signature unification, or body-inferred wildcard
-      types. If only some parameters are concrete, keep the specialization in a reduced
-      `poly.template`.
-    - Evaluate `poly.expr` values referenced by the definition being specialized when their
-      dependencies are concrete. A partial specialization retains normalized expressions that
-      still depend on remaining parameters. A referenced concrete expression that cannot fold, or
-      a referenced expression that remains unresolved in a full specialization, is an error.
-      A struct or free function in a template with no `poly.param` operations is also specialized
-      when it references a concrete expression.
-    - Apply concrete bindings to scalar type variables, array dimensions and element types,
-      parameterized struct arguments, POD record types, and explicit arguments on nested calls.
-    - Unroll loops with known iteration bounds, instantiate `affine_map` parameters of struct and
-      array types, and propagate the resulting member, array, call, and function types.
+    - Specialize referenced parameterized structs and free functions from concrete template
+      arguments, signature unification, or wildcard type parameters inferred from the body.
+      Partial specializations retain unresolved bindings in a reduced `poly.template`.
+    - Evaluate referenced `poly.expr` bindings once their value and type dependencies are concrete.
+      Preserve unresolved expressions in partial specializations; a referenced expression that
+      remains unresolved or cannot fold during a full specialization is an error. A definition
+      directly inside a template with `poly.expr` bindings and no `poly.param` operations is
+      specialized when it references a concrete expression.
+    - Propagate concrete bindings through scalar type variables, array dimensions and element
+      types, parameterized struct arguments, POD record types, and nested-call arguments.
+    - Unroll loops with known bounds, instantiate affine-map parameters, and propagate resulting
+      types.
 
-    A specialization is retained only after its body conversion succeeds; free-function
-    specializations must also pass nested-call verification. Failed specializations and their
-    accumulated warnings are discarded together.
-
-    After the fixpoint, the pass applies the selected cleanup mode, removes empty templates, and
-    removes unused discardable array allocations.
+    A specialization is kept only after body conversion succeeds; free-function clones must also
+    pass nested-call verification. After the fixpoint, the selected cleanup mode is applied.
   }];
   // Implementation note: These options should be kept in sync with
   // `StructInliningFlatteningOptions` in `LLZKTransformationPassPipelines.h`.
