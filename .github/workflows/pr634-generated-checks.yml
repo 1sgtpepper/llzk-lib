@@ -13,7 +13,7 @@ jobs:
         uses: actions/checkout@v6
         with:
           persist-credentials: false
-          ref: db163d1d96ec4dab4ae9be66e4a9a32059fa6c54
+          ref: 9d25c1bc12289250336b1880c80040b5972a793a
 
       - uses: cachix/install-nix-action@d1ca217b388ee87b2507a9a93bf01368bde7cec2
         with:
@@ -39,7 +39,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p artifacts
-          target_head=db163d1d96ec4dab4ae9be66e4a9a32059fa6c54
+          target_head=9d25c1bc12289250336b1880c80040b5972a793a
           test "$(git rev-parse HEAD)" = "$target_head"
           filecheck=$(find /nix/store -type f -path '*/bin/FileCheck' -executable -print -quit)
           test -n "$filecheck"
