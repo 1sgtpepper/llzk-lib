@@ -119,26 +119,26 @@ def FuseProductControlFlowPass : LLZKPass<"llzk-fuse-product-control-flow"> {
     functions. A pair must have the same parent region and opposite `product_source` roles.
 
     Loop pairs must identify the same lower bound, upper bound, and step and use the same comparison
-    mode: an absent or false `unsignedCmp` attribute is signed, while true is unsigned. Intervening
-    compute operations may move after the constrain loop only when they are direct member writes or
-    MLIR proves them recursively pure; other intervening operations must be recursively pure. A
-    moved member write cannot cross observable storage effects, calls, allocation, traps,
-    unsupported structured control flow, or unknown effects in the constrain loop. Moving any
-    result must also preserve dominance. Fusion interleaves the loop bodies, so every loop pair
-    requires a recursively pure compute loop and a constrain loop with none of those unsafe
-    operations.
+    mode: an absent `unsignedCmp` attribute or `BoolAttr(false)` is signed, while `UnitAttr` or
+    `BoolAttr(true)` is unsigned. Intervening compute operations may move after the constrain loop
+    only when they are direct member writes or MLIR proves them recursively pure; other
+    intervening operations must be recursively pure. A moved member write cannot cross observable
+    storage effects, calls, allocation, traps, unsupported structured control flow, or unknown
+    effects in the constrain loop. Moving any result must also preserve dominance. Fusion
+    interleaves the loop bodies, so every loop pair requires a recursively pure compute loop and a
+    constrain loop with none of those unsafe operations.
 
     Conditional pairs must be in the same block with the compute op first, use the exact same SSA
     condition, have matching else regions and compatible attributes, and have a resultless
     constrain op. Each fused branch keeps compute operations before constrain operations and
     preserves the compute results. Between the pair, the pass permits only direct member writes of
-    compute-if results and matching unoffset constrain-side signal reads. Each such read must have
-    operands available before the compute op, be used only by the constrain op, and match exactly
-    one intervening write; other intervening operations prevent fusion.
+    compute-if results and matching constrain-side signal member reads without a table offset. Each
+    such read must have operands available before the compute op, be used only by the constrain op,
+    and match exactly one intervening write; other intervening operations prevent fusion.
 
-    Fused operations preserve compatible attributes and `scf.yield` attributes, loop comparison
-    mode, and combined source locations, and are marked `product_source = "fused"`. Unsafe,
-    ambiguous, and unmatched control flow is left unchanged.
+    Fused conditionals and their `scf.yield` operations preserve compatible attributes and combine
+    source locations. Fused loops preserve comparison mode. Every fused operation is marked
+    `product_source = "fused"`. Only safe, uniquely matched pairs are fused.
   }];
 }
 
