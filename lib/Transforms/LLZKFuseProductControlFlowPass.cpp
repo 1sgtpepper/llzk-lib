@@ -425,8 +425,7 @@ static void fuseIfPair(
   rewriter.eraseOp(computeIf);
 }
 
-/// Fuse uniquely matchable marked compute/constrain `scf.if` pairs in `body`; leave unmatched pairs
-/// unchanged.
+/// Fuse uniquely matchable marked compute/constrain `scf.if` pairs in `body`.
 static void
 fuseMatchingIfPairs(Region &body, MLIRContext *context, SymbolTableCollection &symbolTables) {
   llvm::SmallVector<scf::IfOp> computeIfs, constrainIfs;
@@ -492,7 +491,7 @@ canPrepareForFusion(scf::ForOp computeLoop, scf::ForOp constrainLoop) {
   }
 
   if (llvm::any_of(opsToSink, [](Operation *op) { return isa<MemberWriteOp>(op); })) {
-    // A direct member write is intentionally sinkable, but it cannot cross a target-loop read or
+    // A direct member write is intentionally sinkable, but it cannot cross a constrain-loop read or
     // unknown effect: without alias analysis, either may observe the component state before the
     // write in the original order and after it in the fused order. Constraint emission, nondet
     // values, and structured control flow remain admissible; their nested operations are checked
@@ -556,8 +555,8 @@ prepareForFusion(scf::ForOp computeLoop, scf::ForOp constrainLoop, IRRewriter &r
   return success();
 }
 
-/// Fuse uniquely matchable marked compute/constrain `scf.for` pairs in `body`; leave unmatched or
-/// unpreparable pairs unchanged.
+/// Fuse uniquely matchable marked compute/constrain `scf.for` pairs in `body` when preparation is
+/// legal.
 static void
 fuseMatchingLoopPairs(Region &body, MLIRContext *context, SymbolTableCollection &symbolTables) {
   // Collect marked loops before matching unique compute/constrain pairs.

@@ -352,8 +352,8 @@ TEST_F(FuseProductControlFlowTests, RepeatedMemberWritesPreventReadHoisting) {
 }
 
 TEST_F(FuseProductControlFlowTests, NestedLoopControlMismatchPreventsFusion) {
-  // The outer conditionals may fuse, but equal-count loops with different bounds or steps must
-  // retain each source induction sequence because their bodies observe the induction variable.
+  // The outer conditionals may fuse, but equal-count loops with different bounds or steps have
+  // different induction sequences and must remain separate.
   mlir::OwningOpRef<mlir::ModuleOp> module = mlir::parseSourceString<mlir::ModuleOp>(
       R"mlir(
     module attributes {llzk.lang = "llzk"} {
@@ -1191,7 +1191,7 @@ TEST_F(FuseProductControlFlowTests, EffectfulOperationsBetweenLoopsPreventFusion
 }
 
 TEST_F(FuseProductControlFlowTests, MemberWriteSinkDoesNotCrossConstrainRead) {
-  // A member write may be sunk only when the target loop cannot observe component state. A read
+  // A member write may be sunk only when the constrain loop cannot observe component state. A read
   // inside the constrain loop would see the write before fusion but after it in the fused order.
   mlir::OwningOpRef<mlir::ModuleOp> module = mlir::parseSourceString<mlir::ModuleOp>(
       R"mlir(
@@ -1269,7 +1269,7 @@ TEST_F(FuseProductControlFlowTests, MemberWriteSinkDoesNotCrossConstrainRead) {
   EXPECT_TRUE(write->isBeforeInBlock(constrainLoop));
 }
 
-TEST_F(FuseProductControlFlowTests, MemberWriteSinkRemainsFusibleWithoutTargetRead) {
+TEST_F(FuseProductControlFlowTests, MemberWriteSinkRemainsFusibleWithoutConstrainRead) {
   // Direct member writes retain their existing sink behavior when the constrain loop has no
   // storage or unknown effect that could observe the write.
   mlir::OwningOpRef<mlir::ModuleOp> module = mlir::parseSourceString<mlir::ModuleOp>(
