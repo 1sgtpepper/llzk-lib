@@ -39,7 +39,7 @@ inline bool hasProductSource(mlir::Operation *op, llvm::StringRef source) {
   return productSource && *productSource == source;
 }
 
-/// Set the product-source value used to classify aligned and fused operations.
+/// Set the product-source role recorded on `op`.
 inline void setProductSource(mlir::Operation *op, llvm::StringRef source) {
   op->setAttr(PRODUCT_SOURCE, mlir::StringAttr::get(op->getContext(), source));
 }

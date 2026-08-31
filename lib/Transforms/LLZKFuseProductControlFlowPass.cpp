@@ -68,7 +68,7 @@ static inline bool areOppositeProductSources(Operation *a, Operation *b) {
 /// Return whether two control operands identify the same induction sequence value.
 ///
 /// Distinct `poly.read_const` operations are equivalent only when they read the same binding from
-/// sibling contexts. Matching trip counts are not sufficient because the fused loop uses one
+/// the same block. Matching trip counts are not sufficient because the fused loop uses one
 /// induction variable for both source bodies.
 static bool sameLoopControlValue(Value a, Value b) {
   if (a.getType() != b.getType()) {

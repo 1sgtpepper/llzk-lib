@@ -116,29 +116,37 @@ def FuseProductControlFlowPass : LLZKPass<"llzk-fuse-product-control-flow"> {
       "Fuse matching compute/constrain control flow in a @product function";
   let description = [{
     Fuse uniquely matched compute/constrain `scf.for` and `scf.if` siblings in `@product`
-    functions. A pair must have the same parent region and opposite `product_source` roles.
+    functions. A pair must have opposite `product_source` roles. Unmatched, ambiguous, or unsafe
+    pairs remain unchanged.
 
-    Loop pairs must identify the same lower bound, upper bound, and step and use the same comparison
-    mode: an absent `unsignedCmp` attribute or `BoolAttr(false)` is signed, while `UnitAttr` or
-    `BoolAttr(true)` is unsigned. Intervening compute operations may move after the constrain loop
-    only when they are direct member writes or MLIR proves them recursively pure; other
-    intervening operations must be recursively pure. A moved member write cannot cross observable
-    storage effects, calls, allocation, traps, unsupported structured control flow, or unknown
-    effects in the constrain loop. Moving any result must also preserve dominance. Fusion
-    interleaves the loop bodies, so every loop pair requires a recursively pure compute loop and a
-    constrain loop with none of those unsafe operations.
+    Loop pairs must be in the same block with the compute loop first and identify the same lower
+    bound, upper bound, and step; equal trip counts alone are insufficient. A missing
+    `unsignedCmp` or `unsignedCmp = false` uses signed bounds; any other present `unsignedCmp` uses
+    unsigned bounds. Fusion interleaves the loop bodies, so the compute loop must be
+    memory-effect-free and speculatable. The constrain loop may contain only supported
+    constraint and nondeterministic operations, nested conditionals, speculatable `scf.for`
+    operations, and other operations that MLIR proves pure. Storage effects, calls, allocation,
+    traps, `scf.while`, and unknown effects prevent fusion.
+
+    Compute-side operations moved after the constrain loop retain their relative order and must be
+    direct member writes or operations that MLIR proves pure; every other intervening operation
+    must be pure. A member write cannot move across observable effects in the constrain loop, and
+    moving any result must preserve dominance.
 
     Conditional pairs must be in the same block with the compute op first, use the exact same SSA
-    condition, have matching else regions and compatible attributes, and have a resultless
-    constrain op. Each fused branch keeps compute operations before constrain operations and
-    preserves the compute results. Between the pair, the pass permits only direct member writes of
-    compute-if results and matching constrain-side signal member reads without a table offset. Each
-    such read must have operands available before the compute op, be used only by the constrain op,
-    and match exactly one intervening write; other intervening operations prevent fusion.
+    condition, both have or both omit an else region, have compatible attributes, and have a
+    resultless constrain op. Attribute compatibility means that all attributes other than
+    `product_source` are exactly equal; compatible attributes are retained. Each fused branch keeps
+    compute operations before constrain operations and preserves the compute results. Between the
+    pair, the pass permits only direct member writes of compute-if results and matching
+    constrain-side signal member reads without a table offset. Each such read must have operands
+    available before the compute op, be used only within the constrain-side conditional, and match
+    exactly one intervening write; other intervening operations prevent fusion.
 
-    Fused conditionals and their `scf.yield` operations preserve compatible attributes and combine
-    source locations. Fused loops preserve comparison mode. Every fused operation is marked
-    `product_source = "fused"`. Only safe, uniquely matched pairs are fused.
+    Fused conditionals and their `scf.yield` operations combine source locations. Each newly
+    created fused `scf.if` or `scf.for` is marked `product_source = "fused"`; cloned branch
+    operations retain their source markers, while fused yields retain only compatible non-source
+    attributes. Fused loops preserve comparison mode.
   }];
 }
 

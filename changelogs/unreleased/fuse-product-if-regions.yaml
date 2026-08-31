@@ -1,5 +1,5 @@
 added:
-  - Fusion for matching compute/constrain `scf.if` regions in product programs
+  - Fusion for matching compute/constrain `scf.if` regions in product functions
 
 changed:
-  - Preserve matching signal reads, compatible conditional attributes and source locations, and loop comparison modes during product control-flow fusion; leave pairs unfused when matching is ambiguous or movement would reorder observable effects
+  - Preserve eligible constrain-side signal reads in source order, compatible conditional and yield attributes, conditional source locations, and loop comparison modes during product control-flow fusion; leave pairs unfused when matching is ambiguous or movement would reorder observable effects

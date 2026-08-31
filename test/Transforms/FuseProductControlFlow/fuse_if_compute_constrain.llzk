@@ -458,8 +458,8 @@ module attributes {llzk.lang = "llzk"} {
 
 // -----
 
-// A constrain-side member read after the compute-side write is hoisted before the fused if so
-// the emitted constraints continue to refer to the member signal.
+// A constrain-side member read after the compute-side write is hoisted before the fused if. The
+// constrain operations continue to use that signal read rather than the compute result.
 module attributes {llzk.lang = "llzk"} {
   struct.def @A {
     struct.member @foo : !felt.type {signal}
