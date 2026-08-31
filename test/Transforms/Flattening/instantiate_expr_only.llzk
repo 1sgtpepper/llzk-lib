@@ -1,8 +1,8 @@
 // RUN: llzk-opt -split-input-file -llzk-flatten %s | FileCheck --enable-var-scope %s --check-prefix=DEFAULT
 // RUN: llzk-opt -split-input-file -llzk-flatten=cleanup=disabled %s | FileCheck --enable-var-scope %s --check-prefix=DISABLED
 
-// A zero-parameter function template still specializes when its target-used expression is
-// concrete. Expression materialization is independent of poly.param substitution.
+// A zero-parameter function template still specializes when its body references a concrete
+// expression; no poly.param binding is required.
 module attributes {llzk.lang} {
   poly.template @ExprOnlyFunc {
     poly.expr @Value {
@@ -169,8 +169,8 @@ module attributes {llzk.lang, llzk.main = !struct.type<@ExprOnlyStructNoList::@V
 
 // -----
 
-// An explicit empty argument list exercises the same expression-only struct through the
-// non-null ArrayAttr path that must not assert when the definition has no poly.param operations.
+// An explicit empty argument list produces the same concrete struct specialization when the
+// definition has no poly.param operations.
 module attributes {llzk.lang, llzk.main = !struct.type<@ExprOnlyStructExplicit::@Value<[]>>} {
   poly.template @ExprOnlyStructExplicit {
     poly.expr @Result {

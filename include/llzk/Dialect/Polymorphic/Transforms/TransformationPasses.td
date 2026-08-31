@@ -62,19 +62,20 @@ def FlatteningPass : LLZKPass<"llzk-flatten"> {
       functions from concrete explicit arguments, signature unification, or body-inferred wildcard
       types. If only some parameters are concrete, keep the specialization in a reduced
       `poly.template`.
-    - Evaluate target-used `poly.expr` values whose dependencies are concrete. A partial
-      specialization retains normalized copies of target-used expressions that still depend on
-      remaining parameters. A target-used concrete expression that cannot fold, or a target-used
-      expression that remains deferred in a full specialization, is an error.
+    - Evaluate `poly.expr` values referenced by the definition being specialized when their
+      dependencies are concrete. A partial specialization retains normalized expressions that
+      still depend on remaining parameters. A referenced concrete expression that cannot fold, or
+      a referenced expression that remains unresolved in a full specialization, is an error.
+      A struct or free function in a template with no `poly.param` operations is also specialized
+      when it references a concrete expression.
     - Apply concrete bindings to scalar type variables, array dimensions and element types,
       parameterized struct arguments, POD record types, and explicit arguments on nested calls.
     - Unroll loops with known iteration bounds, instantiate `affine_map` parameters of struct and
       array types, and propagate the resulting member, array, call, and function types.
 
-    Warnings accumulated while converting a prospective struct are retained only after body
-    conversion succeeds. For a prospective free function, body conversion and nested-call
-    verification must both succeed. A failed prospective specialization and its accumulated
-    warnings are discarded.
+    A specialization is retained only after its body conversion succeeds; free-function
+    specializations must also pass nested-call verification. Failed specializations and their
+    accumulated warnings are discarded together.
 
     After the fixpoint, the pass applies the selected cleanup mode, removes empty templates, and
     removes unused discardable array allocations.

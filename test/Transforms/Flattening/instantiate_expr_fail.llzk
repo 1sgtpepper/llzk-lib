@@ -1,6 +1,6 @@
 // RUN: llzk-opt -split-input-file -llzk-flatten -verify-diagnostics %s 2>&1 | FileCheck --enable-var-scope %s
 
-// A target-used expression in a struct specialization fails when its concrete body cannot fold.
+// A concrete expression referenced by a struct specialization fails when its body cannot fold.
 module attributes {llzk.lang, llzk.main = !struct.type<@StructExpr::@Value<[5]>>} {
   poly.template @StructExpr {
     poly.param @N : index
@@ -27,7 +27,7 @@ module attributes {llzk.lang, llzk.main = !struct.type<@StructExpr::@Value<[5]>>
 
 // -----
 
-// The same non-foldable target-used expression fails through a free-function specialization.
+// The same non-foldable expression fails when referenced by a free-function specialization.
 module attributes {llzk.lang} {
   poly.template @FunctionExpr {
     poly.param @N : index

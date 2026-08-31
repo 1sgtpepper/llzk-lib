@@ -1,5 +1,5 @@
 fixed:
-  - Evaluate template expressions used by a target once their value and type dependencies become concrete, preserving normalized expressions across partial specialization.
-  - Specialize expression-only free functions and structs, including unparameterized and explicitly empty struct argument forms, and retry temporarily blocked expressions at the next fixpoint iteration.
+  - Evaluate template expressions referenced by a specialized definition once their value and type dependencies become concrete, preserving unresolved expressions in partial specializations.
+  - Specialize free functions and structs whose templates contain expressions but no parameters, including absent and explicitly empty struct argument lists, and retry expressions when their type dependencies become concrete.
   - Preserve concrete template bindings in rebuilt nested calls and in array, struct, POD, and scalar type arguments.
-  - Treat equivalent felt spellings as the same specialization value for function and struct instantiation, and discard failed prospective specializations without leaking generated definitions or warnings.
+  - Treat equivalent felt spellings as the same specialization value for function and struct instantiation, and discard failed specializations without retaining generated definitions or warnings.

@@ -1,6 +1,7 @@
 // RUN: llzk-opt -split-input-file -llzk-flatten -verify-diagnostics %s 2>&1 | FileCheck %s
 
-// A target-used expression with concrete dependencies but a non-foldable scf.execute_region must fail flattening.
+// A concrete expression referenced by a function fails flattening when its scf.execute_region
+// cannot fold.
 module attributes {llzk.lang} {
   poly.template @FunctionExpr {
     poly.param @N : index

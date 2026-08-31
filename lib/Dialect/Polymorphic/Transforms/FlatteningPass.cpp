@@ -112,8 +112,8 @@ class ConversionTracker {
   /// Tracks if some step performed a modification of the code such that another pass should be run.
   bool modified;
   /// Maps original remote (i.e., use site) type to new remote type.
-  /// Expression-only struct templates may have an unparameterized source key; values are always
-  /// no-parameter StructType.
+  /// Expression-only struct templates may have an unparameterized source key. A partial
+  /// specialization value retains its remaining parameters.
   DenseMap<StructType, StructType> structInstantiations;
   /// Maps each instantiated type to its canonical source type for legal conversion checks.
   /// An explicit empty parameter list is a representation alias of an absent parameter list in the
@@ -281,8 +281,8 @@ public:
     std::function<bool(Type, Type)> checkInstantiations = [&](Type oTy, Type nTy) {
       // Check if `oTy` is a struct with a known instantiation to `nTy`
       if (StructType oldStructType = llvm::dyn_cast<StructType>(oTy)) {
-        // Note: The values in `structInstantiations` must be no-parameter struct types
-        // so there is no need for recursive check, simple equality is sufficient.
+        // The map records the exact result type, including any parameters retained by a partial
+        // specialization, so direct equality is sufficient.
         if (this->structInstantiations.lookup(oldStructType) == nTy) {
           return true;
         }
@@ -552,7 +552,7 @@ public:
   const DenseMap<Attribute, Attribute> &getParamMap() const { return paramNameToValue; }
 };
 
-/// Clone a target-used template expression and apply every currently concrete value and type
+/// Clone a referenced template expression and apply every currently concrete value and type
 /// binding. A reduced template no longer owns the removed parameter declarations, so its retained
 /// expression must contain neither reads nor type variables for those parameters. Return an empty
 /// result when a known value still has a non-concrete converted type, blocking that specialization
@@ -760,9 +760,10 @@ evaluateExpr(TemplateExprOp exprOp, const DenseMap<Attribute, Attribute> &paramN
   return failure();
 }
 
-/// Return whether `target` may use `exprOp`. Symbol-use analysis stops at symbol-table boundaries,
-/// so inspect target regions separately. An unknown result is conservatively treated as a use.
-static bool targetMayUseTemplateExpr(Operation *target, TemplateExprOp exprOp) {
+/// Return whether `target` may reference `exprOp`. Symbol-use analysis stops at symbol-table
+/// boundaries, so inspect target regions separately. An unknown result is conservatively treated
+/// as a reference.
+static bool targetMayReferenceTemplateExpr(Operation *target, TemplateExprOp exprOp) {
   // MemberDefOp stores its type as a native property rather than an operation attribute, so the
   // generic symbol-use walker cannot see an expression used only in a member's type. These members
   // belong directly to the target StructDefOp; do not walk into nested symbol-table scopes here.
@@ -787,10 +788,10 @@ static bool targetMayUseTemplateExpr(Operation *target, TemplateExprOp exprOp) {
   });
 }
 
-/// Evaluate target-used `TemplateExprOp`s whose dependencies are concrete, adding their values to
-/// `paramNameToConcrete`. Skip expressions unused by `target`. A failed result is a fatal
-/// normalization or evaluation error; a successful empty optional means a known value still has a
-/// non-concrete type dependency, so the caller should make no progress after the complete scan. A
+/// Evaluate `TemplateExprOp`s referenced by `target` whose dependencies are concrete, adding their
+/// values to `paramNameToConcrete`. Skip unreferenced expressions. A failed result is a fatal
+/// normalization or evaluation error; a successful empty optional means a referenced value or type
+/// dependency is unresolved, so the caller should make no progress after the complete scan. A
 /// successful value contains normalized detached clones for expressions that still depend on
 /// remaining parameters, which the caller must insert or destroy. Any concrete but malformed or
 /// non-foldable expression is a failure.
@@ -811,7 +812,7 @@ static FailureOr<std::optional<SmallVector<TemplateExprOp>>> evaluateTemplateExp
   };
   bool hasBlockedExpression = false;
   for (TemplateExprOp exprOp : templateOp.getConstOps<TemplateExprOp>()) {
-    if (!targetMayUseTemplateExpr(target, exprOp)) {
+    if (!targetMayReferenceTemplateExpr(target, exprOp)) {
       continue;
     }
     // Evaluation and preservation must observe the same concrete type substitutions. In
@@ -825,7 +826,7 @@ static FailureOr<std::optional<SmallVector<TemplateExprOp>>> evaluateTemplateExp
     }
     if (!normalizedExpr->has_value()) {
       // A temporarily blocked expression prevents this specialization, but independent
-      // target-used expressions still need to be checked for fatal evaluation errors.
+      // referenced expressions still need to be checked for fatal evaluation errors.
       hasBlockedExpression = true;
       continue;
     }
@@ -1135,7 +1136,7 @@ class StructCloner {
       }
 
       // Insert the struct into the detached template with a local table. The long-lived
-      // collection must not cache a table for a prospective owner that may be erased on failure.
+      // collection must not cache a table for a template that may be erased on failure.
       SymbolTable newTemplateSymbols(newTemplate);
       newTemplateSymbols.insert(newStruct);
       symTables.getSymbolTable(parentModule).insert(newTemplate, Block::iterator(parentTemplate));
@@ -1219,7 +1220,7 @@ public:
     }
 
     // An unparameterized type is normally already concrete. It still needs a clone when its
-    // enclosing template contains a target-used expression, because expression materialization
+    // enclosing template contains a referenced expression, because expression materialization
     // is independent of poly.param substitution.
     if (!tracker_.isExpressionOnlyStruct(orig.getNameRef())) {
       LLVM_DEBUG(llvm::dbgs() << "[StructCloner]   skip: not an expression-only source\n");
@@ -1236,9 +1237,9 @@ public:
     TemplateOp parentTemplate = getParentOfType<TemplateOp>(structDef);
     if (!parentTemplate || parentTemplate.getConstOps<TemplateExprOp>().empty() ||
         !llvm::any_of(parentTemplate.getConstOps<TemplateExprOp>(), [&](TemplateExprOp exprOp) {
-      return targetMayUseTemplateExpr(structDef.getOperation(), exprOp);
+      return targetMayReferenceTemplateExpr(structDef.getOperation(), exprOp);
     })) {
-      LLVM_DEBUG(llvm::dbgs() << "[StructCloner]   skip: no target-used expression\n");
+      LLVM_DEBUG(llvm::dbgs() << "[StructCloner]   skip: no referenced expression\n");
       return failure();
     }
     return genClone(orig, ArrayRef<Attribute> {});
@@ -1429,7 +1430,7 @@ LogicalResult instantiateMainStruct(ModuleOp modOp, ConversionTracker &tracker) 
     TemplateOp parentTemplate = getParentOfType<TemplateOp>(structDef);
     if (!parentTemplate || parentTemplate.getConstOps<TemplateExprOp>().empty() ||
         !llvm::any_of(parentTemplate.getConstOps<TemplateExprOp>(), [&](TemplateExprOp exprOp) {
-      return targetMayUseTemplateExpr(structDef.getOperation(), exprOp);
+      return targetMayReferenceTemplateExpr(structDef.getOperation(), exprOp);
     })) {
       return success();
     }
@@ -2072,7 +2073,7 @@ private:
     // Insert before body conversion so nested concrete callees verify from the root module. Use
     // SymbolTable::insert() so both physical symbol names are unique if necessary.
     // Use a local table for the detached template so `symTables` cannot retain state for a
-    // prospective owner that rollback may erase.
+    // template that rollback may erase.
     {
       SymbolTable newTemplateSymbols(newTemplate);
       newTemplateSymbols.insert(newFunc);
@@ -2085,7 +2086,7 @@ private:
                        << '\n'
       );
       // Erase through the parent table so the operation and its published symbol entry roll back
-      // together. No table for the prospective owner is retained in `symTables`.
+      // together. No table for the erased template is retained in `symTables`.
       symTables.getSymbolTable(parentModule).erase(newTemplate);
       return rewriter.notifyMatchFailure(op, [&](Diagnostic &diag) {
         diag.append("failure while creating instantiated function '", newFuncName, '\'');

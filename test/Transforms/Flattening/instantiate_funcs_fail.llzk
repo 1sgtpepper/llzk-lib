@@ -57,7 +57,7 @@ module attributes {llzk.lang} {
     poly.param @B
     function.def @f(%inp: !array.type<@N,@M x !poly.tvar<@T>>) -> !poly.tvar<@T> {
       // Converting this read queues a warning, which must not escape when nested-call verification
-      // rejects and rolls back the prospective specialization below.
+      // rejects and rolls back the attempted specialization below.
       %flag = poly.read_const @B : i1
       // expected-error@+2 {{'function.call' op operand type mismatch: expected type '!array.type<8,9 x !felt.type>', but found '!array.type<8,9 x i1>' for operand number 0}}
       // expected-error@+1 {{'function.call' op result type mismatch: expected type '!felt.type', but found 'i1' for result number 0}}

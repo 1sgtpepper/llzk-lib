@@ -1,8 +1,8 @@
 // RUN: not llzk-opt -llzk-flatten -verify-diagnostics %s
 
-// A temporarily blocked expression must not hide a later target-used expression that is
-// independently concrete. The later expression is intentionally non-foldable so that the pass
-// must inspect it and emit its fatal diagnostic instead of silently making no progress.
+// A temporarily blocked expression must not hide a later referenced expression whose inputs are
+// concrete. The later expression is intentionally non-foldable, so flattening must inspect it and
+// report the failure instead of silently making no progress.
 module attributes {llzk.lang} {
   poly.template @BlockedBeforeFailure {
     poly.param @Num
