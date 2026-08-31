@@ -31,13 +31,13 @@ def LLZK_StructType : StructDialectType<"Struct", "type"> {
     `poly.param` in the definition's enclosing `poly.template`, in declaration order. For a
     definition with no parameters, the list may be omitted or explicitly empty. Every
     argument must satisfy the corresponding parameter's type restriction; a symbol argument is
-    checked using its resolved enclosing template binding or constant global definition. Unknown,
-    mutable-global, and wrong-kind symbols are rejected. Each attribute must be one of the
-    following:
+    checked using its resolved enclosing `poly.param` or `poly.expr` binding or constant global
+    definition. Unknown, mutable-global, and wrong-kind symbols are rejected. Each attribute must
+    be one of the following:
       - IntegerAttr (with IndexType), specifying a fixed parameter value
       - FeltConstAttr, specifying a fixed finite-field parameter value
-      - SymbolRefAttr, specifying a parameter value defined by an enclosing template parameter
-        or global constant
+      - SymbolRefAttr, specifying a parameter value defined by an enclosing `poly.param` or
+        `poly.expr` binding or global constant
       - AffineMapAttr, specifying a single-result affine expression for an integer-like argument
         that varies across an array of struct elements
       - TypeAttr, specifying a type parameter

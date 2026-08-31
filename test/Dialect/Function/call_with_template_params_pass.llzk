@@ -198,8 +198,8 @@ module attributes {llzk.lang} {
 // CHECK-NEXT:  }
 // -----
 
-// Included target signatures use the caller-visible include namespace for both explicit and
-// omitted template arguments.
+// Included target signatures use the namespace established by `include.from` for both explicit
+// and omitted template arguments.
 module attributes {llzk.lang} {
   include.from "Inputs/template_signature_namespace.llzk" as @Lib
 

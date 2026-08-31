@@ -360,16 +360,18 @@ def CallOp : FunctionDialectOp<
     function signature independently infers a value for an explicitly supplied parameter, the
     values must satisfy the generic unification rules. For felt-valued parameters, known fields
     and concrete values must also agree; symbols without known concrete values use the generic
-    type-unification rules. Symbols nested in a type argument resolve at the call site. A nested
+    type-unification rules. A direct argument for an index or integer restriction must be an
+    integer, not an affine map. For a parameter with a `poly.tvar` restriction, a type argument
+    resolves nested `struct.type`, `array.type`, and `poly.tvar` symbols at the call site. A nested
     `poly.tvar` is accepted once its parameter reference resolves, even when its concrete type
     remains deferred.
 
-    When a target is loaded through an `include.from` alias, struct types in its signature resolve
-    under that alias during both explicit-template validation and omitted-template inference. Call
-    operand and result types therefore use the caller-visible qualified path.
+    Type paths in a target signature reached through `include.from` are compared in the namespace
+    established by that inclusion during explicit-template validation and omitted-template
+    inference.
 
-    Symbol arguments must resolve to an enclosing template binding or a constant global; unknown,
-    mutable-global, and wrong-kind symbols are rejected.
+    Symbol arguments must resolve to an enclosing `poly.param` or `poly.expr` binding or a constant
+    global; unknown, mutable-global, and wrong-kind symbols are rejected.
   }];
 
   // See `VerifySizesForMultiAffineOps` for more explanation of these arguments.

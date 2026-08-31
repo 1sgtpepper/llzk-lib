@@ -562,6 +562,17 @@ LogicalResult verifyTemplateParamValuesCompatibility(
   assert((explicitParams.size() == llvm::range_size(targetParamDefs)) && "pre-condition");
 
   for (auto [paramOp, attr] : llvm::zip_equal(targetParamDefs, explicitParams.getValue())) {
+    // Affine maps are deferred within parameterized types, where a later operation supplies their
+    // operands. A direct function or contract template-argument list has no such context and has
+    // historically required an integer value for an index or integer restriction.
+    std::optional<Type> restriction = paramOp.getTypeOpt();
+    if (llvm::isa<AffineMapAttr>(attr) && restriction &&
+        llvm::isa<IndexType, IntegerType>(*restriction)) {
+      return origin->emitOpError().append(
+          "instantiation value '", attr, "' is not compatible with parameter \"@",
+          paramOp.getName(), "\" type restriction ", *restriction
+      );
+    }
     if (failed(verifyTemplateParamValueCompatibility(origin, attr, paramOp))) {
       return failure();
     }

@@ -218,8 +218,8 @@ uint64_t computeEmitEqCardinality(mlir::Type type);
 /// static concrete values to produce the flattened versions of structs.
 using UnificationMap = mlir::DenseMap<std::pair<mlir::SymbolRefAttr, Side>, mlir::Attribute>;
 
-/// Record every symbolic candidate encountered during a contextual type unification without
-/// changing `UnificationMap`'s generic `nullptr` conflict semantics.
+/// Record each symbol/value candidate encountered while unifying a call or inclusion signature,
+/// without changing `UnificationMap`'s existing `nullptr` conflict behavior.
 using UnificationCandidateFn = llvm::function_ref<void(mlir::SymbolRefAttr, Side, mlir::Attribute)>;
 
 /// Return `true` iff the two ArrayRef instances containing StructType or ArrayType parameters
@@ -259,10 +259,10 @@ bool podTypesUnify(
 
 /// Return `true` iff the two FunctionType instances are equivalent or could be equivalent after
 /// full instantiation of template parameters.
-/// If `recordCandidate` is provided, structurally equal type variables and parameterized types are
-/// traversed and each symbolic mapping is reported before repeated conflicting mappings are
-/// represented by `nullptr` in `unifications`. Without it, equal types retain the generic
-/// unifier's existing empty-map behavior.
+/// If both `unifications` and `recordCandidate` are provided, structurally equal type variables
+/// and parameterized types are traversed and each symbol/value candidate is reported before
+/// repeated conflicting mappings are represented by `nullptr` in `unifications`. Without a
+/// recorder, equal types retain the existing empty-map behavior.
 bool functionTypesUnify(
     mlir::FunctionType lhs, mlir::FunctionType rhs,
     mlir::ArrayRef<llvm::StringRef> rhsReversePrefix = {}, UnificationMap *unifications = nullptr,
@@ -284,19 +284,19 @@ bool typesUnify(
 /// unification.
 bool isTemplateParamTypeCompatible(mlir::Type actualType, mlir::Type requiredType);
 
-/// An absent actual restriction is compatible with a fieldless required felt type, but it cannot
-/// satisfy a fielded required felt type because it does not establish the field needed by that
-/// restriction. It also cannot satisfy a type-only TypeVarType restriction because an unrestricted
-/// binding does not establish that the eventual argument is a type. For other required types,
-/// preserve the existing unrestricted-binding behavior. Direct array dimensions separately
-/// require an index-typed binding at their type-resolution site.
+/// A binding with no declared type restriction is compatible with a fieldless required felt type,
+/// but it cannot satisfy a fielded required felt type because it does not establish the field
+/// needed by that restriction. It also cannot satisfy a type-only TypeVarType restriction because
+/// an unrestricted binding does not establish that the eventual argument is a type. For other
+/// required types, preserve the existing unrestricted-binding behavior. Direct array dimensions
+/// separately require an index-typed binding at their type-resolution site.
 bool isTemplateParamTypeCompatible(std::optional<mlir::Type> actualType, mlir::Type requiredType);
 
 /// Check a template argument against an optional restriction and return the representation used by
 /// instantiation. With no restriction, return the argument unchanged. A type-variable restriction
 /// accepts only a `TypeAttr`; a felt restriction accepts a compatible felt constant or integer,
 /// preserving an explicit field when the restriction is fieldless and otherwise applying the
-/// required field; and an integer-like restriction accepts a valid integer or a single-result
+/// required field; and an index or integer restriction accepts a valid integer or a single-result
 /// affine map that remains deferred for affine instantiation. Reject every other
 /// attribute/restriction pairing.
 mlir::FailureOr<mlir::Attribute>

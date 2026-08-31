@@ -14,6 +14,30 @@ module attributes {llzk.lang} {
 
 // -----
 
+// Affine maps may parameterize struct types, but a direct contract template argument for an index
+// parameter must be an integer value.
+#map = affine_map<(i) -> (i)>
+module attributes {llzk.lang} {
+  poly.template @T {
+    poly.param @N : index
+    function.def @token() { function.return }
+
+    verif.contract @Base for @T::@token () {
+      %ok = arith.constant true
+      verif.ensure_compute %ok
+    }
+  }
+
+  function.def @entry() { function.return }
+
+  verif.contract @Wrapper for @entry () {
+    // expected-error@+1 {{'verif.include' op instantiation value 'affine_map<(d0) -> (d0)>' is not compatible with parameter "@N" type restriction 'index'}}
+    verif.include @T::@Base<[#map]>() : () -> ()
+  }
+}
+
+// -----
+
 // An initialized mutable global cannot instantiate an included contract parameter.
 module attributes {llzk.lang} {
   poly.template @MutableGlobalInitializedInclude {

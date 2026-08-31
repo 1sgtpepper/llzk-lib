@@ -236,7 +236,7 @@ enum class TemplateParamSignatureKind : std::uint8_t { Function, Contract };
 /// Verify explicit template values against the values inferred from a call-like operation's target
 /// signature. The operation-specific entry points delegate here so value compatibility and
 /// conflict handling stay identical for function calls and contract includes. When provided, the
-/// candidate lookup returns every distinct value observed for a parameter, allowing repeated
+/// candidate lookup returns each distinct value observed for a parameter, allowing repeated
 /// felt-valued signature positions to be checked before the generic unifier reports ambiguity.
 mlir::LogicalResult verifyTemplateParamsMatchInferred(
     mlir::Operation *origin, mlir::ArrayAttr explicitParams,
@@ -248,9 +248,9 @@ mlir::LogicalResult verifyTemplateParamsMatchInferred(
 
 /// Verify template arguments for a known function or contract target, including omitted-argument
 /// inference, explicit-value compatibility, and signature reconciliation. The unification callback
-/// is invoked only when the target signature is needed to infer or compare template arguments. Its
-/// argument records every symbolic value inferred when repeated signature positions map to the
-/// same target parameter.
+/// is invoked only when the target signature is needed to infer or compare template arguments. It
+/// receives a recorder that collects symbol/value candidates when repeated signature positions map
+/// to the same target parameter.
 mlir::LogicalResult verifyKnownTargetTemplateParams(
     mlir::Operation *origin, mlir::FunctionType targetType, llvm::StringRef targetName,
     llvm::StringRef targetTemplateName, mlir::ArrayAttr explicitParams,

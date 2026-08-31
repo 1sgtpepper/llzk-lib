@@ -36,7 +36,7 @@ module attributes {llzk.lang} {
   }
 }
 
-// Repeated felt positions reconcile equivalent global and literal evidence for both explicit and
+// Repeated felt positions accept equivalent global and literal evidence for both explicit and
 // omitted arguments.
 // -----
 module attributes {llzk.lang} {
