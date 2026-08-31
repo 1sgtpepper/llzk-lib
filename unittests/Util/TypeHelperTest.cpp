@@ -106,9 +106,7 @@ TEST_F(TypeHelperTests, test_functionTypesUnify_equalSymbolsDoNotChangeGenericUn
 TEST_F(TypeHelperTests, test_functionTypesUnify_recordsRepeatedCandidates) {
   FlatSymbolRefAttr param = FlatSymbolRefAttr::get(&ctx, "F");
   FlatSymbolRefAttr global = FlatSymbolRefAttr::get(&ctx, "G");
-  FeltConstAttr literal = FeltConstAttr::get(
-      &ctx, APInt(8, 35), FeltType::get(&ctx, "bn128")
-  );
+  FeltConstAttr literal = FeltConstAttr::get(&ctx, APInt(8, 35), FeltType::get(&ctx, "bn128"));
   FlatSymbolRefAttr box = FlatSymbolRefAttr::get(&ctx, "Box");
   StructType globalType = StructType::get(box, ArrayRef<Attribute> {global});
   StructType literalType = StructType::get(box, ArrayRef<Attribute> {literal});
