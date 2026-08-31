@@ -1,6 +1,6 @@
 // RUN: llzk-opt -split-input-file --llzk-compute-constrain-to-product="root-struct=A" --llzk-fuse-product-control-flow %s | FileCheck --enable-var-scope %s
 
-// Different loop steps produce different trip counts, so the compute and constrain loops stay separate.
+// Different loop steps identify different induction sequences, so the loops stay separate.
 module attributes {llzk.lang = "llzk"} {
     poly.template @TA {
       poly.param @N : index

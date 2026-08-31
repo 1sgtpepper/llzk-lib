@@ -53,6 +53,59 @@ module attributes {llzk.lang = "llzk"} {
 // CHECK-NEXT:  }
 // -----
 
+// Constant loop bounds do not make body interleaving safe: the first fused read would observe the
+// first compute write instead of the final write from the original compute loop.
+module attributes {llzk.lang = "llzk"} {
+  global.def @constant_state : index = 0
+
+  struct.def @ConstantEffectful {
+    struct.member @out : index
+
+    function.def @product() -> !struct.type<@ConstantEffectful> attributes {function.allow_constraint, function.allow_witness} {
+      %self = struct.new : <@ConstantEffectful>
+      %c0 = arith.constant 0 : index
+      %c1 = arith.constant 1 : index
+      %c2 = arith.constant 2 : index
+
+      scf.for %i = %c0 to %c2 step %c1 {
+        global.write @constant_state = %i : index {product_source = "compute"}
+        scf.yield
+      } {product_source = "compute"}
+
+      scf.for %i = %c0 to %c2 step %c1 {
+        %current = global.read @constant_state : index {product_source = "constrain"}
+        constrain.eq %current, %c1 : index, index
+        scf.yield
+      } {product_source = "constrain"}
+
+      struct.writem %self[@out] = %c1 : <@ConstantEffectful>, index
+      function.return %self : !struct.type<@ConstantEffectful>
+    }
+  }
+}
+// CHECK-LABEL: module attributes {llzk.lang = "llzk"} {
+// CHECK-NEXT:    global.def @constant_state : index = 0
+// CHECK-NEXT:    struct.def @ConstantEffectful {
+// CHECK-NEXT:      struct.member @out : index
+// CHECK-NEXT:      function.def @product() -> !struct.type<@ConstantEffectful> attributes {function.allow_constraint, function.allow_witness} {
+// CHECK-NEXT:        %[[VAL_0:[0-9a-zA-Z_\.]+]] = struct.new : <@ConstantEffectful>
+// CHECK-NEXT:        %[[VAL_1:[0-9a-zA-Z_\.]+]] = arith.constant 0 : index
+// CHECK-NEXT:        %[[VAL_2:[0-9a-zA-Z_\.]+]] = arith.constant 1 : index
+// CHECK-NEXT:        %[[VAL_3:[0-9a-zA-Z_\.]+]] = arith.constant 2 : index
+// CHECK-NEXT:        scf.for %[[VAL_4:[0-9a-zA-Z_\.]+]] = %[[VAL_1]] to %[[VAL_3]] step %[[VAL_2]] {
+// CHECK-NEXT:          global.write @constant_state = %[[VAL_4]] : index {product_source = "compute"}
+// CHECK-NEXT:        } {product_source = "compute"}
+// CHECK-NEXT:        scf.for %[[VAL_5:[0-9a-zA-Z_\.]+]] = %[[VAL_1]] to %[[VAL_3]] step %[[VAL_2]] {
+// CHECK-NEXT:          %[[VAL_6:[0-9a-zA-Z_\.]+]] = global.read @constant_state : index {product_source = "constrain"}
+// CHECK-NEXT:          constrain.eq %[[VAL_6]], %[[VAL_2]] : index, index
+// CHECK-NEXT:        } {product_source = "constrain"}
+// CHECK-NEXT:        struct.writem %[[VAL_0]][@out] = %[[VAL_2]] : <@ConstantEffectful>, index
+// CHECK-NEXT:        function.return %[[VAL_0]] : !struct.type<@ConstantEffectful>
+// CHECK-NEXT:      }
+// CHECK-NEXT:    }
+// CHECK-NEXT:  }
+// -----
+
 // An impure compute body blocks fusion with a shared dynamic bound even when the constrain body is
 // otherwise safe to interleave.
 module attributes {llzk.lang = "llzk"} {

@@ -986,9 +986,9 @@ TEST_F(FuseProductControlFlowTests, ComputeLoopResultDependenciesPreventFusion) 
 }
 
 TEST_F(FuseProductControlFlowTests, EffectfulOperationsBetweenLoopsPreventFusion) {
-  // Global and RAM operations between the loops must keep their source-local order, whether the
-  // interstitial write is constrain-sourced or unmarked. Distinct parent structs and typed
-  // barriers identify each original loop pair independently.
+  // Global and RAM operations between the loops must keep their original order, whether the
+  // interstitial effect is compute-sourced, constrain-sourced, or unmarked. Distinct parent
+  // structs and typed barriers identify each original loop pair independently.
   mlir::OwningOpRef<mlir::ModuleOp> module = mlir::parseSourceString<mlir::ModuleOp>(
       R"mlir(
     module attributes {llzk.lang = "llzk"} {

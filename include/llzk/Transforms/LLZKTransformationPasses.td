@@ -115,50 +115,30 @@ def FuseProductControlFlowPass : LLZKPass<"llzk-fuse-product-control-flow"> {
   let summary =
       "Fuse matching compute/constrain control flow in a @product function";
   let description = [{
-    Fuses uniquely matched compute/constrain control-flow pairs in `@product` functions.
-    Within a region, `scf.for` fusion is attempted before `scf.if` fusion so an eligible legacy
-    loop opportunity is preserved when preparation can legally move compute-sourced operations.
-    Loop preparation moves only recursively pure compute operations and direct member writes
-    already required by product layout when the target loop contains no read, write, call, trap, or
-    unknown effect that could observe the reordered component state; such effects keep source order
-    and prevent loop fusion.
-    Crossed loop/conditional source order may therefore leave the conditionals unfused to preserve
-    both source-local orderings.
-    `scf.for` pairs must be siblings with the same induction sequence: their lower bounds, upper
-    bounds, and steps must identify the same values, and their effective LLZK comparison modes must
-    match. The mode is signed when `unsignedCmp` is absent or a boolean false attribute, and
-    unsigned when the attribute is present otherwise, matching the witness interpreter. Equal trip
-    counts with different bounds, steps, or comparison modes remain separate. Every crossed
-    non-compute operation must be recursively pure, every relocated loop result must remain
-    dominated by the fused loop's insertion point, and a sunk member write may cross only an
-    admissible constrain-loop body. A pair using an arbitrary shared SSA control value additionally
-    requires a recursively pure compute loop and a constrain loop without storage access, calls,
-    allocation, traps, unsupported structured control flow, or unknown effects. The LLZK
-    comparison-mode attribute is retained on a fused loop.
-    `scf.if` pairs
-    must be same-block siblings where the compute op precedes the constrain op, both use the same
-    SSA condition value and have the same else-region presence, and the constrain op is resultless.
-    Conditional fusion requires exact SSA value identity for the condition; it does not perform
-    general signal-equivalence analysis.
+    Fuse uniquely matched compute/constrain `scf.for` and `scf.if` siblings in `@product`
+    functions. A pair must have the same parent region and opposite `product_source` roles.
 
-    Each fused conditional branch keeps the compute operations before the cloned constrain
-    operations. Uses of compute-if results in constrain branches are remapped to the corresponding
-    branch yield values. Member writes with no source annotation or an explicit compute source may
-    appear between the pair only when their value is a direct compute-if result. Constrain-side
-    signal member reads with no table offset that resolve to those writes, have dominating
-    operands, and are used only in the constrain branch are hoisted before the fused conditional
-    so emitted constraints retain the member signal. Each hoisted read must have exactly one
-    matching direct compute-side write between the paired conditionals; repeated matching writes
-    for that read keep the pair unfused. Other member reads and explicitly non-compute-sourced
-    member writes prevent fusion.
+    Loop pairs must identify the same lower bound, upper bound, and step and use the same comparison
+    mode: an absent or false `unsignedCmp` attribute is signed, while true is unsigned. Intervening
+    compute operations may move after the constrain loop only when they are direct member writes or
+    MLIR proves them recursively pure; other intervening operations must be recursively pure. A
+    moved member write cannot cross observable storage effects, calls, allocation, traps,
+    unsupported structured control flow, or unknown effects in the constrain loop. Moving any
+    result must also preserve dominance. Fusion interleaves the loop bodies, so every loop pair
+    requires a recursively pure compute loop and a constrain loop with none of those unsafe
+    operations.
 
-    Conditional fusion is skipped if moved constrain code reads or writes storage, calls functions,
-    allocates, may trap, has unknown effects, or contains unsupported structured control flow such
-    as `scf.while`. Movable constrain code is limited to `constrain.eq`, `constrain.in`,
-    `llzk.nondet`, nested `scf.if`, speculatable `scf.for`, and operations that MLIR proves pure.
-    The fused conditional is marked `product_source = "fused"`. All other attributes must match on
-    the paired conditionals and corresponding `scf.yield` operations and are preserved; their
-    source locations are combined on the fused operations.
+    Conditional pairs must be in the same block with the compute op first, use the exact same SSA
+    condition, have matching else regions and compatible attributes, and have a resultless
+    constrain op. Each fused branch keeps compute operations before constrain operations and
+    preserves the compute results. Between the pair, the pass permits only direct member writes of
+    compute-if results and matching unoffset constrain-side signal reads. Each such read must have
+    operands available before the compute op, be used only by the constrain op, and match exactly
+    one intervening write; other intervening operations prevent fusion.
+
+    Fused operations preserve compatible attributes and `scf.yield` attributes, loop comparison
+    mode, and combined source locations, and are marked `product_source = "fused"`. Unsafe,
+    ambiguous, and unmatched control flow is left unchanged.
   }];
 }
 
