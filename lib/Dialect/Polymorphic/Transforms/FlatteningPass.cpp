@@ -123,6 +123,8 @@ class ConversionTracker {
   DenseSet<SymbolRefAttr> funcInstantiations;
   /// Successful partial functions keyed by their source operation and exact concrete bindings.
   /// The rendered symbol names are only values; they are never used as cache identity.
+  /// The tracker outlives each Step 2 rewrite pass so exact hits remain reusable across fixpoint
+  /// iterations; the cache is cleared only before cleanup can erase its source operations.
   DenseMap<Operation *, SmallVector<PartialFuncInstantiation>> partialFuncInstantiations;
   /// Maps new remote type (i.e., the values in 'structInstantiations') to a list of Diagnostic
   /// to report at the location(s) of the compute() that causes the instantiation to the StructType.
@@ -132,6 +134,8 @@ class ConversionTracker {
   DenseSet<SymbolRefAttr> expressionOnlyStructNames;
 
 public:
+  /// Index expression-only struct sources before rewriting begins. Generated templates must not
+  /// become new source candidates merely because earlier specialization removed their parameters.
   explicit ConversionTracker(ModuleOp root) : modified(false) {
     root.walk([this](TemplateOp templateOp) {
       if (templateOp.hasConstOps<TemplateParamOp>() || !templateOp.hasConstOps<TemplateExprOp>()) {
@@ -467,6 +471,8 @@ protected:
   }
 
 public:
+  /// Build a converter that substitutes exactly the known template bindings and recursively
+  /// propagates those substitutions through supported compound types.
   explicit TemplateParamTypeConverter(const DenseMap<Attribute, Attribute> &paramNameToConcrete)
       : TypeConverter(), paramNameToValue(paramNameToConcrete) {
     addConversion([](Type type) { return type; });
@@ -783,11 +789,11 @@ static bool targetMayUseTemplateExpr(Operation *target, TemplateExprOp exprOp) {
 
 /// Evaluate target-used `TemplateExprOp`s whose dependencies are concrete, adding their values to
 /// `paramNameToConcrete`. Skip expressions unused by `target`. A failed result is a fatal
-/// normalization or evaluation error; a successful empty optional means a known binding could not
-/// yet be normalized and the caller should make no progress after the complete scan; a successful
-/// value contains normalized detached clones for expressions that still depend on remaining
-/// parameters, which the caller must insert or destroy. Any concrete but malformed or non-foldable
-/// expression is a failure.
+/// normalization or evaluation error; a successful empty optional means a known value still has a
+/// non-concrete type dependency, so the caller should make no progress after the complete scan. A
+/// successful value contains normalized detached clones for expressions that still depend on
+/// remaining parameters, which the caller must insert or destroy. Any concrete but malformed or
+/// non-foldable expression is a failure.
 static FailureOr<std::optional<SmallVector<TemplateExprOp>>> evaluateTemplateExprs(
     TemplateOp templateOp, Operation *target, DenseMap<Attribute, Attribute> &paramNameToConcrete,
     SmallVector<Diagnostic> &deferredExprDiagnostics

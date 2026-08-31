@@ -1,6 +1,6 @@
 // RUN: llzk-opt -split-input-file --pass-pipeline='builtin.module(llzk-flatten{cleanup=disabled})' %s | FileCheck %s
 
-// Cleanup-disabled struct-target coverage retains an unrelated target-unused expression.
+// Cleanup-disabled struct-target coverage retains a target-unused, non-foldable expression.
 module attributes {llzk.lang, llzk.main = !struct.type<@UnusedStructExpr::@Value<[5]>>} {
   poly.template @UnusedStructExpr {
     poly.param @N : index
