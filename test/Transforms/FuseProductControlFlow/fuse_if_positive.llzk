@@ -446,8 +446,8 @@ module attributes {llzk.lang = "llzk"} {
 // CHECK-NEXT:  }
 // -----
 
-// An unused allocation in the constrain branch is observable, so the matching conditionals
-// stay separate.
+// An allocation in the constrain branch has memory effects, so the matching conditionals stay
+// separate.
 module attributes {llzk.lang = "llzk"} {
   struct.def @A {
     struct.member @foo : !felt.type
@@ -1936,7 +1936,7 @@ module attributes {llzk.lang = "llzk"} {
   struct.def @D {
     struct.member @foo : !felt.type
 
-    // A step other than one makes scf.for potentially non-terminating and blocks movement.
+    // The pass does not treat this non-unit scf.for as speculatable, so movement is blocked.
     function.def @product(%condition: i1, %value: !felt.type) -> !struct.type<@D> attributes {function.allow_constraint, function.allow_witness} {
       %self = struct.new : <@D>
       %c0 = arith.constant 0 : index
