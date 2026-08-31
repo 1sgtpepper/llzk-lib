@@ -1,4 +1,4 @@
 fixed:
   - Verify explicit and inferred template arguments for struct types, templated function calls, and contract inclusions, accepting fieldless felt values in the required field and rejecting incompatible or ambiguous values
-  - Preserve included-target namespaces when inferring template arguments from function and contract signatures
+  - Preserve the caller-visible `include.from` alias when inferring template arguments from function and contract signatures
   - Require symbolic template arguments to resolve to an enclosing template binding or a constant global

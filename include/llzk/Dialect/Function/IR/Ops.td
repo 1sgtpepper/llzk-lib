@@ -322,7 +322,7 @@ def CallOp : FunctionDialectOp<
   let summary = "call operation";
   let description = [{
     The `function.call` operation represents a call to another function. The operands
-    and result types of the call must match the specified function type. The
+    and result types of the call must unify with the specified function type. The
     callee is encoded as a symbol reference attribute named "callee" which must
     be the full path to the target function from the root module (i.e., the module
     containing the [llzk::LANG_ATTR_NAME] attribute).
@@ -360,7 +360,9 @@ def CallOp : FunctionDialectOp<
     function signature independently infers a value for an explicitly supplied parameter, the
     values must satisfy the generic unification rules. For felt-valued parameters, known fields
     and concrete values must also agree; symbols without known concrete values use the generic
-    type-unification rules.
+    type-unification rules. Symbols nested in a type argument resolve at the call site. A nested
+    `poly.tvar` is accepted once its parameter reference resolves, even when its concrete type
+    remains deferred.
 
     When a target is loaded through an `include.from` alias, struct types in its signature resolve
     under that alias during both explicit-template validation and omitted-template inference. Call
@@ -481,11 +483,8 @@ def CallOp : FunctionDialectOp<
 
     /// Attempt type unification between the inferred FunctionType from this CallOp (as LHS) and
     /// the given FunctionType (as RHS). If successful, return a UnificationMap containing the
-    /// unifications that were made. When provided, `recordCandidate` receives every symbolic
-    /// mapping before repeated conflicts are collapsed in that map. Otherwise, return failure.
-    ::mlir::FailureOr<UnificationMap> unifyTypeSignature(
-        ::mlir::FunctionType other, UnificationCandidateFn recordCandidate = nullptr
-    );
+    /// unifications that were made. Otherwise, return failure.
+    ::mlir::FailureOr<UnificationMap> unifyTypeSignature(::mlir::FunctionType other);
 
     /// Return `true` iff the callee function name is `FUNC_NAME_COMPUTE` (this
     /// does not check if the callee function is located within a StructDefOp).

@@ -451,7 +451,9 @@ def IncludeOp
     generic unification rules. For felt-valued parameters, known fields and concrete values must
     also agree; symbols without known concrete values use the generic type-unification rules. The
     `?` wildcard is valid for any parameter with a `poly.tvar` restriction and leaves that type for
-    later inference based on the callee.
+    later inference based on the callee. Symbols nested in a type argument resolve at the inclusion
+    site. A nested `poly.tvar` is accepted once its parameter reference resolves, even when its
+    concrete type remains deferred.
 
     When a target is loaded through an `include.from` alias, struct types in its signature resolve
     under that alias during both explicit-template validation and omitted-template inference.

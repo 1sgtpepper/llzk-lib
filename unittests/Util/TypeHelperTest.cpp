@@ -120,7 +120,7 @@ TEST_F(TypeHelperTests, test_functionTypesUnify_recordsRepeatedCandidates) {
   };
 
   ASSERT_TRUE(functionTypesUnify(caller, callee, {}, &unifications, recordCandidate));
-  auto key = std::make_pair<SymbolRefAttr, Side>(param, Side::RHS);
+  auto key = std::make_pair(param, Side::RHS);
   ASSERT_TRUE(unifications.contains(key));
   EXPECT_FALSE(unifications.lookup(key));
   ASSERT_EQ(candidates.lookup(key).size(), 2);

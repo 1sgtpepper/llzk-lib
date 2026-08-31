@@ -79,7 +79,7 @@ function.def private @o(%x: !array.type<[] x !felt.type>)
 function.def private @p(%x: !array.type<affine_map<(i) -> ()> x !felt.type>)
 // -----
 
-// A symbolic array dimension must establish its integer-like type at the use site.
+// A symbolic array dimension must establish its index type at the use site.
 module attributes {llzk.lang} {
   poly.template @T {
     // expected-note@+1 {{template parameter declared here}}

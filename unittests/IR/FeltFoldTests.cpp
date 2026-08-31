@@ -98,9 +98,9 @@ TEST_F(BabyBearFoldTest, MaterializeConstantType) {
   FeltType babyBear = FeltType::get(&ctx, BB_FIELD);
   FeltType goldilocks = FeltType::get(&ctx, "goldilocks");
 
-  FailureOr<FeltConstAttr> adopted = unspecifiedConst(5).materializeAs(babyBear);
-  ASSERT_TRUE(succeeded(adopted));
-  EXPECT_EQ(adopted->getType(), babyBear);
+  FailureOr<FeltConstAttr> materialized = unspecifiedConst(5).materializeAs(babyBear);
+  ASSERT_TRUE(succeeded(materialized));
+  EXPECT_EQ(materialized->getType(), babyBear);
 
   FailureOr<FeltConstAttr> matching = babyBearConst(5).materializeAs(babyBear);
   ASSERT_TRUE(succeeded(matching));
