@@ -201,7 +201,7 @@ static bool isSafeToMoveConstrainOp(Operation *op) {
 /// An operation is crossable only when this pass explicitly admits it or MLIR proves it pure; the
 /// walk rejects reads, writes, calls, traps, and unknown effects.
 static bool hasUnsafeCrossedConstrainOp(Operation *root) {
-  auto result = root->walk([](Operation *op) {
+  auto result = root->walk([root](Operation *op) {
     if (op == root || isa<scf::YieldOp>(op)) {
       return WalkResult::advance();
     }
@@ -508,7 +508,7 @@ canPrepareForFusion(scf::ForOp computeLoop, scf::ForOp constrainLoop) {
       return sink == user || sink->isAncestor(user);
     });
   };
-  auto hasLegalUsers = [&isMovedWithSink, constrainLoop, &dominanceInfo](Value result) {
+  auto hasLegalUsers = [&isMovedWithSink, &constrainLoop, &dominanceInfo](Value result) {
     for (Operation *user : result.getUsers()) {
       if (isMovedWithSink(user)) {
         continue;
