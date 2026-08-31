@@ -81,16 +81,17 @@ llzk-opt input.llzk --canonicalize | scripts/generate-test-checks.py
 llzk-opt input.llzk --canonicalize | scripts/generate-test-checks.py --source input.llzk
 ```
 
-When `--source` is provided, every line matching `--source_delim_regex` begins a placement segment;
-the default pattern is `func @`. Anchor custom patterns to the intended structural source lines.
-Use `-i`/`--inplace` only after checking the generated output. In-place
-mode requires `--source`, cannot be combined with `--output`, and refuses to modify a source whose
-supplied path or resolved target is in a dirty Git worktree, including untracked files. Use
-`--allow-dirty` only when replacing uncommitted FileCheck directives or other source content in a
-dirty worktree is intentional. Generated output must contain one CHECK segment for each source
-placement segment; otherwise, the script exits without modifying the source. The script writes the
-complete result to a temporary file beside the resolved source, copies the source permission bits,
-and then replaces the source. Generation or replacement failures leave the source unchanged.
+When `--source` is provided, every line matching `--source_delim_regex` begins a source segment; the
+default pattern is `func @`. Anchor custom patterns to the intended structural source lines. Use
+`-i`/`--inplace` only after checking the generated output. In-place mode requires `--source`, cannot
+be combined with `--output`, and refuses to modify a source whose supplied path or resolved target
+is in a dirty Git worktree, including untracked files. Use `--allow-dirty` only when replacing
+uncommitted FileCheck directives or other source content in a dirty worktree is intentional.
+Generated output must contain one check block for each source segment; otherwise, the
+script exits without modifying the source. The script writes the complete result to a temporary
+file beside the resolved source, copies its permission bits, and then replaces the resolved source
+file; a source symlink remains intact. Generation or replacement failures leave the source
+unchanged.
 
 Run the utility's unit tests with `python3 -m unittest scripts/generate-test-checks.py -v`.
 
