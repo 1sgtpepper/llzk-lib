@@ -533,7 +533,7 @@ LogicalResult verifyTemplateParamValueCompatibility(
     }
   } else if (declaredType && llvm::isa<TypeVarType>(*declaredType)) {
     TypeAttr typeValue = llvm::dyn_cast<TypeAttr>(value);
-    compatible = typeValue;
+    compatible = static_cast<bool>(typeValue);
     if (typeValue) {
       // Resolve nested symbols now, while a valid TypeVarType remains deferred for inference.
       SymbolTableCollection tables;
