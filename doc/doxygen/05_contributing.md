@@ -73,30 +73,30 @@ issues must be marked `approved` before implementation begins.
 #### Generate FileCheck checks
 
 The `scripts/generate-test-checks.py` utility generates heuristic FileCheck assertions from parsed
-LLZK IR. Use it to bootstrap checks, then review and edit the generated patterns so they assert the
-behavior the test is intended to cover:
+MLIR or LLZK IR. Use it to bootstrap checks, then review them against the behavior the test is
+intended to cover:
 
 ```sh
 llzk-opt input.llzk --canonicalize | scripts/generate-test-checks.py
 llzk-opt input.llzk --canonicalize | scripts/generate-test-checks.py --source input.llzk
 ```
 
-When `--source` is provided, `--source_delim_regex` selects the boundaries before which generated
-check blocks are inserted. Use `-i`/`--inplace` only after checking the generated output. In-place
-mode requires `--source`, cannot be combined with `--output`, and refuses to modify a dirty Git
-worktree, including untracked files. Use `--allow-dirty` only when that safeguard is intentional.
-The script writes the complete generated result to a temporary file in the source directory and
-replaces the source only after that temporary file is complete, preserving its permission bits.
-Generation or replacement failures leave the original source in place; temporary-file cleanup
-failures are also reported.
+When `--source` is provided, every line matching `--source_delim_regex` begins a placement segment;
+the default pattern is `func @`. Anchor custom patterns to the intended structural source lines.
+Use `-i`/`--inplace` only after checking the generated output. In-place
+mode requires `--source`, cannot be combined with `--output`, and refuses to modify a source whose
+resolved target is in a dirty Git worktree, including untracked files. Use `--allow-dirty` only when
+replacing uncommitted FileCheck directives or other source content in a dirty worktree is
+intentional. The script writes the complete result to a temporary file beside the resolved source,
+copies the source permission bits, and then replaces the source. Generation or replacement failures
+leave the source unchanged.
 
 Run the utility's unit tests with `python3 -m unittest scripts/generate-test-checks.py -v`.
 
-Repeated runs remove the generator's note and directives using the selected prefix, either plain or
-with a `-NEXT`, `-LABEL`, or `-SAME` suffix. Other source text and comments, including trailing
-whitespace, line endings, and text that merely contains the prefix, are preserved. The generated
-checks are not authoritative; verify that they cover the relevant behavior and retain complete
-transformed output where the IR is the test contract.
+Repeated runs replace the generator's note and FileCheck directives for the selected prefix while
+preserving unrelated source text and comments. The generated checks are not authoritative: verify
+that they cover the relevant behavior and retain complete transformed output where the IR is the
+test contract.
 
 ### Commit your update
 
