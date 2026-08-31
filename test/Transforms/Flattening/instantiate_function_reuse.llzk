@@ -268,4 +268,3 @@ module attributes {llzk.lang} {
 // CHECK-NEXT:      }
 // CHECK-NEXT:    }
 // CHECK-NEXT:  }
-// CHECK:  // {{[-][-][-][-][-]}}
