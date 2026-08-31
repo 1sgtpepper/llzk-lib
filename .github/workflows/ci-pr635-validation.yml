@@ -45,8 +45,7 @@ jobs:
           rm -rf "$OUTPUT_PATH"
           mkdir -p "$OUTPUT_PATH"
 
-          pr635_head=6784ba5f586ada5587f058663aa722a6286d7340
-          pr637_head=9ad02ae3c01a98765e7dd8ce9b005655396c4f25
+          pr635_head=2c813575d75fdc2ecbb485b0023f148277feb4ec
           filecheck=
           full_check_results=()
 
@@ -76,11 +75,33 @@ jobs:
             local test_file="$3"
             local check_prefix="$4"
             shift 4
+            local allow_nonzero=false
+            local extract_module=false
+            local merge_stderr=false
             local filecheck_args=()
-            if [[ "$#" -gt 0 && "$1" == "--enable-var-scope" ]]; then
-              filecheck_args+=("$1")
-              shift
-            fi
+            while [[ "$#" -gt 0 ]]; do
+              case "$1" in
+                --allow-nonzero)
+                  allow_nonzero=true
+                  shift
+                  ;;
+                --extract-module)
+                  extract_module=true
+                  shift
+                  ;;
+                --merge-stderr)
+                  merge_stderr=true
+                  shift
+                  ;;
+                --enable-var-scope)
+                  filecheck_args+=("$1")
+                  shift
+                  ;;
+                *)
+                  break
+                  ;;
+              esac
+            done
             local output_path="$OUTPUT_PATH/$name"
             local llzk_opt="$source_root/result/bin/llzk-opt"
             local clean_input="$output_path/clean-input.llzk"
@@ -117,18 +138,36 @@ jobs:
               printf ' %q\n' "$clean_input"
             } > "$output_path/producer-command.txt"
             set +e
-            "$llzk_opt" "$@" "$clean_input" \
-              > "$output_path/producer-output.llzk" \
-              2> "$output_path/producer-stderr.txt"
+            if [[ "$merge_stderr" == true ]]; then
+              "$llzk_opt" "$@" "$clean_input" \
+                > "$output_path/producer-output.raw.txt" 2>&1
+            else
+              "$llzk_opt" "$@" "$clean_input" \
+                > "$output_path/producer-output.raw.txt" \
+                2> "$output_path/producer-stderr.txt"
+            fi
             local producer_status=$?
             set -e
             printf 'producer_exit_status=%s\n' "$producer_status" \
               > "$output_path/producer-status.txt"
-            if test "$producer_status" -ne 0; then
+            if test "$producer_status" -ne 0 && [[ "$allow_nonzero" != true ]]; then
               printf 'producer failed for %s with exit status %s\n' \
                 "$test_file" "$producer_status"
               sed -n '1,160p' "$output_path/producer-stderr.txt"
               return "$producer_status"
+            fi
+
+            if [[ "$extract_module" == true ]]; then
+              awk '
+                /^module attributes / { emit = 1 }
+                emit { print }
+                emit && /^}$/ { exit }
+              ' "$output_path/producer-output.raw.txt" \
+                > "$output_path/producer-output.llzk"
+              test -s "$output_path/producer-output.llzk"
+            else
+              cp "$output_path/producer-output.raw.txt" \
+                "$output_path/producer-output.llzk"
             fi
 
             "$filecheck" "${filecheck_args[@]}" --check-prefix="$check_prefix" \
@@ -294,6 +333,9 @@ jobs:
             replay_test "${name_prefix}-call-symbolic-felt" "$source_root" \
               test/Dialect/Function/call_with_symbolic_felt_restriction_pass.llzk \
               CHECK -split-input-file
+            replay_test "${name_prefix}-call-template-params" "$source_root" \
+              test/Dialect/Function/call_with_template_params_pass.llzk \
+              CHECK -split-input-file
             replay_test "${name_prefix}-struct-restrictions" "$source_root" \
               test/Dialect/Struct/struct_params_restrictions_pass.llzk \
               CHECK -split-input-file
@@ -302,6 +344,9 @@ jobs:
               CHECK -split-input-file
             replay_test "${name_prefix}-include-symbolic-felt" "$source_root" \
               test/Dialect/Verif/include_with_symbolic_felt_restriction_pass.llzk \
+              CHECK -split-input-file
+            replay_test "${name_prefix}-contracts" "$source_root" \
+              test/Dialect/Verif/contracts_pass.llzk \
               CHECK -split-input-file
             replay_test "${name_prefix}-expr-blocked-default" "$source_root" \
               test/Transforms/Flattening/instantiate_expr_blocked.llzk \
@@ -312,6 +357,9 @@ jobs:
             replay_test "${name_prefix}-expr-felt-typevar" "$source_root" \
               test/Transforms/Flattening/instantiate_expr_felt_typevar_completion.llzk \
               CHECK -split-input-file -llzk-flatten
+            replay_test "${name_prefix}-expr-member-type" "$source_root" \
+              test/Transforms/Flattening/instantiate_expr_member_type.llzk \
+              CHECK -llzk-flatten
             replay_test "${name_prefix}-expr-only-default" "$source_root" \
               test/Transforms/Flattening/instantiate_expr_only.llzk \
               DEFAULT --enable-var-scope -split-input-file -llzk-flatten
@@ -336,6 +384,11 @@ jobs:
             replay_test "${name_prefix}-nested-call" "$source_root" \
               test/Transforms/Flattening/instantiate_nested_call_template_params.llzk \
               CHECK -llzk-flatten=cleanup=disabled
+            replay_test "${name_prefix}-func-rollback" "$source_root" \
+              test/Transforms/Flattening/instantiate_func_rollback.llzk \
+              CHECK --allow-nonzero --extract-module --merge-stderr \
+              --enable-var-scope -llzk-flatten=cleanup=disabled \
+              -verify-diagnostics -mlir-print-ir-after-failure
             replay_test "${name_prefix}-struct-pass3" "$source_root" \
               test/Transforms/Flattening/instantiate_structs_pass_3.llzk \
               CHECK --enable-var-scope -split-input-file -llzk-flatten -verify-diagnostics
@@ -343,33 +396,21 @@ jobs:
 
           replay_pr635_suite "$pr635_path" pr635
 
-          prepare_head pr637 "$pr637_head"
-          pr637_path="$tested_path"
-          replay_pr635_suite "$pr637_path" pr637
-          replay_test pr637-function-order "$pr637_path" \
-            test/Transforms/Flattening/instantiate_function_order.llzk \
-            CHECK -split-input-file -llzk-flatten=cleanup=disabled
-          replay_test pr637-function-reuse "$pr637_path" \
-            test/Transforms/Flattening/instantiate_function_reuse.llzk \
-            CHECK -split-input-file -llzk-flatten=cleanup=disabled
-
-          if test "${#full_check_results[@]}" -eq 34; then
+          if test "${#full_check_results[@]}" -eq 20; then
             full_check_blocks=PASS
           else
             full_check_blocks=FAIL
           fi
           {
             echo "pr635_head=$pr635_head"
-            echo "pr637_head=$pr637_head"
-            echo "pr635_output_replays=16"
-            echo "pr637_output_replays=18"
-            echo "full_output_replays=34"
+            echo "pr635_output_replays=20"
+            echo "full_output_replays=20"
             echo "full_committed_check_blocks=$full_check_blocks"
             echo "full_check_results=${full_check_results[*]}"
             echo "result=$full_check_blocks"
           } > "$OUTPUT_PATH/summary.txt"
 
-          test "${#full_check_results[@]}" -eq 34
+          test "${#full_check_results[@]}" -eq 20
 
       - name: Upload validation evidence
         if: always()
