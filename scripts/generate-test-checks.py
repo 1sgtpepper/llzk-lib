@@ -213,7 +213,7 @@ def process_source_lines(source_lines, note, args):
     """
     source_split_re = re.compile(args.source_delim_regex)
     directive_suffix = (
-        r"(?:-(?:NEXT|SAME|NOT|DAG|LABEL|EMPTY)|-COUNT-[1-9][0-9]*)?"
+        r"(?:-(?:NEXT|SAME|NOT|DAG|LABEL|EMPTY)|-COUNT-(?P<count>[0-9]+))?"
     )
     literal_modifier = r"(?:\{\s*LITERAL\s*(?:,\s*LITERAL\s*)*\})?"
     check_line_re = re.compile(
@@ -258,7 +258,18 @@ def process_source_lines(source_lines, note, args):
         line_text = line_without_ending(line)
         # Remove previous FileCheck directives, but preserve source text that
         # merely contains the check prefix.
-        if check_line_re.match(line_text):
+        directive_match = check_line_re.match(line_text)
+        count = directive_match.group("count") if directive_match else None
+        normalized_count = count.lstrip("0") if count is not None else None
+        # FileCheck accepts positive decimal counts up to signed 32-bit maximum.
+        count_is_valid = count is None or (
+            bool(normalized_count)
+            and (
+                len(normalized_count) < 10
+                or (len(normalized_count) == 10 and normalized_count <= "2147483647")
+            )
+        )
+        if directive_match and count_is_valid:
             line_index += 1
             continue
         # Segment the file based on --source_delim_regex.
@@ -430,15 +441,26 @@ def main():
         close_input()
         parser.error("--inplace cannot be used with --output")
 
-    source_path = None
     if args.inplace:
         if args.source is None:
             close_input()
             parser.error("--inplace requires --source")
-        source_path = os.path.realpath(os.path.abspath(args.source))
+        source_argument_path = os.path.abspath(args.source)
+        source_path = os.path.realpath(source_argument_path)
+        if not os.path.exists(source_path):
+            close_input()
+            print(f"error: source file does not exist: {args.source}", file=sys.stderr)
+            return 1
+        if not os.path.isfile(source_path):
+            close_input()
+            print(f"error: source path is not a regular file: {args.source}", file=sys.stderr)
+            return 1
         if not args.allow_dirty:
             try:
-                dirty = workspace_is_dirty(source_path)
+                dirty = workspace_is_dirty(source_argument_path) or (
+                    source_path != source_argument_path
+                    and workspace_is_dirty(source_path)
+                )
             except (OSError, RuntimeError) as error:
                 close_input()
                 print(f"error: unable to check Git worktree status: {error}", file=sys.stderr)
@@ -631,7 +653,7 @@ def main():
             output.close()
     except OSError as error:
         if args.inplace:
-            print(f"error: unable to update source file: {error}", file=sys.stderr)
+            print(f"error: unable to replace source file: {error}", file=sys.stderr)
             return 1
         raise
     finally:
@@ -931,11 +953,15 @@ class GenerateTestChecksTests(unittest.TestCase):
             "  // ALT-DAG: stale dag\n"
             "  // ALT-EMPTY: stale empty\n"
             "  // ALT-COUNT-2: stale count\n"
+            "  // ALT-COUNT-01: stale leading-zero count\n"
+            "  // ALT-COUNT-2147483647: stale maximum count\n"
             "  // ALT{LITERAL}: stale literal\n"
             "  // ALT-NEXT{LITERAL}: stale next literal\n"
             "  // ALT-COUNT-2{LITERAL}: stale count literal\n"
+            "  // ALT-COUNT-0002{LITERAL}: stale leading-zero count literal\n"
             "  // ALT-FOO: preserve unknown suffix\n"
             "  // ALT-COUNT-0: preserve invalid count\n"
+            "  // ALT-COUNT-2147483648: preserve out-of-range count\n"
             "  // ALT-explanation: preserve comment\n"
             "  // CHECK: preserve default check\n"
             "  func.func @main() {\n"
@@ -986,13 +1012,19 @@ class GenerateTestChecksTests(unittest.TestCase):
             "stale dag",
             "stale empty",
             "stale count",
+            "stale leading-zero count",
+            "stale maximum count",
             "stale literal",
             "stale next literal",
             "stale count literal",
+            "stale leading-zero count literal",
         ):
             self.assertNotIn(stale, contents)
         self.assertIn("// ALT-FOO: preserve unknown suffix", contents)
         self.assertIn("// ALT-COUNT-0: preserve invalid count", contents)
+        self.assertIn(
+            "// ALT-COUNT-2147483648: preserve out-of-range count", contents
+        )
         self.assertIn("// ALT-explanation: preserve comment", contents)
         self.assertIn("// CHECK: preserve default check", contents)
         self.assertIn("// ALT-LABEL:", contents)
@@ -1067,6 +1099,26 @@ class GenerateTestChecksTests(unittest.TestCase):
 
         self.assertEqual(exit_code, 2)
         self.assertIn("--inplace requires --source", error)
+
+    def test_invalid_source_paths_are_rejected_before_output(self):
+        """Missing and non-file source paths fail before creating replacement output."""
+        input_path = self.write_file("input.llzk", "module {\n}\n")
+        missing = self.root / "missing.llzk"
+        directory = self.root / "source-directory"
+        directory.mkdir()
+
+        for source, expected in (
+            (missing, "source file does not exist"),
+            (directory, "source path is not a regular file"),
+        ):
+            with self.subTest(source=source):
+                exit_code, _, error = self.invoke(
+                    "--source", str(source), "--allow-dirty", "-i", str(input_path)
+                )
+
+                self.assertEqual(exit_code, 1)
+                self.assertIn(expected, error)
+                self.assertEqual(list(self.root.rglob("*.tmp")), [])
 
     def test_segment_mismatch_preserves_source(self):
         """Mismatched generated and source segments leave the source unchanged."""
@@ -1160,7 +1212,7 @@ class GenerateTestChecksTests(unittest.TestCase):
             )
 
         self.assertEqual(exit_code, 1)
-        self.assertIn("unable to update source file: injected replace failure", error)
+        self.assertIn("unable to replace source file: injected replace failure", error)
         self.assertEqual(len(replacement_arguments), 1)
         self.assertEqual(source.read_text(encoding="utf-8"), before)
         self.assert_no_temporary_source(source)
@@ -1208,7 +1260,7 @@ class GenerateTestChecksTests(unittest.TestCase):
 
         self.assertEqual(exit_code, 1)
         self.assertIn(
-            "error: unable to update source file: injected replace failure", error
+            "error: unable to replace source file: injected replace failure", error
         )
         self.assertIn(
             "error: unable to remove temporary source file: injected cleanup failure",
@@ -1309,37 +1361,78 @@ class GenerateTestChecksTests(unittest.TestCase):
         self.assertEqual(source.read_text(encoding="utf-8"), before)
         self.assert_no_temporary_source(source)
 
-    def test_symlink_inplace_updates_target_without_replacing_link(self):
-        """An in-place update through a symlink replaces its target and preserves the link."""
+    def test_symlink_checks_both_worktrees_and_preserves_link(self):
+        """A symlink update requires clean link and target worktrees and preserves the link."""
+        link_repository = self.root / "link-repository"
+        target_repository = self.root / "target-repository"
+        link_repository.mkdir()
+        target_repository.mkdir()
+
+        def git(repository, *arguments):
+            """Run Git in one isolated test repository."""
+            return subprocess.run(
+                ["git", "-C", str(repository), *arguments],
+                capture_output=True,
+                text=True,
+                check=True,
+            )
+
+        git(link_repository, "init", "--quiet")
+        git(target_repository, "init", "--quiet")
         target = self.write_file(
-            "target/source.llzk",
+            "target-repository/source.llzk",
             "module {\n  func.func @main() {\n  }\n}\n",
         )
-        link = self.root / "link/source.llzk"
-        link.parent.mkdir(parents=True)
+        link = link_repository / "source.llzk"
         link.symlink_to(target)
         input_path = self.write_file(
             "input.llzk",
             "module {\n  func.func @main() {\n  }\n}\n",
         )
-
-        dirty_check = mock.Mock(return_value=False)
-        with mock.patch.dict(globals(), {"workspace_is_dirty": dirty_check}):
-            exit_code, _, error = self.invoke(
-                "--source",
-                str(link),
-                "--source_delim_regex=^module ",
-                "-i",
-                str(input_path),
+        for repository in (link_repository, target_repository):
+            git(repository, "add", ".")
+            git(
+                repository,
+                "-c",
+                "user.name=LLZK Tests",
+                "-c",
+                "user.email=tests@example.invalid",
+                "commit",
+                "--quiet",
+                "-m",
+                "fixture",
             )
+        before = target.read_bytes()
+
+        link_dirty = self.write_file("link-repository/.hidden", "untracked\n")
+        link_code, _, link_error = self.invoke(
+            "--source", str(link), "-i", str(input_path)
+        )
+        link_dirty.unlink()
+        self.assertEqual(link_code, 1)
+        self.assertIn("refusing to modify a dirty Git worktree", link_error)
+        self.assertEqual(target.read_bytes(), before)
+
+        target_dirty = self.write_file("target-repository/.hidden", "untracked\n")
+        target_code, _, target_error = self.invoke(
+            "--source", str(link), "-i", str(input_path)
+        )
+        target_dirty.unlink()
+        self.assertEqual(target_code, 1)
+        self.assertIn("refusing to modify a dirty Git worktree", target_error)
+        self.assertEqual(target.read_bytes(), before)
+
+        exit_code, _, error = self.invoke(
+            "--source",
+            str(link),
+            "--source_delim_regex=^module ",
+            "-i",
+            str(input_path),
+        )
 
         self.assertEqual(exit_code, 0)
         self.assertEqual(error, "")
         self.assertTrue(link.is_symlink())
-        self.assertEqual(
-            [call.args[0] for call in dirty_check.call_args_list],
-            [str(target)],
-        )
         self.assertIn(
             "NOTE: Assertions have been autogenerated", target.read_text(encoding="utf-8")
         )
