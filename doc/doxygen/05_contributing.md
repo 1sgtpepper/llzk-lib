@@ -85,11 +85,12 @@ When `--source` is provided, every line matching `--source_delim_regex` begins a
 the default pattern is `func @`. Anchor custom patterns to the intended structural source lines.
 Use `-i`/`--inplace` only after checking the generated output. In-place
 mode requires `--source`, cannot be combined with `--output`, and refuses to modify a source whose
-resolved target is in a dirty Git worktree, including untracked files. Use `--allow-dirty` only when
-replacing uncommitted FileCheck directives or other source content in a dirty worktree is
-intentional. The script writes the complete result to a temporary file beside the resolved source,
-copies the source permission bits, and then replaces the source. Generation or replacement failures
-leave the source unchanged.
+supplied path or resolved target is in a dirty Git worktree, including untracked files. Use
+`--allow-dirty` only when replacing uncommitted FileCheck directives or other source content in a
+dirty worktree is intentional. Generated output must contain one CHECK segment for each source
+placement segment; otherwise, the script exits without modifying the source. The script writes the
+complete result to a temporary file beside the resolved source, copies the source permission bits,
+and then replaces the source. Generation or replacement failures leave the source unchanged.
 
 Run the utility's unit tests with `python3 -m unittest scripts/generate-test-checks.py -v`.
 
