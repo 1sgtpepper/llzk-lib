@@ -45,7 +45,7 @@ jobs:
           rm -rf "$OUTPUT_PATH"
           mkdir -p "$OUTPUT_PATH"
 
-          pr635_head=bf63ae8778682bc73a7edca62e422d0eb8076779
+          pr635_head=17af00ba852c2bf89a0afa6b93f551734016494a
           filecheck=
           full_check_results=()
           focused_results=()
@@ -174,14 +174,17 @@ jobs:
                 "$output_path/producer-output.llzk"
             fi
 
-            "$filecheck" "${filecheck_args[@]}" --check-prefix="$check_prefix" \
-              "$source_root/$test_file" \
-              < "$output_path/producer-output.llzk" \
-              > "$output_path/committed-filecheck.txt" 2>&1
             python3 "$source_root/scripts/generate-test-checks.py" \
               --check-prefix="$check_prefix" \
               < "$output_path/producer-output.llzk" \
               > "$output_path/generated-checks.txt"
+            set +e
+            "$filecheck" "${filecheck_args[@]}" --check-prefix="$check_prefix" \
+              "$source_root/$test_file" \
+              < "$output_path/producer-output.llzk" \
+              > "$output_path/committed-filecheck.txt" 2>&1
+            local committed_filecheck_status=$?
+            set -e
             local generated_filecheck_status=PASS
             if ! "$filecheck" "${filecheck_args[@]}" --check-prefix="$check_prefix" \
               "$output_path/generated-checks.txt" \
@@ -325,13 +328,18 @@ jobs:
               diff_path.write_text("\n".join(diff) + "\n")
               comparison.append("full_check_block=FAIL")
               comparison_path.write_text("\n".join(comparison) + "\n")
-              raise SystemExit("complete generated CHECK block differs from committed block")
-
-          diff_path.write_text("")
-          comparison.append("full_check_block=PASS")
-          comparison.extend(f"placement={item}" for item in adjustments)
-          comparison_path.write_text("\n".join(comparison) + "\n")
+          else:
+              diff_path.write_text("")
+              comparison.append("full_check_block=PASS")
+              comparison.extend(f"placement={item}" for item in adjustments)
+              comparison_path.write_text("\n".join(comparison) + "\n")
           PY
+
+            local complete_output_replay=PASS
+            if test "$committed_filecheck_status" -ne 0 || \
+                grep -q '^full_check_block=FAIL$' "$output_path/comparison.txt"; then
+              complete_output_replay=STALE
+            fi
 
             focused_absence_checks=$(grep -Ec "^// ${check_prefix}-NOT:" \
               "$output_path/committed-test.llzk" || true)
@@ -353,13 +361,13 @@ jobs:
               echo "focused_absence_checks=$focused_absence_checks"
               echo "focused_absence_oracle=PASS"
               echo "affine_map_payloads=PASS"
-              echo "committed_checks_against_exact_head_output=PASS"
+              echo "committed_checks_against_exact_head_output=$complete_output_replay"
               echo "fresh_generated_checks_against_exact_head_output=PASS"
               echo "raw_generated_filecheck=$generated_filecheck_status"
-              echo "complete_output_replay=PASS"
+              echo "complete_output_replay=$complete_output_replay"
             } > "$output_path/replay-metadata.txt"
             rm -f "$clean_input"
-            full_check_results+=("$name=PASS")
+            full_check_results+=("$name=$complete_output_replay")
           }
 
           replay_focused_test() {
@@ -516,7 +524,8 @@ jobs:
             CHECK pipeline --enable-var-scope -split-input-file -llzk-flatten \
             -verify-diagnostics
 
-          if test "${#full_check_results[@]}" -eq 13; then
+          if test "${#full_check_results[@]}" -eq 13 && \
+              ! printf '%s\n' "${full_check_results[@]}" | grep -q '=STALE$'; then
             full_check_blocks=PASS
           else
             full_check_blocks=FAIL
@@ -538,6 +547,7 @@ jobs:
 
           test "${#full_check_results[@]}" -eq 13
           test "${#focused_results[@]}" -eq 4
+          test "$full_check_blocks" = PASS
 
       - name: Upload validation evidence
         if: always()
