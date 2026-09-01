@@ -1,8 +1,7 @@
 // RUN: llzk-opt -split-input-file -verify-diagnostics %s
 
 // Reject missing or unresolved arguments, mutable globals, symbols that resolve to another
-// operation kind, and values that violate the declared restriction.
-// arguments, including both untyped and typed target parameters.
+// operation kind, and values that violate untyped or typed target parameter restrictions.
 module attributes {llzk.lang} {
   poly.template @GlobalFunc {
     poly.param @A
