@@ -65,7 +65,7 @@ static inline bool areOppositeProductSources(Operation *a, Operation *b) {
          (*sourceA == FUNC_NAME_CONSTRAIN && *sourceB == FUNC_NAME_COMPUTE);
 }
 
-/// Return whether two control operands identify the same induction sequence value.
+/// Return whether two loop bounds or steps match under this pass's conservative rules.
 ///
 /// Distinct `poly.read_const` operations are equivalent only when they read the same binding from
 /// the same block. Matching trip counts are not sufficient because the fused loop uses one
@@ -90,7 +90,7 @@ static bool sameLoopControlValue(Value a, Value b) {
          aConstRead.getConstName() == bConstRead.getConstName();
 }
 
-/// Return whether LLZK's witness interpreter gives this loop unsigned bound semantics.
+/// Return whether LLZK's `unsignedCmp` attribute selects unsigned bound comparisons for this loop.
 static bool usesUnsignedCmp(scf::ForOp loop) {
   if (auto boolAttr = loop->getAttrOfType<BoolAttr>("unsignedCmp")) {
     return boolAttr.getValue();
@@ -99,7 +99,7 @@ static bool usesUnsignedCmp(scf::ForOp loop) {
 }
 
 /// Return whether two marked loops have the same parent region, opposite product roles, and the
-/// same lower-bound, upper-bound, step, and LLZK comparison-mode sequence.
+/// same lower bound, upper bound, step, and signed or unsigned comparison.
 static inline bool canLoopsBeFused(scf::ForOp a, scf::ForOp b) {
   if (a->getParentRegion() != b->getParentRegion()) {
     return false;
@@ -140,10 +140,10 @@ static bool isMatchingComputeWrite(MemberWriteOp write, MemberReadOp read) {
          write.getMemberNameAttr() == read.getMemberNameAttr();
 }
 
-/// Return whether a signal member read can be hoisted before `computeIf` without changing the
-/// constraint's signal identity. The referenced member must resolve to an explicit signal
-/// definition, match a preceding direct compute-if-result write, have no table offset, have
-/// operands available before the compute if, and be used only inside the paired constrain if.
+/// Return whether a signal member read can be hoisted before `computeIf` while remaining the
+/// constraint operand. The referenced member must resolve to an explicit signal definition, match
+/// a preceding direct compute-if-result write, have no table offset, have operands available before
+/// the compute if, and be used only inside the paired constrain if.
 static bool canHoistMemberRead(
     MemberReadOp read, scf::IfOp computeIf, scf::IfOp constrainIf,
     ArrayRef<MemberWriteOp> priorWrites, SymbolTableCollection &symbolTables
@@ -610,8 +610,8 @@ fuseMatchingLoopPairs(Region &body, MLIRContext *context, SymbolTableCollection 
     }
     auto fusedLoop = fuseIndependentSiblingForLoops(computeLoop, constrainLoop, rewriter);
     if (unsignedCmpAttr) {
-      // The witness interpreter consumes this discardable attribute even though MLIR's SCF dialect
-      // does not. Keep it on the fused loop after the generic helper creates a fresh operation.
+      // LLZK records `unsignedCmp` as a discardable `scf.for` attribute. The generic SCF fusion
+      // helper does not copy it, so retain the accepted input spelling.
       fusedLoop->setAttr("unsignedCmp", unsignedCmpAttr);
     }
     setProductSource(fusedLoop, "fused");

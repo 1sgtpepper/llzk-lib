@@ -262,8 +262,8 @@ TEST_F(FuseProductControlFlowTests, UnmarkedSignalMemberReadPreventsFusion) {
 }
 
 TEST_F(FuseProductControlFlowTests, RepeatedMemberWritesPreventReadHoisting) {
-  // A hoisted signal read must have one matching write. Matching any one of repeated writes would
-  // make the read's signal identity ambiguous after the writes remain outside the fused if.
+  // A hoisted signal read must have one matching write. With repeated writes, the pass cannot
+  // preserve which written value the original read observed.
   mlir::OwningOpRef<mlir::ModuleOp> module = mlir::parseSourceString<mlir::ModuleOp>(
       R"mlir(
     module attributes {llzk.lang = "llzk"} {
@@ -445,8 +445,8 @@ TEST_F(FuseProductControlFlowTests, NestedLoopControlMismatchPreventsFusion) {
 }
 
 TEST_F(FuseProductControlFlowTests, ReversedLoopPairPreventsFusion) {
-  // A constrain loop that precedes its compute partner is not a forward-sink candidate and must
-  // remain unchanged instead of reaching the end of the block during preparation.
+  // A constrain loop that precedes its compute partner must remain unchanged; fusion only moves a
+  // preceding compute loop toward its constrain partner.
   mlir::OwningOpRef<mlir::ModuleOp> module = mlir::parseSourceString<mlir::ModuleOp>(
       R"mlir(
     module attributes {llzk.lang = "llzk"} {
@@ -516,8 +516,8 @@ TEST_F(FuseProductControlFlowTests, ReversedLoopPairPreventsFusion) {
 }
 
 TEST_F(FuseProductControlFlowTests, CrossedLoopPairsUseLexicalApplicationOrder) {
-  // The first pair moves the second compute loop past its constrain partner. The stale second
-  // candidate becomes reversed; live-order revalidation blocks it, and lexical order chooses A.
+  // The first pair moves the second compute loop past its constrain partner. Rechecking the second
+  // pair's current order leaves it unfused, so lexical application order selects A.
   mlir::OwningOpRef<mlir::ModuleOp> module = mlir::parseSourceString<mlir::ModuleOp>(
       R"mlir(
     module attributes {llzk.lang = "llzk"} {
@@ -595,10 +595,10 @@ TEST_F(FuseProductControlFlowTests, CrossedLoopPairsUseLexicalApplicationOrder) 
   EXPECT_TRUE(fusedLoop->isBeforeInBlock(remainingCompute));
 }
 
-TEST_F(FuseProductControlFlowTests, LoopComparisonModeIsPartOfFusionIdentity) {
-  // LLZK's witness interpreter treats unsignedCmp as loop semantics. Mixed modes stay separate,
-  // while each equivalent representation (unit attribute, true, false, or absent) retains its
-  // mode after the generic MLIR helper rebuilds the fused loop.
+TEST_F(FuseProductControlFlowTests, LoopUnsignedComparisonMustMatch) {
+  // Loops that select different signed or unsigned bound comparisons stay separate. Unit and true
+  // select unsigned comparison; absent and false select signed comparison, and the fused loop
+  // retains the accepted input spelling.
   mlir::OwningOpRef<mlir::ModuleOp> module = mlir::parseSourceString<mlir::ModuleOp>(
       R"mlir(
     module attributes {llzk.lang = "llzk"} {
@@ -673,7 +673,7 @@ TEST_F(FuseProductControlFlowTests, LoopComparisonModeIsPartOfFusionIdentity) {
   });
   ASSERT_TRUE(product);
 
-  // Unique upper bounds tie each comparison-mode expectation to its original loop pair.
+  // Unique upper bounds tie each signed/unsigned expectation to its original loop pair.
   llvm::SmallVector<mlir::scf::ForOp> upperBound2Loops;
   llvm::SmallVector<mlir::scf::ForOp> upperBound3Loops;
   llvm::SmallVector<mlir::scf::ForOp> upperBound4Loops;
