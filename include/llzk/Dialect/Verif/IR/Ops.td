@@ -445,22 +445,24 @@ def IncludeOp
 
     When the target contract is inside a `poly.template`, the optional template parameter list
     supplies one argument per `poly.param`, in declaration order. The list may be omitted when
-    every parameter appears in the contract signature; omitted values are derived from the
-    inclusion operand types. Every explicit or inferred argument must satisfy its declared type
-    restriction. If both forms provide a value for the same parameter, the explicit and inferred
-    values must unify. For felt-valued parameters, known fields and concrete values must also agree.
+    every parameter appears in the contract signature; omitted values are inferred by unifying the
+    inclusion operand types with that signature. Every explicit or inferred argument must satisfy
+    its declared type restriction. If both forms provide a value for the same parameter, the
+    explicit and inferred values must unify. For felt-valued parameters, known fields and concrete
+    values must also agree.
     An argument that resolves to an enclosing binding without a declared type restriction may
     remain deferred for an index, integer, or fieldless felt parameter; it cannot satisfy a fielded
     felt or `poly.tvar` restriction. The direct argument for an index or integer restriction must be
     an integer, not an affine map. The `?` wildcard is valid for any parameter with a `poly.tvar`
-    restriction and leaves that type for later inference based on the target contract. For a
-    parameter with a `poly.tvar` restriction, a type
-    argument resolves nested `struct.type`, `array.type`, and `poly.tvar` symbols at the inclusion
-    site. A nested `poly.tvar` is accepted once its parameter reference resolves, even when its
-    concrete type remains deferred.
+    restriction and leaves that argument for a later type-inference pass. For a parameter with a
+    `poly.tvar` restriction, a type argument must be a valid LLZK type and may contain nested
+    `struct.type`, `array.type`, and `poly.tvar` references. The verifier resolves those references
+    at the inclusion site. A nested `poly.tvar` is accepted once its parameter reference resolves,
+    even when its concrete type remains deferred.
 
-    During verification, paths in a target signature reached through `include.from` resolve
-    relative to the included module when comparing explicit arguments or inferring omitted ones.
+    When a target is reached through an `include.from` alias, verification resolves names in its
+    signature relative to the included module. The `callee` attribute retains the caller-visible
+    qualified alias path. This applies when checking explicit arguments and inferring omitted ones.
 
     Symbol arguments must resolve to an enclosing `poly.param` or `poly.expr` binding or a constant
     global; unresolved symbols, mutable globals, and symbols that resolve to another operation kind
@@ -582,6 +584,20 @@ def IncludeOp
     /// Allocate consecutive storage of the ValueRange instances in the parameter
     /// so it can be passed to the builders as an `ArrayRef<ValueRange>`.
     static ::llvm::SmallVector<::mlir::ValueRange> toVectorOfValueRange(::mlir::OperandRangeRange);
+
+    /// Check one template argument from this `IncludeOp` against the target parameter restriction.
+    ::mlir::LogicalResult verifyTemplateParamCompatibility(
+        ::mlir::Attribute paramFromIncludeOp,
+        ::llzk::polymorphic::TemplateParamOp targetParam
+    );
+
+    /// Check each explicit template argument from this `IncludeOp` against the corresponding target
+    /// parameter restriction. The argument and parameter ranges must be non-empty and have the
+    /// same size.
+    ::mlir::LogicalResult verifyTemplateParamCompatibility(
+        ::llvm::iterator_range<
+            ::mlir::Region::op_iterator<::llzk::polymorphic::TemplateParamOp>> targetParamDefs
+    );
 
     /// Verify that each template parameter value provided in this `IncludeOp` is consistent with
     /// the value inferred for the target `TemplateParamOp` in the given `UnificationMap`. The

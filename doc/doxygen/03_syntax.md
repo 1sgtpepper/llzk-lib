@@ -33,15 +33,18 @@ module attributes {llzk.lang = "circom"} {
 - `i1`: (MLIR builtin) Boolean value [0,1].
 - `index`: (MLIR builtin) Machine integer.
 - `felt.type`: Finite field element.
-- `array.type<N x E>`: Aggregate type with indexed [pseudo-homogeneous](\ref pseudo-homogeneous) elements. Element type cannot be another array type, instead multi-dimensional arrays are specified with a comma-separated list of dimension sizes. Each dimension size can be specified as an integer literal, a symbol that resolves to an index-typed enclosing `poly.param` or `poly.expr` binding or constant global, or an [affine_map](https://mlir.llvm.org/docs/Dialects/Affine/#polyhedral-structures) (used when creating arrays within a loop where the dimension size depends on the loop iteration variable).
+- `array.type<N x E>`: Aggregate type with indexed [pseudo-homogeneous](\ref pseudo-homogeneous) elements. Element type cannot be another array type, instead multi-dimensional arrays are specified with a comma-separated list of dimension sizes. Each dimension size can be specified as an integer literal, a symbol that resolves to an index-typed enclosing `poly.param` or `poly.expr` binding or constant global, or a single-result [affine_map](https://mlir.llvm.org/docs/Dialects/Affine/#polyhedral-structures) (used when creating arrays within a loop where the dimension size depends on the loop iteration variable).
 - `struct.type<@Name<[...]>>`: Aggregate type whose named heterogeneous elements are declared within `struct.def @Name`. It generally correlates to a component or function in the source language.
   For a definition nested in a `poly.template`, an optional instantiation list supplies one argument per `poly.param`, in declaration order. For a definition with no parameters, the list may be omitted or explicitly written as `[]`.
   Each argument is one of the following:
   - an integer literal;
   - a felt constant such as `#felt<const 35>`;
   - a symbol that resolves to an enclosing `poly.param` or `poly.expr` binding or constant global;
-  - a type used to instantiate a `poly.tvar<@N>` (see below); or
+  - a valid LLZK type used to instantiate a `poly.tvar<@N>` (see below); or
   - a single-result [affine_map](https://mlir.llvm.org/docs/Dialects/Affine/#polyhedral-structures) for an integer-like argument that depends on a loop iteration variable.
+
+  A type argument may contain nested `struct.type`, `array.type`, and `poly.tvar` references. These
+  references are resolved and validated at the `struct.type` use site.
 
   For example, given `poly.template @T` with `poly.param @P : !felt.type<"bn128">`
   and a nested `struct.def @S`, these arguments select the same value and field:
@@ -66,9 +69,11 @@ LLZK supports arrays where the element type is not truly homogeneous, specifical
 - Felt-valued template arguments on `struct.type`, templated free-function calls, and `verif.include` may be integer literals, felt constants, or symbols.
   A fieldless felt restriction accepts any felt field. For a fielded restriction, a fieldless felt constant or integer is accepted as a value in the required field; an explicitly fielded constant or a symbol with a known field must use that field, and a symbol whose resolved type does not establish a field does not establish one.
   For a felt-valued parameter inferred independently from multiple positions, all known fields and concrete values must agree.
-  An argument that resolves to an enclosing binding without a declared type restriction may remain deferred for an index, integer, or fieldless felt parameter. It cannot satisfy a fielded felt or `poly.tvar` restriction, and an array dimension requires an index-typed binding at that type use.
-  A direct `function.call` or `verif.include` argument for an index or integer restriction must be an integer, not an affine map; a single-result affine map remains valid as a `struct.type` argument with such a restriction.
-  The `?` wildcard in a `function.call` or `verif.include` template argument is valid only for a `poly.tvar` restriction and defers its concrete type to a later type-inference pass. An array dimension may independently use `?` as a dynamic size. Symbolic arguments must resolve to an enclosing `poly.param` or `poly.expr` binding or a constant global; unresolved symbols, mutable globals, and symbols that resolve to another operation kind are rejected. For a `function.call` or `verif.include` parameter with a `poly.tvar` restriction, a type argument resolves nested `struct.type`, `array.type`, and `poly.tvar` symbols at the call or inclusion site. A nested `poly.tvar` is accepted once its parameter reference resolves, even when its concrete type remains deferred.
+- A symbolic template argument must resolve to an enclosing `poly.param` or `poly.expr` binding or a constant global; unresolved symbols, mutable globals, and symbols that resolve to another operation kind are rejected.
+  A binding without a declared type restriction may remain deferred for an index, integer, or fieldless felt parameter. It cannot satisfy a fielded felt or `poly.tvar` restriction, and an array dimension requires an index-typed binding at that type use.
+- A direct `function.call` or `verif.include` argument for an index or integer restriction must be an integer, not an affine map. A single-result affine map remains valid as a `struct.type` argument with such a restriction.
+- The `?` wildcard in a `function.call` or `verif.include` template argument is valid only for a `poly.tvar` restriction and defers its concrete type to a later type-inference pass. An array dimension may independently use `?` as a dynamic size.
+- A type argument must be a valid LLZK type and may contain nested `struct.type`, `array.type`, and `poly.tvar` references. A `function.call` or `verif.include` verifier resolves these references at the call or inclusion site. A nested `poly.tvar` is accepted once its parameter reference resolves, even when its concrete type remains deferred.
 - A `function.def` argument may have `function.arg_name = "..."` to preserve the source-level argument name independently from the SSA name printed by MLIR. The value must be a non-empty, untyped string attribute; typed string attributes such as `"x" : i1` are rejected. Attached argument names must be unique within the function. Argument-splitting transforms derive names for generated arguments, such as `input[0]` for array elements or `self.member` for struct members.
 - Ops marked with the `WitnessGen` trait can only be used in functions with the `allow_witness` attribute (`compute()` within `struct.def` has this by default). Similarly, ops marked with the `ConstraintGen` trait can only be used in functions with the `allow_constraint` attribute (`constrain()` within `struct.def` has this by default).
 - Functions with the `allow_witness` attribute can only call other functions marked with `allow_witness`. Likewise for `allow_constraint`.

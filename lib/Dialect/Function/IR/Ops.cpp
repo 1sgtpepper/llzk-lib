@@ -621,6 +621,21 @@ void CallOp::build(
   addTemplateParams<CallOp>(odsBuilder, props, templateParams);
 }
 
+LogicalResult
+CallOp::verifyTemplateParamCompatibility(Attribute paramFromCallOp, TemplateParamOp targetParam) {
+  return llzk::verifyTemplateParamValueCompatibility(
+      getOperation(), paramFromCallOp, targetParam
+  );
+}
+
+LogicalResult CallOp::verifyTemplateParamCompatibility(
+    llvm::iterator_range<Region::op_iterator<TemplateParamOp>> targetParamDefs
+) {
+  return llzk::verifyTemplateParamValuesCompatibility(
+      getOperation(), getTemplateParamsAttr(), targetParamDefs
+  );
+}
+
 LogicalResult CallOp::verifyTemplateParamsMatchInferred(
     llvm::iterator_range<Region::op_iterator<TemplateParamOp>> targetParamDefs,
     const UnificationMap &unifications

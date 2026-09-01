@@ -535,6 +535,9 @@ LogicalResult verifyTemplateParamValueCompatibility(
     TypeAttr typeValue = llvm::dyn_cast<TypeAttr>(value);
     compatible = static_cast<bool>(typeValue);
     if (typeValue) {
+      if (failed(checkValidType(getEmitOpErrFn(origin), typeValue.getValue()))) {
+        return failure();
+      }
       // Resolve nested symbols now, while a valid TypeVarType remains deferred for inference.
       SymbolTableCollection tables;
       if (failed(verifyTypeResolution(tables, origin, typeValue.getValue()))) {

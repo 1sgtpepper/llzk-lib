@@ -70,6 +70,12 @@ module attributes {llzk.lang} {
     function.return %value : index
   }
 
+  function.def @invalid_builtin_type_argument() -> index {
+    // expected-error@+1 {{'function.call' op expected a valid LLZK type but found 'i8'}}
+    %value = function.call @TypeTarget::@id<[i8]>() : () -> index
+    function.return %value : index
+  }
+
   poly.template @Caller {
     poly.param @U : !poly.tvar<@U>
 

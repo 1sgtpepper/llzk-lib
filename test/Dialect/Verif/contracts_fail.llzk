@@ -481,6 +481,11 @@ module attributes {llzk.lang} {
     verif.include @TypeTarget::@Base<[!felt.type]>() : () -> ()
   }
 
+  verif.contract @InvalidBuiltinTypeArgument for @entry () {
+    // expected-error@+1 {{'verif.include' op expected a valid LLZK type but found 'i8'}}
+    verif.include @TypeTarget::@Base<[i8]>() : () -> ()
+  }
+
   verif.contract @MissingTypeArgument for @entry () {
     // expected-error@+1 {{'verif.include' op references unknown symbol "@MissingType"}}
     verif.include @TypeTarget::@Base<[!poly.tvar<@MissingType>]>() : () -> ()

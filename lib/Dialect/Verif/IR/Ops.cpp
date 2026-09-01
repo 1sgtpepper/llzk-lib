@@ -752,6 +752,22 @@ void IncludeOp::build(
   addTemplateParams<IncludeOp>(odsBuilder, props, templateParams);
 }
 
+LogicalResult IncludeOp::verifyTemplateParamCompatibility(
+    Attribute paramFromIncludeOp, TemplateParamOp targetParam
+) {
+  return llzk::verifyTemplateParamValueCompatibility(
+      getOperation(), paramFromIncludeOp, targetParam
+  );
+}
+
+LogicalResult IncludeOp::verifyTemplateParamCompatibility(
+    llvm::iterator_range<Region::op_iterator<TemplateParamOp>> targetParamDefs
+) {
+  return llzk::verifyTemplateParamValuesCompatibility(
+      getOperation(), getTemplateParamsAttr(), targetParamDefs
+  );
+}
+
 LogicalResult IncludeOp::verifyTemplateParamsMatchInferred(
     llvm::iterator_range<Region::op_iterator<TemplateParamOp>> targetParamDefs,
     const UnificationMap &unifications

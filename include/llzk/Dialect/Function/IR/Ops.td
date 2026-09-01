@@ -352,9 +352,8 @@ def CallOp : FunctionDialectOp<
     parameter list supplies one argument per `poly.param`, in declaration order. The list may be
     omitted only when every parameter appears in the function signature; omitted values are
     inferred by unifying the call's operand and result types with that signature. The `?` wildcard
-    is valid for any parameter with a `poly.tvar` restriction and leaves that type for later
-    inference based on the body of the callee function. Verification fails if the type cannot be
-    inferred from the callee.
+    is valid for any parameter with a `poly.tvar` restriction and leaves that argument for a later
+    type-inference pass.
 
     Every explicit or inferred argument must satisfy its `poly.param` type restriction. If the
     function signature independently infers a value for an explicitly supplied parameter, the
@@ -363,13 +362,14 @@ def CallOp : FunctionDialectOp<
     type restriction may remain deferred for an index, integer, or fieldless felt parameter; it
     cannot satisfy a fielded felt or `poly.tvar` restriction. A direct argument for an index or
     integer restriction must be an integer, not an affine map. For a parameter with a `poly.tvar`
-    restriction, a type argument
-    resolves nested `struct.type`, `array.type`, and `poly.tvar` symbols at the call site. A nested
-    `poly.tvar` is accepted once its parameter reference resolves, even when its concrete type
-    remains deferred.
+    restriction, a type argument must be a valid LLZK type and may contain nested `struct.type`,
+    `array.type`, and `poly.tvar` references. The verifier resolves those references at the call
+    site. A nested `poly.tvar` is accepted once its parameter reference resolves, even when its
+    concrete type remains deferred.
 
-    During verification, paths in a target signature reached through `include.from` resolve
-    relative to the included module when comparing explicit arguments or inferring omitted ones.
+    When a target is reached through an `include.from` alias, verification resolves names in its
+    signature relative to the included module. The `callee` attribute retains the caller-visible
+    qualified alias path. This applies when checking explicit arguments and inferring omitted ones.
 
     Symbol arguments must resolve to an enclosing `poly.param` or `poly.expr` binding or a constant
     global; unresolved symbols, mutable globals, and symbols that resolve to another operation kind
@@ -547,6 +547,20 @@ def CallOp : FunctionDialectOp<
     /// Allocate consecutive storage of the ValueRange instances in the parameter
     /// so it can be passed to the builders as an `ArrayRef<ValueRange>`.
     static ::llvm::SmallVector<::mlir::ValueRange> toVectorOfValueRange(::mlir::OperandRangeRange);
+
+    /// Check one template argument from this `CallOp` against the target parameter restriction.
+    ::mlir::LogicalResult verifyTemplateParamCompatibility(
+        ::mlir::Attribute paramFromCallOp,
+        ::llzk::polymorphic::TemplateParamOp targetParam
+    );
+
+    /// Check each explicit template argument from this `CallOp` against the corresponding target
+    /// parameter restriction. The argument and parameter ranges must be non-empty and have the
+    /// same size.
+    ::mlir::LogicalResult verifyTemplateParamCompatibility(
+        ::llvm::iterator_range<
+            ::mlir::Region::op_iterator<::llzk::polymorphic::TemplateParamOp>> targetParamDefs
+    );
 
     /// Verify that each template parameter value provided in this `CallOp` is consistent with
     /// the value inferred for the target `TemplateParamOp` in the given `UnificationMap`. The
