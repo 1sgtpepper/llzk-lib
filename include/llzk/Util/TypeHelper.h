@@ -284,12 +284,10 @@ bool typesUnify(
 /// type unification.
 bool isTemplateParamTypeCompatible(mlir::Type actualType, mlir::Type requiredType);
 
-/// A binding with no declared type restriction is compatible with a fieldless required felt type,
-/// but it cannot satisfy a fielded required felt type because it does not establish the field
-/// needed by that restriction. It also cannot satisfy a `TypeVarType` restriction because
-/// an unrestricted binding does not establish that the eventual argument is a type. For other
-/// required types, preserve the existing unrestricted-binding behavior. Direct array dimensions
-/// separately require an index-typed binding at their type-resolution site.
+/// With no actual type, a binding is compatible with a fieldless felt or any non-felt,
+/// non-`TypeVarType` restriction. It is incompatible with a fielded felt or `TypeVarType`
+/// restriction. Direct array dimensions separately require an index-typed binding at their
+/// type-resolution site.
 bool isTemplateParamTypeCompatible(std::optional<mlir::Type> actualType, mlir::Type requiredType);
 
 /// Check a template argument against an optional restriction and return the representation used by

@@ -259,22 +259,21 @@ mlir::LogicalResult verifyKnownTargetTemplateParams(
     llvm::function_ref<mlir::FailureOr<UnificationMap>(UnificationCandidateFn)> unify
 );
 
-/// Ensure that the given symbol (that is used as a parameter of the given type) can be resolved.
+/// Ensure that a symbol used by a parameterized type or array dimension can be resolved.
 /// If `requiredParamType` is provided, any resolved template symbol must satisfy that restriction.
 /// If `requiredParamLoc` is provided, relevant diagnostics include it as the template declaration
 /// location.
 mlir::LogicalResult verifyParamOfType(
-    mlir::SymbolTableCollection &tables, mlir::SymbolRefAttr param, mlir::Type structOrArrayType,
+    mlir::SymbolTableCollection &tables, mlir::SymbolRefAttr param, mlir::Type parameterizedType,
     mlir::Operation *origin, std::optional<mlir::Type> requiredParamType = std::nullopt,
     std::optional<mlir::Location> requiredParamLoc = std::nullopt
 );
 
-/// Ensure that any symbols that appear within the given attributes (that are parameters of the
-/// given type) can be resolved. If `requiredParamType` is provided, any resolved template symbols
-/// must satisfy that restriction.
+/// Ensure that symbols in type-parameter or array-dimension attributes can be resolved. If
+/// `requiredParamType` is provided, any resolved template symbols must satisfy that restriction.
 mlir::LogicalResult verifyParamsOfType(
     mlir::SymbolTableCollection &tables, mlir::ArrayRef<mlir::Attribute> tyParams,
-    mlir::Type structOrArrayType, mlir::Operation *origin,
+    mlir::Type parameterizedType, mlir::Operation *origin,
     std::optional<mlir::Type> requiredParamType = std::nullopt
 );
 

@@ -46,14 +46,17 @@ def LLZK_StructType : StructDialectType<"Struct", "type"> {
     and dimension references anywhere in that nested type are resolved and validated at the
     `struct.type` use site.
 
+    The examples below are schematic: `@A` names a non-parameterized struct; `@T` declares index,
+    felt, and type parameters in that order, names its index parameter `@N`, and contains `@B`.
+
     ```llzk
     // Type for struct `A` with no parameters.
     !struct.type<@A>
 
-    // Type for `@T::@B`, whose parameters accept an index, a felt, and a type.
+    // Supply concrete arguments to all three parameters of @T::@B.
     !struct.type<@T::@B<[5, #felt<const 35>, !felt.type]>>
 
-    // A symbolic argument can name a binding from the enclosing template.
+    // An argument can name an enclosing template binding with a compatible restriction.
     !struct.type<@T::@B<[@N, #felt<const 35>, !felt.type]>>
     ```
   }];
