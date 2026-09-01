@@ -90,10 +90,10 @@ poly.template @T {
 An initializer cannot reference globals, call functions, or use a `poly.expr` binding defined in
 the same template, including itself. Other operations may appear in the initializer, but once
 `llzk-flatten` evaluates the expression after its value and type dependencies become concrete, each
-`poly.read_const` must resolve to a concrete value, each other operation before `poly.yield` must
-fold to concrete attributes, and the value passed to `poly.yield` must resolve to a concrete
-attribute; otherwise evaluation fails. The yielded value must have an integral, felt, or
-type-variable type.
+`poly.read_const` must resolve to a concrete value, each other operation before `poly.yield` must be
+safe to speculate, have no memory effects, and fold to concrete attributes, and the value passed to
+`poly.yield` must resolve to a concrete attribute; otherwise evaluation fails. The yielded value
+must have an integral, felt, or type-variable type.
 
 When only some bindings are concrete, `llzk-flatten` creates a reduced `poly.template` containing
 the remaining non-concrete parameter bindings. A referenced expression with remaining symbolic

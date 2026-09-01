@@ -58,5 +58,36 @@ module attributes {llzk.lang} {
   }
 }
 
+// -----
+
+// A successful zero-result fold must not discard an assertion nested in the folded operation.
+module attributes {llzk.lang, llzk.main = !struct.type<@EffectfulExpr::@Value>} {
+  poly.template @EffectfulExpr {
+    poly.expr @Result {
+      %condition = arith.constant false
+      %one = arith.constant true
+      %negated = arith.xori %condition, %one : i1
+      // expected-error@+1 {{'scf.if' op cannot evaluate concrete template expression with memory effects or unsafe speculation}}
+      scf.if %negated {
+        %false = arith.constant false
+        bool.assert %false, "must not be discarded"
+      } else {
+      }
+      %result = arith.constant 7 : index
+      poly.yield %result : index
+    }
+    struct.def @Value {
+      function.def @compute() -> !struct.type<@EffectfulExpr::@Value> {
+        %result = poly.read_const @Result : index
+        %self = struct.new : !struct.type<@EffectfulExpr::@Value>
+        function.return %self : !struct.type<@EffectfulExpr::@Value>
+      }
+      function.def @constrain(%self: !struct.type<@EffectfulExpr::@Value>) {
+        function.return
+      }
+    }
+  }
+}
+
 // Verify the command-level pass failure after the split-local diagnostics.
 // CHECK: llzk-flatten failed while instantiating the main struct

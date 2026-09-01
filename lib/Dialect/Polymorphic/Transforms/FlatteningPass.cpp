@@ -44,6 +44,7 @@
 #include <mlir/IR/BuiltinOps.h>
 #include <mlir/IR/BuiltinTypes.h>
 #include <mlir/Interfaces/InferTypeOpInterface.h>
+#include <mlir/Interfaces/SideEffectInterfaces.h>
 #include <mlir/Pass/PassManager.h>
 #include <mlir/Support/LLVM.h>
 #include <mlir/Support/LogicalResult.h>
@@ -693,7 +694,8 @@ static bool calleeReferencesTemplateParam(CallOp op) {
 }
 
 /// Evaluate a single template expression. An unresolved parameter defers evaluation; malformed,
-/// incompatible, or non-foldable concrete expressions are semantic errors.
+/// incompatible, effectful, non-speculatable, or non-foldable concrete expressions are semantic
+/// errors.
 static FailureOr<std::optional<Attribute>>
 evaluateExpr(TemplateExprOp exprOp, const DenseMap<Attribute, Attribute> &paramNameToConcrete) {
   // Deferral depends on the expression's complete parameter set, not operation order. Do not
@@ -747,11 +749,19 @@ evaluateExpr(TemplateExprOp exprOp, const DenseMap<Attribute, Attribute> &paramN
       operandAttrs.push_back(it->second);
     }
 
-    // Try constant folding.
+    // A successful zero-result fold can otherwise discard an operation with nested effects.
+    // Accept only folds whose operation is safe to speculate and free of memory effects.
+    const bool isFoldDiscardable = mlir::isPure(&bodyOp);
     SmallVector<OpFoldResult> foldResults;
     if (failed(bodyOp.fold(operandAttrs, foldResults)) ||
         foldResults.size() != bodyOp.getNumResults()) {
       bodyOp.emitOpError("cannot fold concrete template expression");
+      return failure();
+    }
+    if (!isFoldDiscardable) {
+      bodyOp.emitOpError(
+          "cannot evaluate concrete template expression with memory effects or unsafe speculation"
+      );
       return failure();
     }
     for (auto [result, fr] : llvm::zip_equal(bodyOp.getResults(), foldResults)) {
