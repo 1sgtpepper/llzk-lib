@@ -33,9 +33,9 @@ def TypeVarType : PolymorphicDialectType<"TypeVar", "tvar"> {
 
     ```llzk
     poly.template @TA {
-      poly.param @Ty
+      poly.param @Ty : !poly.tvar<@Ty>
       struct.def @A {
-        member @x : !array.type<2 x !poly.tvar<@Ty>>
+        struct.member @x : !array.type<2 x !poly.tvar<@Ty>>
         ...
       }
     }

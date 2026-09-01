@@ -455,10 +455,10 @@ def IncludeOp
     felt or `poly.tvar` restriction. The direct argument for an index or integer restriction must be
     an integer, not an affine map. The `?` wildcard is valid for any parameter with a `poly.tvar`
     restriction and leaves that argument for a later type-inference pass. For a parameter with a
-    `poly.tvar` restriction, a type argument must be a valid LLZK type and may contain nested
-    `struct.type`, `array.type`, and `poly.tvar` references. The verifier resolves those references
-    at the inclusion site. A nested `poly.tvar` is accepted once its parameter reference resolves,
-    even when its concrete type remains deferred.
+    `poly.tvar` restriction, a type argument must be a valid LLZK type and may nest `struct.type`,
+    `array.type`, `pod.type`, and `poly.tvar`. The verifier resolves symbol and dimension references
+    anywhere in that nested type at the inclusion site. A nested `poly.tvar` is accepted once its
+    parameter reference resolves, even when its concrete type remains deferred.
 
     When a target is reached through an `include.from` alias, verification resolves names in its
     signature relative to the included module. The `callee` attribute retains the caller-visible

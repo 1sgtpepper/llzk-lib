@@ -42,8 +42,9 @@ def LLZK_StructType : StructDialectType<"Struct", "type"> {
         argument; one use is varying a struct argument across array elements
       - TypeAttr, specifying a type parameter
 
-    A `TypeAttr` argument may contain nested `struct.type`, `array.type`, and `poly.tvar`
-    references. Those references are resolved and validated at the `struct.type` use site.
+    A `TypeAttr` argument may nest `struct.type`, `array.type`, `pod.type`, and `poly.tvar`. Symbol
+    and dimension references anywhere in that nested type are resolved and validated at the
+    `struct.type` use site.
 
     ```llzk
     // Type for struct `A` with no parameters.

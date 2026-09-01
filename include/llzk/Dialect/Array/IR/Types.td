@@ -46,8 +46,14 @@ def LLZK_ArrayType
     // Example array of 5 by 2 elements of `Felt` type.
     !array.type<5,2 x !felt.type>
 
-    // Example array using a struct parameter for one dimension.
-    !array.type<5,@A x index>
+    // Example array using an index-typed template binding for one dimension.
+    poly.template @TA {
+      poly.param @N : index
+      struct.def @A {
+        struct.member @values : !array.type<5,@N x index>
+        ...
+      }
+    }
     ```
   }];
 
