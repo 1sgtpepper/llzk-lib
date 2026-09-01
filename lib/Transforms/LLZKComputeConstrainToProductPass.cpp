@@ -52,8 +52,8 @@ FuncDefOp ProductAligner::alignFuncs(StructDefOp root, FuncDefOp compute, FuncDe
 
   OpBuilder funcBuilder(compute);
 
-  // Preserve each operation's source role on the aligned product function for later control-flow
-  // fusion.
+  // Mark each source operation so the aligned product function retains its compute or constrain
+  // role for later control-flow fusion.
   compute.walk([](Operation *op) { setProductSource(op, FUNC_NAME_COMPUTE); });
 
   constrain.walk([](Operation *op) { setProductSource(op, FUNC_NAME_CONSTRAIN); });

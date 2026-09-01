@@ -116,14 +116,15 @@ def FuseProductControlFlowPass : LLZKPass<"llzk-fuse-product-control-flow"> {
       "Fuse matching compute/constrain control flow in a @product function";
   let description = [{
     Fuse uniquely matched compute/constrain `scf.for` and `scf.if` siblings in `@product`
-    functions. A pair must carry opposite `product_source` values: `compute` and `constrain`.
-    Unmatched, ambiguous, or unsafe pairs remain unchanged.
+    functions. A pair must contain one operation originating in `@compute` and one originating in
+    `@constrain`. Unmatched, ambiguous, or unsafe pairs remain unchanged.
 
     Loop pairs must be in the same block with the compute loop first. Each lower bound, upper bound,
     and step must be the same SSA value, equal integer constants, or same-block `poly.read_const`
-    operations naming the same binding; the pass does not infer arithmetic equivalence. A missing
-    `unsignedCmp` or `unsignedCmp = false` uses signed bounds; any other present `unsignedCmp` uses
-    unsigned bounds. Fusion interleaves the loop bodies, so the compute loop must be
+    operations naming the same binding; the pass does not infer arithmetic equivalence. An absent
+    `unsignedCmp` attribute or `unsignedCmp = false` selects signed bound comparisons; a unit
+    attribute or `unsignedCmp = true` selects unsigned comparisons. Both loops must select the same
+    behavior. Fusion interleaves the loop bodies, so the compute loop must be
     memory-effect-free and speculatable. The constrain loop may contain `constrain.eq`,
     `constrain.in`, `llzk.nondet`, nested conditionals, speculatable `scf.for` operations, and other
     operations that MLIR proves pure. Storage effects, calls, allocation, traps, `scf.while`, and
@@ -136,17 +137,17 @@ def FuseProductControlFlowPass : LLZKPass<"llzk-fuse-product-control-flow"> {
 
     Conditional pairs must be in the same block with the compute op first, use the exact same SSA
     condition, both have or both omit an else region, have compatible attributes, and have a
-    resultless constrain op. Attribute compatibility means that all attributes other than
-    `product_source` are exactly equal; compatible attributes are retained. Each fused branch keeps
-    compute operations before constrain operations and preserves the compute results. Between the
-    pair, the pass permits only direct member writes of compute-if results and matching
+    resultless constrain op. After ignoring the compute/constrain origin marker, all remaining
+    attributes must be exactly equal and are retained on the fused operation. Each fused branch
+    keeps compute operations before constrain operations and preserves the compute results. Between
+    the pair, the pass permits only direct member writes of compute-if results and matching
     constrain-side signal member reads without a table offset. Each such read must have operands
     available before the compute op, have at least one use, have every use within the constrain-side
-    conditional, and match exactly one intervening write; other intervening operations prevent
-    fusion.
+    conditional, and match exactly one intervening write. The read remains the constraint operand
+    rather than being replaced by the compute result. Other intervening operations prevent fusion.
 
-    Fused conditionals and their `scf.yield` operations combine source locations. Fused loops
-    preserve comparison mode.
+    Fused conditionals and their `scf.yield` operations combine source locations. Fused loops retain
+    signed or unsigned bound comparison.
   }];
 }
 
