@@ -74,6 +74,7 @@ LLZK supports arrays where the element type is not truly homogeneous, specifical
 A `poly.template` may declare a named `poly.expr` that reads zero or more enclosing `poly.param`
 bindings with `poly.read_const`. The expression name may then be read as a constant or used as a
 symbolic array dimension or template argument within the template.
+A `poly.expr` whose yielded type is `!poly.tvar<...>` cannot be read directly.
 
 ```llzk
 poly.template @T {
@@ -87,13 +88,19 @@ poly.template @T {
 ```
 
 An initializer cannot reference globals, call functions, or use a `poly.expr` binding defined in
-the same template, including itself. Other operations are permitted. Once `llzk-flatten` evaluates
-the expression after its value and type dependencies become concrete, every operation and the
-yielded value must fold to a concrete attribute; otherwise evaluation fails. The yielded value must
-have an integral, felt, or type-variable type. A converted expression with valid remaining symbolic
-dependencies is kept in a partial specialization. If a supplied binding still has a non-concrete
-converted type, the specialization attempt is deferred. Templates with expressions and no
-`poly.param` declarations are specialized when a definition refers to a concrete expression.
+the same template, including itself. Other operations may appear in the initializer, but once
+`llzk-flatten` evaluates the expression after its value and type dependencies become concrete, each
+`poly.read_const` must resolve to a concrete value, each other operation before `poly.yield` must
+fold to concrete attributes, and the value passed to `poly.yield` must resolve to a concrete
+attribute; otherwise evaluation fails. The yielded value must have an integral, felt, or
+type-variable type.
+
+When only some bindings are concrete, `llzk-flatten` creates a reduced `poly.template` containing
+the remaining non-concrete parameter bindings. A referenced expression with remaining symbolic
+dependencies is retained in that template after known value and type bindings are substituted. If
+a known binding's substituted type remains non-concrete, the specialization attempt is deferred.
+Templates with expressions and no `poly.param` declarations are specialized when a definition
+refers to a concrete expression.
 
 ## Semantic Rules
 

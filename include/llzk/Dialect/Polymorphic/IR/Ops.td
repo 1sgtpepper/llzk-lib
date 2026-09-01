@@ -189,10 +189,12 @@ def LLZK_TemplateExprOp
     by `poly.read_const` and as a symbolic array dimension or template argument within the template.
 
     The initializer cannot reference globals, call functions, or use a `poly.expr` binding defined
-    in the same template, including itself. Other operations are permitted. Once flattening
-    evaluates the expression after its value and type dependencies become concrete, every
-    operation and the yielded value must fold to a concrete attribute; otherwise evaluation fails.
-    The yielded value must have an integral, felt, or type-variable type.
+    in the same template, including itself. Other operations may appear in the initializer, but
+    once flattening evaluates the expression after its value and type dependencies become
+    concrete, each `poly.read_const` must resolve to a concrete value, each other operation before
+    `poly.yield` must fold to concrete attributes, and the value passed to `poly.yield` must resolve
+    to a concrete attribute; otherwise evaluation fails. The yielded value must have an integral,
+    felt, or type-variable type.
 
     Example:
     ```llzk
@@ -240,10 +242,12 @@ def LLZK_ConstReadOp
                                                     SymbolUserOpInterface>]> {
   let summary = "read a template parameter or expression";
   let description = [{
-    This operation reads a named `poly.param` or `poly.expr` binding from the enclosing template.
-    Its result type must match the result of a `poly.expr` or the restriction on a `poly.param`.
-    For an unrestricted parameter, the result type states the type required at that use. A
-    `poly.param` restricted to `poly.tvar` cannot be read directly.
+    This operation reads a named `poly.param` or `poly.expr` binding from the nearest enclosing
+    `poly.template`. For a read nested in a `verif.contract` whose target is nested in a
+    `poly.template`, it instead reads from the target's template. Its result type must match the
+    result of a `poly.expr` or the restriction on a `poly.param`. For an unrestricted parameter,
+    the result type states the type required at that use. A binding whose type is
+    `!poly.tvar<...>` cannot be read directly.
 
     Examples:
     ```llzk

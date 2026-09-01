@@ -60,13 +60,15 @@ def FlatteningPass : LLZKPass<"llzk-flatten"> {
 
     - Specialize referenced parameterized structs and free functions from concrete template
       arguments, signature unification, or wildcard type parameters inferred from the body.
-      Partial specializations retain unresolved bindings in a reduced `poly.template`.
+      When only some bindings are concrete, the result is a reduced `poly.template` containing the
+      remaining non-concrete parameter bindings.
     - Evaluate referenced `poly.expr` bindings once their value and type dependencies are concrete.
-      A converted expression with valid remaining symbolic dependencies is retained in a partial
-      specialization. If a supplied binding still has a non-concrete converted type, that
-      specialization attempt is deferred. Once every dependency is concrete, failure to fold is an
-      error. A definition directly inside a template with `poly.expr` bindings and no `poly.param`
-      operations is specialized when it references a concrete expression.
+      A referenced expression with remaining symbolic dependencies is retained in that reduced
+      template after known value and type bindings are substituted. If a known binding's
+      substituted type remains non-concrete, that specialization attempt is deferred. Once every
+      dependency is concrete, failure to fold is an error. A definition directly inside a template
+      with `poly.expr` bindings and no `poly.param` operations is specialized when it references a
+      concrete expression.
     - Propagate concrete bindings through type variables, array dimensions and element
       types, parameterized struct arguments, POD record types, and nested-call arguments.
     - Unroll loops with known bounds, instantiate affine-map parameters, and propagate resulting
