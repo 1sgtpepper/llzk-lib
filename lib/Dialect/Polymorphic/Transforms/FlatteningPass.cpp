@@ -1357,7 +1357,7 @@ public:
     if (oldMemberType == newMemberType) {
       return failure(); // nothing changed
     }
-    rewriter.modifyOpInPlace(op, [op, newMemberType]() { op.setType(newMemberType); });
+    rewriter.modifyOpInPlace(op, [&op, &newMemberType]() { op.setType(newMemberType); });
     return success();
   }
 };
