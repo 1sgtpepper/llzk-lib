@@ -597,7 +597,7 @@ TEST_F(FuseProductControlFlowTests, CrossedLoopPairsUseLexicalApplicationOrder) 
 
 TEST_F(FuseProductControlFlowTests, LoopComparisonModeIsPartOfFusionIdentity) {
   // LLZK's witness interpreter treats unsignedCmp as loop semantics. Mixed modes stay separate,
-  // while each equivalent representation (Unit, true, false, or absent) retains its effective
+  // while each equivalent representation (unit attribute, true, false, or absent) retains its
   // mode after the generic MLIR helper rebuilds the fused loop.
   mlir::OwningOpRef<mlir::ModuleOp> module = mlir::parseSourceString<mlir::ModuleOp>(
       R"mlir(
@@ -746,7 +746,8 @@ TEST_F(FuseProductControlFlowTests, LoopComparisonModeIsPartOfFusionIdentity) {
 
 TEST_F(FuseProductControlFlowTests, ComputeLoopResultDependenciesPreventFusion) {
   // A compute-loop result cannot move across a surviving constrain-loop user. The final pair is
-  // the opposite branch: its compute-sourced pure user moves with the result and remains fusible.
+  // the opposite branch: its pure user has the compute role, moves with the result, and remains
+  // fusible.
   mlir::OwningOpRef<mlir::ModuleOp> module = mlir::parseSourceString<mlir::ModuleOp>(
       R"mlir(
     module attributes {llzk.lang = "llzk"} {
@@ -798,7 +799,7 @@ TEST_F(FuseProductControlFlowTests, ComputeLoopResultDependenciesPreventFusion) 
             scf.yield
           } {product_source = "constrain"}
 
-          // A constrain-sourced pure interstitial operation uses the result before the loop.
+          // A pure intervening operation with the constrain role uses the result before the loop.
           %compute_tagged = scf.for %i = %c0 to %c5 step %c1 iter_args(%acc = %c0) -> (index) {
             %next = arith.addi %acc, %c1 : index
             scf.yield %next : index
@@ -809,7 +810,7 @@ TEST_F(FuseProductControlFlowTests, ComputeLoopResultDependenciesPreventFusion) 
             scf.yield
           } {product_source = "constrain"}
 
-          // An unmarked pure interstitial operation has the same surviving-use restriction.
+          // An unmarked pure operation between the loops has the same surviving-use restriction.
           %compute_unmarked = scf.for %i = %c0 to %c6 step %c1 iter_args(%acc = %c0) -> (index) {
             %next = arith.addi %acc, %c1 : index
             scf.yield %next : index
@@ -820,7 +821,7 @@ TEST_F(FuseProductControlFlowTests, ComputeLoopResultDependenciesPreventFusion) 
             scf.yield
           } {product_source = "constrain"}
 
-          // The compute-sourced pure use moves after the constrain loop with its definition.
+          // The pure use with the compute role moves after the constrain loop with its definition.
           %compute_sink = scf.for %i = %c0 to %c7 step %c1 iter_args(%acc = %c0) -> (index) {
             %next = arith.addi %acc, %c1 : index
             scf.yield %next : index
@@ -987,7 +988,7 @@ TEST_F(FuseProductControlFlowTests, ComputeLoopResultDependenciesPreventFusion) 
 
 TEST_F(FuseProductControlFlowTests, EffectfulOperationsBetweenLoopsPreventFusion) {
   // Global and RAM operations between the loops must keep their original order, whether the
-  // interstitial effect is compute-sourced, constrain-sourced, or unmarked. Distinct parent
+  // intervening effect has the compute role, the constrain role, or no role. Distinct parent
   // structs and typed barriers identify each original loop pair independently.
   mlir::OwningOpRef<mlir::ModuleOp> module = mlir::parseSourceString<mlir::ModuleOp>(
       R"mlir(
