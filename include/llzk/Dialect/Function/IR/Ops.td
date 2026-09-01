@@ -358,10 +358,12 @@ def CallOp : FunctionDialectOp<
 
     Every explicit or inferred argument must satisfy its `poly.param` type restriction. If the
     function signature independently infers a value for an explicitly supplied parameter, the
-    explicit and inferred values must unify. For felt-valued parameters, known fields
-    and concrete values must also agree; symbols without known concrete values use the generic
-    type-unification rules. A direct argument for an index or integer restriction must be an
-    integer, not an affine map. For a parameter with a `poly.tvar` restriction, a type argument
+    explicit and inferred values must unify. For felt-valued parameters, known fields and concrete
+    values must also agree. An argument that resolves to an enclosing binding without a declared
+    type restriction may remain deferred for an index, integer, or fieldless felt parameter; it
+    cannot satisfy a fielded felt or `poly.tvar` restriction. A direct argument for an index or
+    integer restriction must be an integer, not an affine map. For a parameter with a `poly.tvar`
+    restriction, a type argument
     resolves nested `struct.type`, `array.type`, and `poly.tvar` symbols at the call site. A nested
     `poly.tvar` is accepted once its parameter reference resolves, even when its concrete type
     remains deferred.
