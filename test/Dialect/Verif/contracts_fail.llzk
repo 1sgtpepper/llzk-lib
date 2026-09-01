@@ -481,14 +481,32 @@ module attributes {llzk.lang} {
     verif.include @TypeTarget::@Base<[!felt.type]>() : () -> ()
   }
 
-  verif.contract @InvalidBuiltinTypeArgument for @entry () {
-    // expected-error@+1 {{'verif.include' op expected a valid LLZK type but found 'i8'}}
-    verif.include @TypeTarget::@Base<[i8]>() : () -> ()
-  }
-
   verif.contract @MissingTypeArgument for @entry () {
     // expected-error@+1 {{'verif.include' op references unknown symbol "@MissingType"}}
     verif.include @TypeTarget::@Base<[!poly.tvar<@MissingType>]>() : () -> ()
+  }
+}
+
+// -----
+
+// A TypeAttr include argument must contain a valid LLZK type.
+module attributes {llzk.lang} {
+  poly.template @TypeTarget {
+    poly.param @T : !poly.tvar<@T>
+
+    function.def @token() { function.return }
+
+    verif.contract @Base for @TypeTarget::@token () {
+      %ok = arith.constant true
+      verif.ensure_compute %ok
+    }
+  }
+
+  function.def @entry() { function.return }
+
+  verif.contract @InvalidBuiltinTypeArgument for @entry () {
+    // expected-error@+1 {{'verif.include' op expected a valid LLZK type but found 'i8'}}
+    verif.include @TypeTarget::@Base<[i8]>() : () -> ()
   }
 }
 
