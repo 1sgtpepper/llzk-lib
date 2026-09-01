@@ -25,7 +25,9 @@ def TypeVarType : PolymorphicDialectType<"TypeVar", "tvar"> {
   let summary = TypeVarSummary.r;
   let description = [{
     This type serves as a placeholder for a type that is instantiated through a `poly.param`
-    declared by the enclosing `poly.template`.
+    declared by the enclosing `poly.template`. The referenced parameter may be unrestricted.
+    Giving it the self-referential `!poly.tvar` restriction shown below limits it to type arguments
+    and enables type inference for that parameter.
 
     For example, a template can define a struct that holds a size-2 array whose element type is
     supplied through a template parameter and instantiated at uses of the struct.
