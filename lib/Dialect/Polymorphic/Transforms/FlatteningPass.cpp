@@ -127,8 +127,8 @@ class ConversionTracker {
   /// Fully instantiated functions are keyed by source definition and exact concrete bindings.
   /// Generated symbol spelling is only a value because user symbols and distinct valid bindings
   /// can produce the same preferred spelling.
-  /// The tracker survives every fixpoint iteration so repeated requests reuse the same clone; the
-  /// cache is cleared before cleanup can erase its source definitions.
+  /// This cache must outlive individual rewrite pattern instances because flattening re-runs
+  /// Step 2 across fixpoint iterations.
   DenseMap<FuncInstantiationKey, StringAttr> fullFuncInstantiations;
   /// Successful partial functions keyed by their source operation and exact concrete bindings.
   /// The rendered symbol names are only values; they are never used as cache identity.
@@ -280,12 +280,9 @@ public:
     );
   }
 
-  /// No function-instantiation cache entry is read after cleanup starts. Clear source-operation
-  /// keys before cleanup can erase their definitions.
-  void clearFuncInstantiations() {
-    fullFuncInstantiations.clear();
-    partialFuncInstantiations.clear();
-  }
+  /// No partial-function cache entry is read after cleanup starts. Clear source-operation keys
+  /// before cleanup can erase their definitions.
+  void clearPartialFuncInstantiations() { partialFuncInstantiations.clear(); }
 
   /// Collect the fully-qualified names of all structs and free functions that were instantiated.
   DenseSet<SymbolRefAttr> getInstantiatedDefinitionNames() const {
@@ -3166,7 +3163,7 @@ class PassImpl : public llzk::polymorphic::impl::FlatteningPassBase<PassImpl> {
       });
     } while (tracker.isModified());
 
-    tracker.clearFuncInstantiations();
+    tracker.clearPartialFuncInstantiations();
 
     // Run user-selected cleanup first.
     if (failed(cleanupSwitch(modOp, tracker))) {
