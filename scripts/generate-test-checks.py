@@ -695,6 +695,8 @@ class _UnclosableStringIO(io.StringIO):
 class GenerateTestChecksTests(unittest.TestCase):
     """Exercise output, source preservation, Git worktree safety, and failures."""
 
+    MINIMAL_MODULE = "module {\n  func.func @main() {\n  }\n}\n"
+
     def setUp(self):
         """Give each test an isolated filesystem and clean it up afterward."""
         self.temporary_directory = tempfile.TemporaryDirectory()
@@ -737,11 +739,20 @@ class GenerateTestChecksTests(unittest.TestCase):
         """Ensure a failed in-place update did not leave a replacement file behind."""
         self.assertEqual(list(source.parent.glob(f".{source.name}.*.tmp")), [])
 
+    def run_git(self, repository, *arguments):
+        """Run Git in an isolated test repository."""
+        return subprocess.run(
+            ["git", "-C", str(repository), *arguments],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+
     def test_stdout_and_named_output_match(self):
         """Default, `--output` without a path, and named output generate the same checks."""
         input_path = self.write_file(
             "input.llzk",
-            "module {\n  func.func @main() {\n  }\n}\n",
+            self.MINIMAL_MODULE,
         )
         named_output = self.root / "named-output.llzk"
 
@@ -787,7 +798,7 @@ class GenerateTestChecksTests(unittest.TestCase):
         """Named output reports an invalid parent without creating partial output."""
         input_path = self.write_file(
             "input.llzk",
-            "module {\n  func.func @main() {\n  }\n}\n",
+            self.MINIMAL_MODULE,
         )
         named_output = self.root / "missing" / "named-output.llzk"
 
@@ -1148,11 +1159,11 @@ class GenerateTestChecksTests(unittest.TestCase):
         """A replacement exception leaves the original source and removes the temporary file."""
         source = self.write_file(
             "source.llzk",
-            "module {\n  func.func @main() {\n  }\n}\n",
+            self.MINIMAL_MODULE,
         )
         input_path = self.write_file(
             "input.llzk",
-            "module {\n  func.func @main() {\n  }\n}\n",
+            self.MINIMAL_MODULE,
         )
         before = source.read_text(encoding="utf-8")
 
@@ -1180,11 +1191,11 @@ class GenerateTestChecksTests(unittest.TestCase):
         """A cleanup error is reported while the primary replacement error remains visible."""
         source = self.write_file(
             "source.llzk",
-            "module {\n  func.func @main() {\n  }\n}\n",
+            self.MINIMAL_MODULE,
         )
         input_path = self.write_file(
             "input.llzk",
-            "module {\n  func.func @main() {\n  }\n}\n",
+            self.MINIMAL_MODULE,
         )
         temporary_paths = []
         real_unlink = os.unlink
@@ -1228,11 +1239,11 @@ class GenerateTestChecksTests(unittest.TestCase):
         """The safe default refuses dirty worktrees while --allow-dirty permits updates."""
         source = self.write_file(
             "source.llzk",
-            "module {\n  func.func @main() {\n  }\n}\n",
+            self.MINIMAL_MODULE,
         )
         input_path = self.write_file(
             "input.llzk",
-            "module {\n  func.func @main() {\n  }\n}\n",
+            self.MINIMAL_MODULE,
         )
         before = source.read_text(encoding="utf-8")
 
@@ -1270,11 +1281,11 @@ class GenerateTestChecksTests(unittest.TestCase):
         """A Git-status failure stops an in-place update before creating output."""
         source = self.write_file(
             "source.llzk",
-            "module {\n  func.func @main() {\n  }\n}\n",
+            self.MINIMAL_MODULE,
         )
         input_path = self.write_file(
             "input.llzk",
-            "module {\n  func.func @main() {\n  }\n}\n",
+            self.MINIMAL_MODULE,
         )
         before = source.read_text(encoding="utf-8")
 
@@ -1302,30 +1313,21 @@ class GenerateTestChecksTests(unittest.TestCase):
         link_repository.mkdir()
         target_repository.mkdir()
 
-        def git(repository, *arguments):
-            """Run Git in one isolated test repository."""
-            return subprocess.run(
-                ["git", "-C", str(repository), *arguments],
-                capture_output=True,
-                text=True,
-                check=True,
-            )
-
-        git(link_repository, "init", "--quiet")
-        git(target_repository, "init", "--quiet")
+        self.run_git(link_repository, "init", "--quiet")
+        self.run_git(target_repository, "init", "--quiet")
         target = self.write_file(
             "target-repository/source.llzk",
-            "module {\n  func.func @main() {\n  }\n}\n",
+            self.MINIMAL_MODULE,
         )
         link = link_repository / "source.llzk"
         link.symlink_to(target)
         input_path = self.write_file(
             "input.llzk",
-            "module {\n  func.func @main() {\n  }\n}\n",
+            self.MINIMAL_MODULE,
         )
         for repository in (link_repository, target_repository):
-            git(repository, "add", ".")
-            git(
+            self.run_git(repository, "add", ".")
+            self.run_git(
                 repository,
                 "-c",
                 "user.name=LLZK Tests",
@@ -1376,27 +1378,19 @@ class GenerateTestChecksTests(unittest.TestCase):
         repository = self.root / "repository"
         repository.mkdir()
 
-        def git(*arguments):
-            """Run Git in the isolated test repository."""
-            return subprocess.run(
-                ["git", "-C", str(repository), *arguments],
-                capture_output=True,
-                text=True,
-                check=True,
-            )
-
-        git("init", "--quiet")
-        git("config", "status.showUntrackedFiles", "no")
+        self.run_git(repository, "init", "--quiet")
+        self.run_git(repository, "config", "status.showUntrackedFiles", "no")
         source = self.write_file(
             "repository/source.llzk",
-            "module {\n  func.func @main() {\n  }\n}\n",
+            self.MINIMAL_MODULE,
         )
         input_path = self.write_file(
             "input.llzk",
-            "module {\n  func.func @main() {\n  }\n}\n",
+            self.MINIMAL_MODULE,
         )
-        git("add", "source.llzk")
-        git(
+        self.run_git(repository, "add", "source.llzk")
+        self.run_git(
+            repository,
             "-c",
             "user.name=LLZK Tests",
             "-c",
