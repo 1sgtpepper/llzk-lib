@@ -351,6 +351,114 @@ TEST_F(FuseProductControlFlowTests, RepeatedMemberWritesPreventReadHoisting) {
   EXPECT_TRUE(read->isBeforeInBlock(writes[1]));
 }
 
+TEST_F(FuseProductControlFlowTests, UnsafeOperationsBetweenIfsPreventFusion) {
+  // A generic intervening definition would lose dominance if the conditionals fused. Signal reads
+  // also stay after their matching write when they are unused or have a user outside the constrain
+  // conditional, because hoisting either read would change the observed component state.
+  mlir::OwningOpRef<mlir::ModuleOp> module = mlir::parseSourceString<mlir::ModuleOp>(
+      R"mlir(
+    module attributes {llzk.lang = "llzk"} {
+      struct.def @A {
+        struct.member @captured : !felt.type
+        struct.member @unused : !felt.type {signal}
+        struct.member @external : !felt.type {signal}
+
+        function.def @product(%capture: i1, %unused: i1, %external: i1) -> !struct.type<@A> {
+          %self = struct.new : <@A>
+          %captured_value = scf.if %capture -> !felt.type {
+            %zero = felt.const 0
+            scf.yield %zero : !felt.type
+          } else {
+            %one = felt.const 1
+            scf.yield %one : !felt.type
+          } {product_source = "compute"}
+
+          %between = arith.constant 0 : index
+          scf.if %capture {
+            %used = arith.addi %between, %between : index
+            scf.yield
+          } else {
+            %used = arith.addi %between, %between : index
+            scf.yield
+          } {product_source = "constrain"}
+          struct.writem %self[@captured] = %captured_value : <@A>, !felt.type
+
+          %unused_value = scf.if %unused -> !felt.type {
+            %zero = felt.const 0
+            scf.yield %zero : !felt.type
+          } else {
+            %one = felt.const 1
+            scf.yield %one : !felt.type
+          } {product_source = "compute"}
+
+          struct.writem %self[@unused] = %unused_value : <@A>, !felt.type {
+            product_source = "compute"
+          }
+          %unused_read = struct.readm %self[@unused] : <@A>, !felt.type {
+            product_source = "constrain"
+          }
+
+          scf.if %unused {
+            constrain.eq %unused_value, %unused_value : !felt.type, !felt.type
+          } else {
+            constrain.eq %unused_value, %unused_value : !felt.type, !felt.type
+          } {product_source = "constrain"}
+
+          %external_value = scf.if %external -> !felt.type {
+            %zero = felt.const 0
+            scf.yield %zero : !felt.type
+          } else {
+            %one = felt.const 1
+            scf.yield %one : !felt.type
+          } {product_source = "compute"}
+
+          struct.writem %self[@external] = %external_value : <@A>, !felt.type {
+            product_source = "compute"
+          }
+          %external_read = struct.readm %self[@external] : <@A>, !felt.type {
+            product_source = "constrain"
+          }
+
+          scf.if %external {
+            constrain.eq %external_read, %external_value : !felt.type, !felt.type
+          } else {
+            constrain.eq %external_read, %external_value : !felt.type, !felt.type
+          } {product_source = "constrain"}
+
+          constrain.eq %external_read, %external_value : !felt.type, !felt.type
+          function.return %self : !struct.type<@A>
+        }
+      }
+    }
+  )mlir",
+      &ctx
+  );
+  ASSERT_TRUE(module);
+
+  mlir::PassManager pm(&ctx);
+  pm.addPass(llzk::createFuseProductControlFlowPass());
+  ASSERT_TRUE(mlir::succeeded(pm.run(*module)));
+
+  unsigned computeIfs = 0;
+  unsigned constrainIfs = 0;
+  unsigned fusedIfs = 0;
+  module->walk([&](mlir::scf::IfOp ifOp) {
+    if (auto source = ifOp->getAttrOfType<mlir::StringAttr>("product_source"); source) {
+      if (source.getValue() == "compute") {
+        ++computeIfs;
+      } else if (source.getValue() == "constrain") {
+        ++constrainIfs;
+      } else if (source.getValue() == "fused") {
+        ++fusedIfs;
+      }
+    }
+  });
+
+  EXPECT_EQ(computeIfs, 3U);
+  EXPECT_EQ(constrainIfs, 3U);
+  EXPECT_EQ(fusedIfs, 0U);
+}
+
 TEST_F(FuseProductControlFlowTests, NestedLoopControlMismatchPreventsFusion) {
   // The outer conditionals may fuse, but equal-count loops with different bounds or steps have
   // different induction sequences and must remain separate.
@@ -1192,8 +1300,8 @@ TEST_F(FuseProductControlFlowTests, EffectfulOperationsBetweenLoopsPreventFusion
 }
 
 TEST_F(FuseProductControlFlowTests, MemberWriteSinkDoesNotCrossConstrainRead) {
-  // A member write may be sunk only when the constrain loop cannot observe component state. A read
-  // inside the constrain loop would see the write before fusion but after it in the fused order.
+  // A member write may be sunk only when the constrain loop cannot observe component state. The
+  // read observes the written value in the original order but the preceding value after fusion.
   mlir::OwningOpRef<mlir::ModuleOp> module = mlir::parseSourceString<mlir::ModuleOp>(
       R"mlir(
     module attributes {llzk.lang = "llzk"} {

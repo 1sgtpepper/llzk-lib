@@ -563,7 +563,7 @@ module attributes {llzk.lang = "llzk"} {
 // CHECK-NEXT:  }
 // -----
 
-// Array reads carry memory effects and are conservatively not moved across the compute region.
+// Array reads are not proven pure and are conservatively not moved across the compute region.
 module attributes {llzk.lang = "llzk"} {
   struct.def @A {
     struct.member @foo : !felt.type
