@@ -1,6 +1,7 @@
 // RUN: llzk-opt -split-input-file -verify-diagnostics %s
 
-// Reject missing, unknown, wrong-kind, mutable-global, and restriction-incompatible call
+// Reject missing or unresolved arguments, mutable globals, symbols that resolve to another
+// operation kind, and values that violate the declared restriction.
 // arguments, including both untyped and typed target parameters.
 module attributes {llzk.lang} {
   poly.template @GlobalFunc {

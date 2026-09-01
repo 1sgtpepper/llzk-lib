@@ -447,8 +447,8 @@ def IncludeOp
     supplies one argument per `poly.param`, in declaration order. The list may be omitted when
     every parameter appears in the contract signature; omitted values are derived from the
     inclusion operand types. Every explicit or inferred argument must satisfy its declared type
-    restriction. If both forms provide a value for the same parameter, the values must satisfy the
-    generic unification rules. For felt-valued parameters, known fields and concrete values must
+    restriction. If both forms provide a value for the same parameter, the explicit and inferred
+    values must unify. For felt-valued parameters, known fields and concrete values must
     also agree; symbols without known concrete values use the generic type-unification rules. The
     direct argument for an index or integer restriction must be an integer, not an affine map. The
     `?` wildcard is valid for any parameter with a `poly.tvar` restriction and leaves that type for
@@ -457,12 +457,12 @@ def IncludeOp
     site. A nested `poly.tvar` is accepted once its parameter reference resolves, even when its
     concrete type remains deferred.
 
-    Type paths in a target signature reached through `include.from` are compared in the namespace
-    established by that inclusion during explicit-template validation and omitted-template
-    inference.
+    During verification, paths in a target signature reached through `include.from` resolve
+    relative to the included module when comparing explicit arguments or inferring omitted ones.
 
     Symbol arguments must resolve to an enclosing `poly.param` or `poly.expr` binding or a constant
-    global; unknown, mutable-global, and wrong-kind symbols are rejected.
+    global; unresolved symbols, mutable globals, and symbols that resolve to another operation kind
+    are rejected.
   }];
 
   // See `VerifySizesForMultiAffineOps` for more explanation of these arguments.

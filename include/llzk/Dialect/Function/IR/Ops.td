@@ -358,7 +358,7 @@ def CallOp : FunctionDialectOp<
 
     Every explicit or inferred argument must satisfy its `poly.param` type restriction. If the
     function signature independently infers a value for an explicitly supplied parameter, the
-    values must satisfy the generic unification rules. For felt-valued parameters, known fields
+    explicit and inferred values must unify. For felt-valued parameters, known fields
     and concrete values must also agree; symbols without known concrete values use the generic
     type-unification rules. A direct argument for an index or integer restriction must be an
     integer, not an affine map. For a parameter with a `poly.tvar` restriction, a type argument
@@ -366,12 +366,12 @@ def CallOp : FunctionDialectOp<
     `poly.tvar` is accepted once its parameter reference resolves, even when its concrete type
     remains deferred.
 
-    Type paths in a target signature reached through `include.from` are compared in the namespace
-    established by that inclusion during explicit-template validation and omitted-template
-    inference.
+    During verification, paths in a target signature reached through `include.from` resolve
+    relative to the included module when comparing explicit arguments or inferring omitted ones.
 
     Symbol arguments must resolve to an enclosing `poly.param` or `poly.expr` binding or a constant
-    global; unknown, mutable-global, and wrong-kind symbols are rejected.
+    global; unresolved symbols, mutable globals, and symbols that resolve to another operation kind
+    are rejected.
   }];
 
   // See `VerifySizesForMultiAffineOps` for more explanation of these arguments.

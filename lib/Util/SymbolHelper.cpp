@@ -231,9 +231,9 @@ LogicalResult verifyTemplateSymbolType(
             "ref \"", param, "\" in type ", parameterizedType, " refers to a '", binding->getName(),
             "' that must have type ", *requiredParamType
         );
-        diag.attachNote(binding->getLoc()).append("template parameter declared here");
+        diag.attachNote(binding->getLoc()).append("referenced binding declared here");
         if (requiredParamLoc) {
-          diag.attachNote(*requiredParamLoc).append("template parameter declared here");
+          diag.attachNote(*requiredParamLoc).append("required parameter declared here");
         }
         return diag;
       }
@@ -241,9 +241,9 @@ LogicalResult verifyTemplateSymbolType(
           "ref \"", param, "\" in type ", parameterizedType, " refers to a '", binding->getName(),
           "' with type ", *actualType, " but expected ", *requiredParamType
       );
-      diag.attachNote(binding->getLoc()).append("template parameter declared here");
+      diag.attachNote(binding->getLoc()).append("referenced binding declared here");
       if (requiredParamLoc) {
-        diag.attachNote(*requiredParamLoc).append("template parameter declared here");
+        diag.attachNote(*requiredParamLoc).append("required parameter declared here");
       }
       return diag;
     }
@@ -656,7 +656,7 @@ LogicalResult verifyKnownTargetTemplateParams(
     return failure();
   }
 
-  // Reconcile explicit values with the target signature after local compatibility succeeds.
+  // Compare explicit values with the target signature after local compatibility succeeds.
   FailureOr<UnificationMap> unifyResult = unify(candidateRecorder);
   if (failed(unifyResult)) {
     return failure();
@@ -809,7 +809,7 @@ LogicalResult verifyParamOfType(
                                     << " refers to a global that is not marked as 'const'";
     diag.attachNote(global.getLoc()).append("global defined here");
     if (requiredParamLoc) {
-      diag.attachNote(*requiredParamLoc).append("template parameter declared here");
+      diag.attachNote(*requiredParamLoc).append("required parameter declared here");
     }
     return diag;
   }
@@ -819,7 +819,7 @@ LogicalResult verifyParamOfType(
                                     << " but expected " << *requiredParamType;
     diag.attachNote(global.getLoc()).append("global defined here");
     if (requiredParamLoc) {
-      diag.attachNote(*requiredParamLoc).append("template parameter declared here");
+      diag.attachNote(*requiredParamLoc).append("required parameter declared here");
     }
     return diag;
   }

@@ -247,7 +247,7 @@ mlir::LogicalResult verifyTemplateParamsMatchInferred(
 );
 
 /// Verify template arguments for a known function or contract target, including omitted-argument
-/// inference, explicit-value compatibility, and signature reconciliation. The unification callback
+/// inference, explicit-value compatibility, and signature comparison. The unification callback
 /// is invoked only when the target signature is needed to infer or compare template arguments. It
 /// receives a recorder that collects symbol/value candidates when repeated signature positions map
 /// to the same target parameter.

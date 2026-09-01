@@ -32,25 +32,25 @@ def LLZK_StructType : StructDialectType<"Struct", "type"> {
     definition with no parameters, the list may be omitted or explicitly empty. Every
     argument must satisfy the corresponding parameter's type restriction; a symbol argument is
     checked using its resolved enclosing `poly.param` or `poly.expr` binding or constant global
-    definition. Unknown, mutable-global, and wrong-kind symbols are rejected. Each attribute must
-    be one of the following:
+    definition. Unresolved symbols, mutable globals, and symbols that resolve to another operation
+    kind are rejected. Each attribute must be one of the following:
       - IntegerAttr (with IndexType), specifying a fixed parameter value
       - FeltConstAttr, specifying a fixed finite-field parameter value
       - SymbolRefAttr, specifying a parameter value defined by an enclosing `poly.param` or
         `poly.expr` binding or global constant
-      - AffineMapAttr, specifying a single-result affine expression for an integer-like argument
-        that varies across an array of struct elements
+      - AffineMapAttr, specifying a deferred single-result affine expression for an integer-like
+        argument; one use is varying a struct argument across array elements
       - TypeAttr, specifying a type parameter
 
     ```llzk
     // Type for struct `A` with no parameters.
     !struct.type<@A>
 
-    // Type for struct `B` with IntegerAttr, FeltConstAttr, and SymbolRefAttr parameters.
-    !struct.type<@B<[5, #felt<const 35>, @C]>>
+    // Type for `@T::@B`, whose parameters accept an index, a felt, and a type.
+    !struct.type<@T::@B<[5, #felt<const 35>, !felt.type]>>
 
-    // Type for struct `C` with TypeAttr and IntegerAttr parameters.
-    !struct.type<@C<[!felt.type, 24]>>
+    // A symbolic argument can name a binding from the enclosing template.
+    !struct.type<@T::@B<[@N, #felt<const 35>, !felt.type]>>
     ```
   }];
 

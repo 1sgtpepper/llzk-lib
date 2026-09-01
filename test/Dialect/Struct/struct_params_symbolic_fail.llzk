@@ -3,7 +3,7 @@
 // A mismatched field is rejected for a local symbolic argument.
 module attributes {llzk.lang} {
   poly.template @Target {
-    // expected-note@+1 {{template parameter declared here}}
+    // expected-note@+1 {{required parameter declared here}}
     poly.param @F : !felt.type<"bn128">
     struct.def @S {
       function.def @compute() -> !struct.type<@Target::@S<[@F]>> {
@@ -16,7 +16,7 @@ module attributes {llzk.lang} {
     }
   }
   poly.template @Caller {
-    // expected-note@+1 {{template parameter declared here}}
+    // expected-note@+1 {{referenced binding declared here}}
     poly.param @G : !felt.type<"goldilocks">
     // expected-error@+1 {{ref "@G" in type '!struct.type<@Target::@S<[@G]>>' refers to a 'poly.param' with type '!felt.type<"goldilocks">' but expected '!felt.type<"bn128">'}}
     function.def @useLocal(%value: !struct.type<@Target::@S<[@G]>>) {
@@ -30,7 +30,7 @@ module attributes {llzk.lang} {
 // A value-valued qualified global cannot satisfy a type-only restriction.
 module attributes {llzk.lang} {
   poly.template @Target {
-    // expected-note@+1 {{template parameter declared here}}
+    // expected-note@+1 {{required parameter declared here}}
     poly.param @T : !poly.tvar<@T>
     struct.def @S {
       function.def @compute() -> !struct.type<@Target::@S<[@T]>> {
@@ -57,7 +57,7 @@ module attributes {llzk.lang} {
 // A felt-valued qualified global cannot satisfy a type-only restriction.
 module attributes {llzk.lang} {
   poly.template @Target {
-    // expected-note@+1 {{template parameter declared here}}
+    // expected-note@+1 {{required parameter declared here}}
     poly.param @T : !poly.tvar<@T>
     struct.def @S {
       function.def @compute() -> !struct.type<@Target::@S<[@T]>> {
@@ -84,7 +84,7 @@ module attributes {llzk.lang} {
 // A value-valued local parameter cannot satisfy a type-only restriction.
 module attributes {llzk.lang} {
   poly.template @Target {
-    // expected-note@+1 {{template parameter declared here}}
+    // expected-note@+1 {{required parameter declared here}}
     poly.param @T : !poly.tvar<@T>
     struct.def @S {
       function.def @compute() -> !struct.type<@Target::@S<[@T]>> {
@@ -97,7 +97,7 @@ module attributes {llzk.lang} {
     }
   }
   poly.template @IndexCaller {
-    // expected-note@+1 {{template parameter declared here}}
+    // expected-note@+1 {{referenced binding declared here}}
     poly.param @N : index
     // expected-error@+1 {{ref "@N" in type '!struct.type<@Target::@S<[@N]>>' refers to a 'poly.param' with type 'index' but expected '!poly.tvar<@T>'}}
     function.def @useType(%value: !struct.type<@Target::@S<[@N]>>) {
@@ -111,7 +111,7 @@ module attributes {llzk.lang} {
 // A type-only local parameter cannot satisfy a value-valued index restriction.
 module attributes {llzk.lang} {
   poly.template @Target {
-    // expected-note@+1 {{template parameter declared here}}
+    // expected-note@+1 {{required parameter declared here}}
     poly.param @N : index
     struct.def @S {
       function.def @compute() -> !struct.type<@Target::@S<[@N]>> {
@@ -124,7 +124,7 @@ module attributes {llzk.lang} {
     }
   }
   poly.template @TypeCaller {
-    // expected-note@+1 {{template parameter declared here}}
+    // expected-note@+1 {{referenced binding declared here}}
     poly.param @T : !poly.tvar<@T>
     // expected-error@+1 {{ref "@T" in type '!struct.type<@Target::@S<[@T]>>' refers to a 'poly.param' with type '!poly.tvar<@T>' but expected 'index'}}
     function.def @useIndex(%value: !struct.type<@Target::@S<[@T]>>) {
@@ -138,7 +138,7 @@ module attributes {llzk.lang} {
 // An unrestricted local parameter does not establish a type-only argument kind.
 module attributes {llzk.lang} {
   poly.template @Target {
-    // expected-note@+1 {{template parameter declared here}}
+    // expected-note@+1 {{required parameter declared here}}
     poly.param @T : !poly.tvar<@T>
     struct.def @S {
       function.def @compute() -> !struct.type<@Target::@S<[@T]>> {
@@ -151,7 +151,7 @@ module attributes {llzk.lang} {
     }
   }
   poly.template @UnrestrictedCaller {
-    // expected-note@+1 {{template parameter declared here}}
+    // expected-note@+1 {{referenced binding declared here}}
     poly.param @U
     // expected-error@+1 {{ref "@U" in type '!struct.type<@Target::@S<[@U]>>' refers to a 'poly.param' that must have type '!poly.tvar<@T>'}}
     function.def @useType(%value: !struct.type<@Target::@S<[@U]>>) {
@@ -165,7 +165,7 @@ module attributes {llzk.lang} {
 // A mismatched field is rejected for a qualified global argument.
 module attributes {llzk.lang} {
   poly.template @Target {
-    // expected-note@+1 {{template parameter declared here}}
+    // expected-note@+1 {{required parameter declared here}}
     poly.param @F : !felt.type<"bn128">
     struct.def @S {
       function.def @compute() -> !struct.type<@Target::@S<[@F]>> {
@@ -192,7 +192,7 @@ module attributes {llzk.lang} {
 // An initialized mutable global is not compile-time evidence for a struct parameter.
 module attributes {llzk.lang} {
   poly.template @MutableGlobalInitializedTarget {
-    // expected-note@+1 {{template parameter declared here}}
+    // expected-note@+1 {{required parameter declared here}}
     poly.param @F : !felt.type
     struct.def @S {
       function.def @compute() -> !struct.type<@MutableGlobalInitializedTarget::@S<[@F]>> {
@@ -223,7 +223,7 @@ module attributes {llzk.lang} {
 // An uninitialized mutable global is not compile-time evidence for a struct parameter.
 module attributes {llzk.lang} {
   poly.template @MutableGlobalUninitializedTarget {
-    // expected-note@+1 {{template parameter declared here}}
+    // expected-note@+1 {{required parameter declared here}}
     poly.param @F : !felt.type
     struct.def @S {
       function.def @compute() -> !struct.type<@MutableGlobalUninitializedTarget::@S<[@F]>> {
@@ -254,7 +254,7 @@ module attributes {llzk.lang} {
 // A non-index qualified global is rejected for an index restriction.
 module attributes {llzk.lang} {
   poly.template @Target {
-    // expected-note@+1 {{template parameter declared here}}
+    // expected-note@+1 {{required parameter declared here}}
     poly.param @N : index
     struct.def @S {
       function.def @compute() -> !struct.type<@Target::@S<[@N]>> {
@@ -281,7 +281,7 @@ module attributes {llzk.lang} {
 // A fieldless symbolic restriction cannot establish a fielded target restriction.
 module attributes {llzk.lang} {
   poly.template @Target {
-    // expected-note@+1 {{template parameter declared here}}
+    // expected-note@+1 {{required parameter declared here}}
     poly.param @F : !felt.type<"bn128">
     struct.def @S {
       function.def @compute() -> !struct.type<@Target::@S<[@F]>> {
@@ -294,7 +294,7 @@ module attributes {llzk.lang} {
     }
   }
   poly.template @Caller {
-    // expected-note@+1 {{template parameter declared here}}
+    // expected-note@+1 {{referenced binding declared here}}
     poly.param @G : !felt.type
     // expected-error@+1 {{ref "@G" in type '!struct.type<@Target::@S<[@G]>>' refers to a 'poly.param' with type '!felt.type' but expected '!felt.type<"bn128">'}}
     function.def @useLocal(%value: !struct.type<@Target::@S<[@G]>>) {
@@ -308,7 +308,7 @@ module attributes {llzk.lang} {
 // A fieldless qualified global restriction cannot establish a fielded target restriction.
 module attributes {llzk.lang} {
   poly.template @Target {
-    // expected-note@+1 {{template parameter declared here}}
+    // expected-note@+1 {{required parameter declared here}}
     poly.param @F : !felt.type<"bn128">
     struct.def @S {
       function.def @compute() -> !struct.type<@Target::@S<[@F]>> {
