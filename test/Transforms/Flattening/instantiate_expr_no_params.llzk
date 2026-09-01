@@ -43,10 +43,7 @@ module attributes {llzk.lang} {
 // DISABLED-NEXT:    }
 // DISABLED-NEXT:    poly.template @ExprOnlyFunc {
 // DISABLED-NEXT:      poly.expr @Value {
-// DISABLED-NEXT:        %[[EXPR_CONDITION:[0-9a-zA-Z_\.]+]] = arith.constant true
-// DISABLED-NEXT:        %[[EXPR_SELECTED:[0-9a-zA-Z_\.]+]] = arith.constant 42 : index
-// DISABLED-NEXT:        %[[EXPR_UNSELECTED:[0-9a-zA-Z_\.]+]] = arith.constant 99 : index
-// DISABLED-NEXT:        %[[EXPR_VALUE:[0-9a-zA-Z_\.]+]] = arith.select %[[EXPR_CONDITION]], %[[EXPR_SELECTED]], %[[EXPR_UNSELECTED]] : index
+// DISABLED-NEXT:        %[[EXPR_VALUE:[0-9a-zA-Z_\.]+]] = arith.constant 42 : index
 // DISABLED-NEXT:        poly.yield %[[EXPR_VALUE]] : index
 // DISABLED-NEXT:      }
 // DISABLED-NEXT:      function.def @value() -> index {

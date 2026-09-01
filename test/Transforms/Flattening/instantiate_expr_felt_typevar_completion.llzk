@@ -72,16 +72,16 @@ module attributes {llzk.lang} {
 }
 
 // CHECK-LABEL: module attributes {llzk.lang} {
-// CHECK-NEXT:    function.def @"FeltPartial_f<35>_f_f<7:5:bn128>_value"() -> !felt.type<"bn128"> {
+// CHECK-NEXT:    function.def @"FeltPartial_f<35>_f_f<7>_value"() -> !felt.type<"bn128"> {
 // CHECK-NEXT:      %[[VAL_0:[0-9a-zA-Z_\.]+]] = felt.const  42 : <"bn128">
 // CHECK-NEXT:      function.return %[[VAL_0]] : !felt.type<"bn128">
 // CHECK-NEXT:    }
-// CHECK-NEXT:    function.def @"Bridge_f<7:5:bn128>_value"() -> !felt.type<"bn128"> {
-// CHECK-NEXT:      %[[VAL_1:[0-9a-zA-Z_\.]+]] = function.call @"FeltPartial_f<35>_f_f<7:5:bn128>_value"() : () -> !felt.type<"bn128">
+// CHECK-NEXT:    function.def @"Bridge_f<7>_value"() -> !felt.type<"bn128"> {
+// CHECK-NEXT:      %[[VAL_1:[0-9a-zA-Z_\.]+]] = function.call @"FeltPartial_f<35>_f_f<7>_value"() : () -> !felt.type<"bn128">
 // CHECK-NEXT:      function.return %[[VAL_1]] : !felt.type<"bn128">
 // CHECK-NEXT:    }
 // CHECK-NEXT:    function.def @main() -> !felt.type<"bn128"> {
-// CHECK-NEXT:      %[[VAL_2:[0-9a-zA-Z_\.]+]] = function.call @"Bridge_f<7:5:bn128>_value"() : () -> !felt.type<"bn128">
+// CHECK-NEXT:      %[[VAL_2:[0-9a-zA-Z_\.]+]] = function.call @"Bridge_f<7>_value"() : () -> !felt.type<"bn128">
 // CHECK-NEXT:      function.return %[[VAL_2]] : !felt.type<"bn128">
 // CHECK-NEXT:    }
 // CHECK-NEXT:  }
