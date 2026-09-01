@@ -100,7 +100,7 @@ static void reportDelayedDiagnostics(CallOp caller, SmallVector<Diagnostic> &&di
 }
 
 class ConversionTracker {
-  /// Key fields used for full-function reuse: source definition and ordered concrete bindings.
+  /// Key for full function instantiation reuse: source definition and ordered concrete bindings.
   using FuncInstantiationKey = std::pair<Operation *, ArrayAttr>;
 
   /// Published result of one successful partial-function conversion.
@@ -124,9 +124,9 @@ class ConversionTracker {
   DenseMap<StructType, StructType> reverseInstantiations;
   /// Tracks original free function definitions for which instantiated clones were created.
   DenseSet<SymbolRefAttr> funcInstantiations;
-  /// Full function specializations are keyed by source definition and exact concrete bindings.
-  /// Generated symbol spelling is only a value because user symbols or other valid bindings can
-  /// produce the same spelling.
+  /// Fully instantiated functions are keyed by source definition and exact concrete bindings.
+  /// Generated symbol spelling is only a value because user symbols and distinct valid bindings
+  /// can produce the same preferred spelling.
   /// The tracker survives every fixpoint iteration so repeated requests reuse the same clone; the
   /// cache is cleared before cleanup can erase its source definitions.
   DenseMap<FuncInstantiationKey, StringAttr> fullFuncInstantiations;
@@ -229,12 +229,12 @@ public:
 
   /// Return the post-insertion symbol name for this source function and exact concrete bindings.
   std::optional<StringAttr>
-  getFullFuncInstantiation(FuncDefOp sourceFunc, ArrayAttr concreteParams) const {
-    auto it = fullFuncInstantiations.find({sourceFunc.getOperation(), concreteParams});
+  lookupFullFuncInstantiation(FuncDefOp sourceFunc, ArrayAttr concreteParamKey) const {
+    auto it = fullFuncInstantiations.find({sourceFunc.getOperation(), concreteParamKey});
     return it == fullFuncInstantiations.end() ? std::nullopt : std::make_optional(it->second);
   }
 
-  /// Record a successful full specialization using its post-insertion symbol name.
+  /// Record a successful full function instantiation using its post-insertion symbol name.
   void recordFullFuncInstantiation(
       FuncDefOp sourceFunc, ArrayAttr concreteParams, StringAttr instantiatedName
   ) {
@@ -1997,7 +1997,7 @@ private:
     return success();
   }
 
-  /// Create or reuse a fully-instantiated clone in the parent module and return the rewritten
+  /// Create or reuse a fully instantiated function in the parent module and return the rewritten
   /// module-level callee reference. Reuse is keyed by the source function and exact ordered
   /// concrete bindings; the rendered template name is only a preferred symbol name and may be
   /// changed by SymbolTable insertion.
@@ -2010,7 +2010,7 @@ private:
     MLIRContext *ctx = op.getContext();
     StringAttr instantiatedName;
     if (std::optional<StringAttr> cached =
-            tracker.getFullFuncInstantiation(callTgt, concreteParamKey)) {
+            tracker.lookupFullFuncInstantiation(callTgt, concreteParamKey)) {
       instantiatedName = *cached;
       LLVM_DEBUG(
           llvm::dbgs() << "[InstantiateFuncAtCallOp]  reusing full instantiation function: "

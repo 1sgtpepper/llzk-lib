@@ -1,6 +1,7 @@
-// RUN: llzk-opt -split-input-file -llzk-flatten=cleanup=disabled %s | FileCheck %s
+// RUN: llzk-opt -llzk-flatten=cleanup=disabled %s | FileCheck %s
 
-// Full-function reuse preserves binding order: swapping the bindings changes the result.
+// Distinct ordered bindings produce separate full function instantiations; repeated calls with
+// the same ordered bindings reuse one.
 module attributes {llzk.lang} {
   poly.template @Ordered {
     poly.param @A : index
