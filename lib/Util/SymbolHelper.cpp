@@ -288,6 +288,8 @@ LogicalResult verifyRepeatedFeltCandidates(
     }
   }
 
+  // Compare every pair because compatibility is not transitive: one symbolic felt can be
+  // compatible with two concrete values that conflict with each other.
   for (auto [i, lhsCandidate] : llvm::enumerate(inferredCandidates)) {
     for (Attribute rhsCandidate : inferredCandidates.drop_front(i + 1)) {
       FailureOr<bool> resolved = resolvedTemplateParamValuesUnify(
