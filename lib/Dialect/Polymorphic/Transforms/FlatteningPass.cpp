@@ -236,10 +236,10 @@ public:
 
   /// Record a successful full function instantiation using its post-insertion symbol name.
   void recordFullFuncInstantiation(
-      FuncDefOp sourceFunc, ArrayAttr concreteParams, StringAttr instantiatedName
+      FuncDefOp sourceFunc, ArrayAttr concreteParamKey, StringAttr instantiatedName
   ) {
     [[maybe_unused]] auto [it, inserted] = fullFuncInstantiations.try_emplace(
-        {sourceFunc.getOperation(), concreteParams}, instantiatedName
+        {sourceFunc.getOperation(), concreteParamKey}, instantiatedName
     );
     assert((inserted || it->second == instantiatedName) && "instantiation identity is stable");
   }

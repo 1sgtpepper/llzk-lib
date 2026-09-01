@@ -1,2 +1,2 @@
 fixed:
-  - Prevent incorrect reuse of fully instantiated free functions across source definitions or ordered concrete parameter bindings when generated names collide
+  - Prevent incorrect reuse of fully instantiated free functions when distinct source definitions or ordered concrete parameter bindings produce the same generated name
