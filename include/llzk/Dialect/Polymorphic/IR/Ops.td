@@ -186,7 +186,7 @@ def LLZK_TemplateExprOp
   let summary = "declares a named expression in a polymorphic template";
   let description = [{
     Declares an expression over zero or more parameters of a `poly.template`. Its name can be used
-    by `poly.read_const` and as a symbolic array dimension or struct argument within the template.
+    by `poly.read_const` and as a symbolic array dimension or template argument within the template.
 
     The body of a `poly.expr` cannot contain any symbols defined via `poly.expr` to prevent
     cyclic initialization. The body must also have no side effects to ensure it can be safely
