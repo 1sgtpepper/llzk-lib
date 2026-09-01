@@ -1019,8 +1019,7 @@ class StructCloner {
 
       // pre-conditions
       assert(paramNames.size() == typeAtCallerParams.size());
-      auto paramOps = parentTemplate.getConstOps<TemplateParamOp>();
-      assert(paramNames.size() == llvm::range_size(paramOps));
+      assert(paramNames.size() == llvm::range_size(parentTemplate.getConstOps<TemplateParamOp>()));
 
       for (auto [paramName, next] : llvm::zip_equal(paramNames, typeAtCallerParams)) {
         if (isConcreteAttr<false>(next)) {
