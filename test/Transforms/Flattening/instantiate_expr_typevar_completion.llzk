@@ -1,6 +1,7 @@
 // RUN: llzk-opt -split-input-file -llzk-flatten %s | FileCheck %s
 
-// A type-variable expression is evaluated after its value and result types become concrete.
+// An expression with a type-variable-typed input is evaluated after that input's value and type
+// become concrete.
 module attributes {llzk.lang} {
   poly.template @InnerDirect {
     poly.param @Num
