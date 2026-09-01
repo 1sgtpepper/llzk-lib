@@ -39,7 +39,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p artifacts
-          target_head=014de82ec490266c88e753544ad9b9a92abed737
+          target_head=e9cd385ca2735aac5193f84a29598cbc87985317
           test "$(git rev-parse HEAD)" = "$target_head"
           filecheck=$(find /nix/store -type f -path '*/bin/FileCheck' -executable -print -quit)
           test -n "$filecheck"
