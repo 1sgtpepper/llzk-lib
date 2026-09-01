@@ -211,7 +211,7 @@ LogicalResult ConstReadOp::verifySymbolUses(SymbolTableCollection &tables) {
     }
     if (this->getType() != *paramType) {
       return this->emitOpError().append(
-          "type ", this->getType(), " does not match constant param type ", *paramType
+          "type ", this->getType(), " does not match binding type ", *paramType
       );
     }
   }

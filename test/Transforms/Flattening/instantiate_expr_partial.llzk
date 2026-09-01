@@ -6,12 +6,6 @@ module attributes {llzk.lang, llzk.main = !struct.type<@Outer::@Wrapper<[7]>>} {
   poly.template @Inner {
     poly.param @N : index
     poly.param @M : index
-    poly.expr @TwiceM {
-      %m = poly.read_const @M : index
-      %two = arith.constant 2 : index
-      %result = arith.muli %m, %two : index
-      poly.yield %result : index
-    }
     poly.expr @NPlusM {
       %n = poly.read_const @N : index
       %m = poly.read_const @M : index
@@ -104,12 +98,6 @@ module attributes {llzk.lang} {
   poly.template @InnerFunc {
     poly.param @N : index
     poly.param @M : index
-    poly.expr @TwiceM {
-      %m = poly.read_const @M : index
-      %two = arith.constant 2 : index
-      %result = arith.muli %m, %two : index
-      poly.yield %result : index
-    }
     poly.expr @NPlusM {
       %n = poly.read_const @N : index
       %m = poly.read_const @M : index
@@ -225,12 +213,6 @@ module attributes {llzk.lang} {
   poly.template @InnerFunc {
     poly.param @N : index
     poly.param @M : index
-    poly.expr @TwiceM {
-      %m = poly.read_const @M : index
-      %two = arith.constant 2 : index
-      %result = arith.muli %m, %two : index
-      poly.yield %result : index
-    }
     poly.expr @NPlusM {
       %n = poly.read_const @N : index
       %m = poly.read_const @M : index
