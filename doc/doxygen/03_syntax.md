@@ -56,7 +56,7 @@ module attributes {llzk.lang = "circom"} {
   !struct.type<@T::@S<[#felt<const 35 : !felt.type<"bn128">>]>>
   ```
 - `pod.type<..>`: Plain Old Data aggregate type with named heterogeneous elements. Unlike `struct.type`, there is no associated named declaration, the type itself specifies all constituent element types. It can be used more freely than `struct.type` since it has fewer restrictions on modifications.
-- `poly.tvar<@N>`: Placeholder type variable within a templated `struct.def` that may be instantiated with different types.
+- `poly.tvar<@N>`: Placeholder type variable whose named parameter is declared by an enclosing `poly.template` and may be instantiated with different types.
 - `string.type`: Sequence of characters.
 
 ### Pseudo-homogeneous arrays {#pseudo-homogeneous}

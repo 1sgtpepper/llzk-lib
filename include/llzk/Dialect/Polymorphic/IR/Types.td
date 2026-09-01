@@ -24,12 +24,11 @@ def TypeVarSummary { string r = "type variable"; }
 def TypeVarType : PolymorphicDialectType<"TypeVar", "tvar"> {
   let summary = TypeVarSummary.r;
   let description = [{
-    This type serves as a placeholder for a type that is instantiated
-    via a parameter of the struct.
+    This type serves as a placeholder for a type that is instantiated through a `poly.param`
+    declared by the enclosing `poly.template`.
 
-    For example, we can define a struct that holds a size-2 array where the
-    type of the elements in the array is specified by a parameter of the
-    struct and instantiated with a specific type at the uses of the struct.
+    For example, a template can define a struct that holds a size-2 array whose element type is
+    supplied through a template parameter and instantiated at uses of the struct.
 
 
     ```llzk
@@ -45,7 +44,7 @@ def TypeVarType : PolymorphicDialectType<"TypeVar", "tvar"> {
 
   let parameters =
       (ins TypeParameter<"::mlir::FlatSymbolRefAttr",
-                         "reference to the struct parameter">:$nameRef);
+                         "reference to the template parameter">:$nameRef);
 
   let assemblyFormat = [{ `<` $nameRef `>` }];
 
