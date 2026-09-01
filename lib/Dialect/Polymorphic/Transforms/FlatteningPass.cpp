@@ -555,9 +555,6 @@ public:
     }
     return convertIfPossible(attr);
   }
-
-  bool containsParam(Attribute nameAttr) const { return paramNameToValue.contains(nameAttr); }
-  const DenseMap<Attribute, Attribute> &getParamMap() const { return paramNameToValue; }
 };
 
 /// Clone a referenced template expression and apply every currently concrete value and type
@@ -1454,9 +1451,7 @@ LogicalResult instantiateMainStruct(ModuleOp modOp, ConversionTracker &tracker) 
     return failure();
   }
 
-  StructType instantiatedMainType = cloneRes.value();
-  tracker.recordInstantiation(mainType, instantiatedMainType);
-  modOp->setAttr(MAIN_ATTR_NAME, TypeAttr::get(instantiatedMainType));
+  modOp->setAttr(MAIN_ATTR_NAME, TypeAttr::get(cloneRes.value()));
   return success();
 }
 
@@ -1668,14 +1663,14 @@ static LogicalResult applyBodyConversions(
   MLIRContext *ctx = op.getContext();
   TemplateParamTypeConverter tyConv(paramNameToConcrete);
   ConversionTarget target = newConverterDefinedTarget<>(tyConv, ctx, tableOffsetIsntSymbol);
-  target.addDynamicallyLegalOp<ConstReadOp>([&tyConv](ConstReadOp p) {
+  target.addDynamicallyLegalOp<ConstReadOp>([&paramNameToConcrete](ConstReadOp p) {
     // Legal if it's not in the map of concrete attribute instantiations
-    return !tyConv.containsParam(p.getConstNameAttr());
+    return !paramNameToConcrete.contains(p.getConstNameAttr());
   });
   SmallVector<Diagnostic> delayedDiagnostics;
   RewritePatternSet bodyPatterns = newGeneralRewritePatternSet(tyConv, ctx, target);
   bodyPatterns.add<ClonedBodyConstReadOpPattern>(
-      tyConv, ctx, tyConv.getParamMap(), delayedDiagnostics
+      tyConv, ctx, paramNameToConcrete, delayedDiagnostics
   );
   bodyPatterns.add<ClonedBodyArrayReadOpPattern, ClonedBodyArrayWriteOpPattern>(tyConv, ctx);
   bodyPatterns.add<ClonedMemberReadOpPattern>(tyConv, ctx, paramNameToConcrete);
