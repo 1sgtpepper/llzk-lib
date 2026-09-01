@@ -54,7 +54,7 @@ static void fuseMatchingRegionControlFlow(
     Region &body, MLIRContext *context, SymbolTableCollection &symbolTables
 );
 
-/// Return whether one operation is compute-sourced and the other is constrain-sourced.
+/// Return whether one operation has the compute role and the other has the constrain role.
 static inline bool areOppositeProductSources(Operation *a, Operation *b) {
   std::optional<llvm::StringRef> sourceA = getProductSource(a);
   std::optional<llvm::StringRef> sourceB = getProductSource(b);
@@ -198,8 +198,8 @@ static bool isSafeToMoveConstrainOp(Operation *op) {
 
 /// Return whether `root` contains an operation unsafe to cross with compute-side operations.
 ///
-/// An operation is crossable only when this pass explicitly admits it or MLIR proves it pure; the
-/// walk rejects reads, writes, calls, traps, and unknown effects.
+/// An operation may move across compute-side operations only when this pass explicitly admits it
+/// or MLIR proves it pure; the walk rejects reads, writes, calls, traps, and unknown effects.
 static bool hasUnsafeCrossedConstrainOp(Operation *root) {
   auto result = root->walk([root](Operation *op) {
     if (op == root || isa<scf::YieldOp>(op)) {
@@ -462,7 +462,8 @@ fuseMatchingIfPairs(Region &body, MLIRContext *context, SymbolTableCollection &s
 /// global/RAM accesses, allocations, calls, traps, and unknown effects remain ordered.
 static bool isSafeToSinkComputeOp(Operation *op) { return isa<MemberWriteOp>(op) || isPure(op); }
 
-/// Collect compute-sourced operations between sibling loops that must move after `constrainLoop`.
+/// Collect operations marked `product_source = "compute"` between sibling loops that must move
+/// after `constrainLoop`.
 /// Fail if the compute loop is not before its constrain partner in the same block, a crossed
 /// non-compute operation is not recursively pure, a sunk member write would cross an unsafe
 /// constrain-loop effect, the move would cross already-fused constraint work, or a relocated result
@@ -491,11 +492,11 @@ canPrepareForFusion(scf::ForOp computeLoop, scf::ForOp constrainLoop) {
   }
 
   if (llvm::any_of(opsToSink, [](Operation *op) { return isa<MemberWriteOp>(op); })) {
-    // A direct member write is intentionally sinkable, but it cannot cross a constrain-loop read or
-    // unknown effect: without alias analysis, either may observe the component state before the
-    // write in the original order and after it in the fused order. Constraint emission, nondet
-    // values, and structured control flow remain admissible; their nested operations are checked
-    // by this walk as well.
+    // The pass deliberately moves a direct member write, but it cannot move across a
+    // constrain-loop read or unknown effect: without alias analysis, either may observe the
+    // component state before the write in the original order and after it in the fused order.
+    // Constraint emission, nondet values, and structured control flow remain admissible; their
+    // nested operations are checked by this walk as well.
     if (hasUnsafeCrossedConstrainOp(constrainLoop.getOperation())) {
       return failure();
     }
@@ -623,9 +624,9 @@ fuseMatchingLoopPairs(Region &body, MLIRContext *context, SymbolTableCollection 
 static void fuseMatchingRegionControlFlow(
     Region &body, MLIRContext *context, SymbolTableCollection &symbolTables
 ) {
-  // Loop fusion has priority because preparation may legally sink a compute-sourced if, while a
-  // prior fused if is an immovable barrier. The later conditional sweep also catches pairs made
-  // adjacent by that preparation.
+  // Loop fusion has priority because preparation may legally move an if marked
+  // `product_source = "compute"`, while a prior fused if is an immovable barrier. The later
+  // conditional sweep also catches pairs made adjacent by that preparation.
   fuseMatchingLoopPairs(body, context, symbolTables);
   fuseMatchingIfPairs(body, context, symbolTables);
 }

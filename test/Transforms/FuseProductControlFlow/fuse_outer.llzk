@@ -54,7 +54,7 @@ module attributes {llzk.lang = "llzk"} {
     }
 }
 
-// The constrain-side struct/array reads are non-pure interstitial effects, so the source loops
+// The constrain-side struct/array reads between the loops are not pure, so the source loops
 // must remain separate even though their induction controls match.
 // CHECK-LABEL: module attributes {llzk.lang = "llzk"} {
 // CHECK-NEXT:    poly.template @TA {

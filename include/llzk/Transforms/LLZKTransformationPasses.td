@@ -140,13 +140,12 @@ def FuseProductControlFlowPass : LLZKPass<"llzk-fuse-product-control-flow"> {
     compute operations before constrain operations and preserves the compute results. Between the
     pair, the pass permits only direct member writes of compute-if results and matching
     constrain-side signal member reads without a table offset. Each such read must have operands
-    available before the compute op, be used only within the constrain-side conditional, and match
-    exactly one intervening write; other intervening operations prevent fusion.
+    available before the compute op, have at least one use, have every use within the constrain-side
+    conditional, and match exactly one intervening write; other intervening operations prevent
+    fusion.
 
-    Fused conditionals and their `scf.yield` operations combine source locations. Each newly
-    created fused `scf.if` or `scf.for` is marked `product_source = "fused"`; cloned branch
-    operations retain their source markers, while fused yields retain only compatible non-source
-    attributes. Fused loops preserve comparison mode.
+    Fused conditionals and their `scf.yield` operations combine source locations. Fused loops
+    preserve comparison mode.
   }];
 }
 

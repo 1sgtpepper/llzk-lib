@@ -57,7 +57,7 @@ module attributes {llzk.lang = "llzk"} {
     }
 }
 
-// The constrain-side member and array reads are non-pure interstitial effects, so this matching
+// The constrain-side member and array reads between the loops are not pure, so this matching
 // pair is intentionally not fused.
 // CHECK-LABEL: module attributes {llzk.lang = "llzk"} {
 // CHECK-NEXT:    poly.template @TA {

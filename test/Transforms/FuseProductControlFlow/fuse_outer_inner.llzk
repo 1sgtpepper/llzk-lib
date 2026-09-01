@@ -51,7 +51,7 @@ module attributes {llzk.lang = "llzk"} {
     }
 }
 
-// The interstitial constrain-side `struct.readm` cannot cross the compute member write, so the
+// The constrain-side `struct.readm` between the loops cannot cross the compute member write, so the
 // outer loops remain separate and the nested loops never become siblings.
 // CHECK-LABEL: module attributes {llzk.lang = "llzk"} {
 // CHECK-NEXT:    poly.template @TA {
