@@ -45,7 +45,7 @@ jobs:
           rm -rf "$OUTPUT_PATH"
           mkdir -p "$OUTPUT_PATH"
 
-          pr635_head=9d63951b6f55684c37d1705a15e61b6fc02b3b25
+          pr635_head=ccbaeaa53c21b472bb318310cd4f5d7c3ab7ca46
           filecheck=
           full_check_results=()
           focused_results=()
@@ -455,11 +455,11 @@ jobs:
           replay_pr635_suite() {
             local source_root="$1"
             local name_prefix="$2"
-            replay_test "${name_prefix}-expr-blocked-default" "$source_root" \
-              test/Transforms/Flattening/instantiate_expr_blocked.llzk \
+            replay_test "${name_prefix}-expr-deferred-default" "$source_root" \
+              test/Transforms/Flattening/instantiate_expr_deferred.llzk \
               DEFAULT --enable-var-scope -llzk-flatten
-            replay_test "${name_prefix}-expr-blocked-disabled" "$source_root" \
-              test/Transforms/Flattening/instantiate_expr_blocked.llzk \
+            replay_test "${name_prefix}-expr-deferred-disabled" "$source_root" \
+              test/Transforms/Flattening/instantiate_expr_deferred.llzk \
               DISABLED --enable-var-scope -llzk-flatten=cleanup=disabled
             replay_test "${name_prefix}-expr-felt-typevar" "$source_root" \
               test/Transforms/Flattening/instantiate_expr_felt_typevar_completion.llzk \
@@ -467,23 +467,20 @@ jobs:
             replay_test "${name_prefix}-expr-member-type" "$source_root" \
               test/Transforms/Flattening/instantiate_expr_member_type.llzk \
               CHECK -llzk-flatten
-            replay_test "${name_prefix}-expr-only-default" "$source_root" \
-              test/Transforms/Flattening/instantiate_expr_only.llzk \
+            replay_test "${name_prefix}-expr-no-params-default" "$source_root" \
+              test/Transforms/Flattening/instantiate_expr_no_params.llzk \
               DEFAULT --enable-var-scope -split-input-file -llzk-flatten
-            replay_test "${name_prefix}-expr-only-disabled" "$source_root" \
-              test/Transforms/Flattening/instantiate_expr_only.llzk \
+            replay_test "${name_prefix}-expr-no-params-disabled" "$source_root" \
+              test/Transforms/Flattening/instantiate_expr_no_params.llzk \
               DISABLED --enable-var-scope -split-input-file -llzk-flatten=cleanup=disabled
             replay_test "${name_prefix}-expr-partial" "$source_root" \
               test/Transforms/Flattening/instantiate_expr_partial.llzk \
               CHECK -split-input-file -llzk-flatten
-            replay_test "${name_prefix}-expr-target-local" "$source_root" \
-              test/Transforms/Flattening/instantiate_expr_target_local.llzk \
+            replay_test "${name_prefix}-expr-unreferenced" "$source_root" \
+              test/Transforms/Flattening/instantiate_expr_unreferenced.llzk \
               CHECK -split-input-file '--pass-pipeline=builtin.module(llzk-flatten{cleanup=disabled})'
             replay_test "${name_prefix}-expr-typevar" "$source_root" \
               test/Transforms/Flattening/instantiate_expr_typevar_completion.llzk \
-              CHECK -split-input-file -llzk-flatten
-            replay_test "${name_prefix}-felt-normalization" "$source_root" \
-              test/Transforms/Flattening/instantiate_func_felt_normalization.llzk \
               CHECK -split-input-file -llzk-flatten
             replay_test "${name_prefix}-funcs-pass" "$source_root" \
               test/Transforms/Flattening/instantiate_funcs_pass.llzk \
@@ -503,19 +500,13 @@ jobs:
 
           replay_pr635_suite "$pr635_path" pr635
 
-          replay_focused_test pr635-expr-blocked-order "$pr635_path" \
-            test/Transforms/Flattening/instantiate_expr_blocked_order.llzk \
+          replay_focused_test pr635-expr-deferred-error "$pr635_path" \
+            test/Transforms/Flattening/instantiate_expr_deferred_error.llzk \
             NONE nonzero -llzk-flatten -verify-diagnostics
           replay_focused_test pr635-expr-fail "$pr635_path" \
             test/Transforms/Flattening/instantiate_expr_fail.llzk \
             CHECK pipeline --enable-var-scope -split-input-file -llzk-flatten \
             -verify-diagnostics
-          replay_focused_test pr635-expr-func-fail "$pr635_path" \
-            test/Transforms/Flattening/instantiate_expr_func_fail.llzk \
-            CHECK pipeline -split-input-file -llzk-flatten -verify-diagnostics
-          replay_focused_test pr635-felt-normalization-fail "$pr635_path" \
-            test/Transforms/Flattening/instantiate_func_felt_normalization_fail.llzk \
-            NONE zero -llzk-flatten -verify-diagnostics
           replay_focused_test pr635-funcs-fail "$pr635_path" \
             test/Transforms/Flattening/instantiate_funcs_fail.llzk \
             CHECK pipeline --enable-var-scope -split-input-file -llzk-flatten \
@@ -525,28 +516,28 @@ jobs:
             CHECK pipeline --enable-var-scope -split-input-file -llzk-flatten \
             -verify-diagnostics
 
-          if test "${#full_check_results[@]}" -eq 14; then
+          if test "${#full_check_results[@]}" -eq 13; then
             full_check_blocks=PASS
           else
             full_check_blocks=FAIL
           fi
           {
             echo "pr635_head=$pr635_head"
-            echo "pr635_output_replays=14"
-            echo "full_output_replays=14"
-            echo "focused_replays=6"
+            echo "pr635_output_replays=13"
+            echo "full_output_replays=13"
+            echo "focused_replays=4"
             echo "full_committed_check_blocks=$full_check_blocks"
             echo "full_check_results=${full_check_results[*]}"
             echo "focused_results=${focused_results[*]}"
-            if [[ "$full_check_blocks" == PASS && "${#focused_results[@]}" -eq 6 ]]; then
+            if [[ "$full_check_blocks" == PASS && "${#focused_results[@]}" -eq 4 ]]; then
               echo "result=PASS"
             else
               echo "result=FAIL"
             fi
           } > "$OUTPUT_PATH/summary.txt"
 
-          test "${#full_check_results[@]}" -eq 14
-          test "${#focused_results[@]}" -eq 6
+          test "${#full_check_results[@]}" -eq 13
+          test "${#focused_results[@]}" -eq 4
 
       - name: Upload validation evidence
         if: always()
