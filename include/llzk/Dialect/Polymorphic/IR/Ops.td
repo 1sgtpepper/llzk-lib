@@ -192,6 +192,7 @@ def LLZK_TemplateExprOp
     in the same template, including itself. Other operations are permitted. Once flattening
     evaluates the expression after its value and type dependencies become concrete, every
     operation and the yielded value must fold to a concrete attribute; otherwise evaluation fails.
+    The yielded value must have an integral, felt, or type-variable type.
 
     Example:
     ```llzk
@@ -246,6 +247,8 @@ def LLZK_ConstReadOp
 
     Examples:
     ```llzk
+    // Assume the enclosing template declares @A : !felt.type and @B : index, and defines
+    // @DoubleB as an index-typed poly.expr.
     // Read a `!felt.type` value from template parameter "@A".
     %0 = poly.read_const @A : !felt.type
     // Read an index value from template parameter "@B".

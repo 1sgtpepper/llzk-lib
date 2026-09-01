@@ -459,8 +459,8 @@ public:
   }
 };
 
-/// Apply known template bindings throughout types and type-valued attributes. This converts scalar
-/// type variables, array dimensions and element types, parameterized struct arguments, and POD
+/// Apply known template bindings throughout types and type-valued attributes. This converts type
+/// variables, array dimensions and element types, parameterized struct arguments, and POD
 /// record types. Unbound parameters and otherwise unchanged types retain their original form.
 class TemplateParamTypeConverter : public TypeConverter {
   const DenseMap<Attribute, Attribute> &paramNameToValue;
