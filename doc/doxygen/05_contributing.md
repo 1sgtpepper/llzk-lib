@@ -97,8 +97,8 @@ Run the utility's unit tests with `python3 -m unittest scripts/generate-test-che
 
 Repeated runs replace the generator's note. They replace recognized FileCheck directives only for
 the selected prefix and preserve unrelated source text and comments. The generated checks are not
-authoritative: verify that they cover the relevant behavior and retain complete transformed output
-where the IR is the test contract.
+authoritative: verify that they cover the relevant behavior, and retain complete transformed output
+for transformation tests.
 
 ### Commit your update
 
