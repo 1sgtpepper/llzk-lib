@@ -455,11 +455,12 @@ fuseMatchingIfPairs(Region &body, MLIRContext *context, SymbolTableCollection &s
   }
 }
 
-/// Return whether sinking `op` across the constrain loop preserves observable effects.
+/// Return whether `op` is an admissible compute-side sink candidate.
 ///
 /// Direct member writes are the one stateful operation this pass deliberately moves as part of
-/// the existing product layout. Every other moved operation must be recursively pure so
-/// global/RAM accesses, allocations, calls, traps, and unknown effects remain ordered.
+/// the existing product layout; their cross-loop effects are checked separately. Every other moved
+/// operation must be recursively pure so global/RAM accesses, allocations, calls, traps, and
+/// unknown effects remain ordered.
 static bool isSafeToSinkComputeOp(Operation *op) { return isa<MemberWriteOp>(op) || isPure(op); }
 
 /// Collect operations marked `product_source = "compute"` between sibling loops that must move
@@ -494,7 +495,7 @@ canPrepareForFusion(scf::ForOp computeLoop, scf::ForOp constrainLoop) {
   if (llvm::any_of(opsToSink, [](Operation *op) { return isa<MemberWriteOp>(op); })) {
     // The pass deliberately moves a direct member write, but it cannot move across a
     // constrain-loop read or unknown effect: without alias analysis, either may observe the
-    // component state before the write in the original order and after it in the fused order.
+    // component state after the write in the original order and before it in the fused order.
     // Constraint emission, nondet values, and structured control flow remain admissible; their
     // nested operations are checked by this walk as well.
     if (hasUnsafeCrossedConstrainOp(constrainLoop.getOperation())) {
