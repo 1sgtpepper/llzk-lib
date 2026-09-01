@@ -43,8 +43,8 @@ module attributes {llzk.lang = "circom"} {
   - a valid LLZK type used to instantiate a `poly.tvar<@N>` (see below); or
   - a single-result [affine_map](https://mlir.llvm.org/docs/Dialects/Affine/#polyhedral-structures) for an integer-like argument that depends on a loop iteration variable.
 
-  A type argument may nest `struct.type`, `array.type`, `pod.type`, and `poly.tvar`. Symbol and
-  dimension references anywhere in that nested type are resolved and validated at the
+  A type argument may contain any valid LLZK type. The verifier recursively resolves references in
+  `struct.type` and `array.type` arguments and resolves a `poly.tvar` parameter reference at the
   `struct.type` use site.
 
   For example, given `poly.template @T` with `poly.param @P : !felt.type<"bn128">`
@@ -76,10 +76,10 @@ LLZK supports arrays where the element type is not truly homogeneous, specifical
   A binding without a declared type restriction may remain deferred for an index, integer, or fieldless felt parameter. It cannot satisfy a fielded felt or `poly.tvar` restriction, and an array dimension requires an index-typed binding at that type use.
 - A direct `function.call` or `verif.include` argument for an index or integer restriction must be an integer, not an affine map. A single-result affine map remains valid as a `struct.type` argument with such a restriction.
 - The `?` wildcard in a `function.call` or `verif.include` template argument is valid only for a `poly.tvar` restriction and defers its concrete type to a later type-inference pass. An array dimension may independently use `?` as a dynamic size.
-- A type argument must be a valid LLZK type and may nest `struct.type`, `array.type`, `pod.type`,
-  and `poly.tvar`. A `function.call` or `verif.include` verifier resolves symbol and dimension
-  references anywhere in that nested type at the call or inclusion site. A nested `poly.tvar` is
-  accepted once its parameter reference resolves, even when its concrete type remains deferred.
+- A type argument must be a valid LLZK type. A `function.call` or `verif.include` verifier
+  recursively resolves references in `struct.type` and `array.type` arguments and resolves a
+  `poly.tvar` parameter reference at the call or inclusion site. A `poly.tvar` is accepted once its
+  parameter reference resolves, even when its concrete type remains deferred.
 - A `function.def` argument may have `function.arg_name = "..."` to preserve the source-level argument name independently from the SSA name printed by MLIR. The value must be a non-empty, untyped string attribute; typed string attributes such as `"x" : i1` are rejected. Attached argument names must be unique within the function. Argument-splitting transforms derive names for generated arguments, such as `input[0]` for array elements or `self.member` for struct members.
 - Ops marked with the `WitnessGen` trait can only be used in functions with the `allow_witness` attribute (`compute()` within `struct.def` has this by default). Similarly, ops marked with the `ConstraintGen` trait can only be used in functions with the `allow_constraint` attribute (`constrain()` within `struct.def` has this by default).
 - Functions with the `allow_witness` attribute can only call other functions marked with `allow_witness`. Likewise for `allow_constraint`.

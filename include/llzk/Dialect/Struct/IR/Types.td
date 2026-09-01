@@ -42,9 +42,9 @@ def LLZK_StructType : StructDialectType<"Struct", "type"> {
         argument; one use is varying a struct argument across array elements
       - TypeAttr, specifying a type parameter
 
-    A `TypeAttr` argument may nest `struct.type`, `array.type`, `pod.type`, and `poly.tvar`. Symbol
-    and dimension references anywhere in that nested type are resolved and validated at the
-    `struct.type` use site.
+    A `TypeAttr` argument may contain any valid LLZK type. The verifier recursively resolves
+    references in `struct.type` and `array.type` arguments and resolves a `poly.tvar` parameter
+    reference at the `struct.type` use site.
 
     The examples below are schematic: `@A` names a non-parameterized struct; `@T` declares index,
     felt, and type parameters in that order, names its index parameter `@N`, and contains `@B`.

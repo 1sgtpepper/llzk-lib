@@ -362,10 +362,10 @@ def CallOp : FunctionDialectOp<
     type restriction may remain deferred for an index, integer, or fieldless felt parameter; it
     cannot satisfy a fielded felt or `poly.tvar` restriction. A direct argument for an index or
     integer restriction must be an integer, not an affine map. For a parameter with a `poly.tvar`
-    restriction, a type argument must be a valid LLZK type and may nest `struct.type`, `array.type`,
-    `pod.type`, and `poly.tvar`. The verifier resolves symbol and dimension references anywhere in
-    that nested type at the call site. A nested `poly.tvar` is accepted once its parameter
-    reference resolves, even when its concrete type remains deferred.
+    restriction, a type argument must be a valid LLZK type. The verifier recursively resolves
+    references in `struct.type` and `array.type` arguments and resolves a `poly.tvar` parameter
+    reference at the call site. A `poly.tvar` is accepted once its parameter reference resolves,
+    even when its concrete type remains deferred.
 
     When a target is reached through an `include.from` alias, verification resolves names in its
     signature relative to the included module. The `callee` attribute retains the caller-visible

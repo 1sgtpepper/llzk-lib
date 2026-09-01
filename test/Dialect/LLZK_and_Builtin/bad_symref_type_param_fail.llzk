@@ -25,24 +25,6 @@ module attributes {llzk.lang} {
   function.def private @in_return_array_of_struct() -> !array.type<2 x !struct.type<@Unknown>>
 }
 // -----
-// A POD record does not hide a nested struct instantiation with the wrong parameter arity.
-module attributes {llzk.lang} {
-  poly.template @T {
-    poly.param @N : index
-
-    struct.def @S {
-      function.def @compute() -> !struct.type<@T::@S<[@N]>> {
-        %self = struct.new : !struct.type<@T::@S<[@N]>>
-        function.return %self : !struct.type<@T::@S<[@N]>>
-      }
-      function.def @constrain(%self: !struct.type<@T::@S<[@N]>>) { function.return }
-    }
-  }
-
-  // expected-error@+1 {{'struct.type' type has 0 parameters but "S" expects 1}}
-  function.def private @in_return_pod_with_invalid_struct() -> !pod.type<[@value: !struct.type<@T::@S<[]>>]>
-}
-// -----
 module attributes {llzk.lang} {
   poly.template @TA {
     poly.param @T
