@@ -623,9 +623,7 @@ void CallOp::build(
 
 LogicalResult
 CallOp::verifyTemplateParamCompatibility(Attribute paramFromCallOp, TemplateParamOp targetParam) {
-  return llzk::verifyTemplateParamValueCompatibility(
-      getOperation(), paramFromCallOp, targetParam
-  );
+  return llzk::verifyTemplateParamValueCompatibility(getOperation(), paramFromCallOp, targetParam);
 }
 
 LogicalResult CallOp::verifyTemplateParamCompatibility(
