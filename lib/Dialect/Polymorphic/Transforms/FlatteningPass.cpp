@@ -128,9 +128,10 @@ class ConversionTracker {
   /// Maps new remote type (i.e., the values in 'structInstantiations') to a list of Diagnostic
   /// to report at the location(s) of the compute() that causes the instantiation to the StructType.
   DenseMap<StructType, SmallVector<Diagnostic>> delayedDiagnostics;
-  /// Original `StructDefOp`s directly inside a template with `poly.expr` bindings and no
-  /// `poly.param` operations. Store operation identity because root-relative symbol paths do not
-  /// identify a definition across separate modules.
+  /// Root-relative names of original structs in templates with `poly.expr` bindings and no
+  /// `poly.param` operations. This coarse filter avoids symbol-table lookup for ordinary concrete
+  /// types; operation identity below remains authoritative when names can repeat across roots.
+  DenseSet<SymbolRefAttr> originalStructNamesWithExprsAndNoParams;
   DenseSet<Operation *> originalStructsWithExprsAndNoParams;
 
 public:
@@ -142,6 +143,7 @@ public:
         return;
       }
       for (StructDefOp structDef : templateOp.getBodyRegion().front().getOps<StructDefOp>()) {
+        originalStructNamesWithExprsAndNoParams.insert(structDef.getType().getNameRef());
         originalStructsWithExprsAndNoParams.insert(structDef.getOperation());
       }
     });
@@ -151,8 +153,12 @@ public:
   void resetModifiedFlag() { modified = false; }
   void updateModifiedFlag(bool currStepModified) { modified |= currStepModified; }
 
-  /// Return whether `structDef` was originally inside a template with expressions and no
-  /// parameters.
+  /// Return whether `type` may name an eligible original definition.
+  bool mayBeOriginalStructWithExprsAndNoParams(StructType type) const {
+    return originalStructNamesWithExprsAndNoParams.contains(type.getNameRef());
+  }
+
+  /// Return whether `structDef` is an eligible original definition.
   bool isOriginalStructWithExprsAndNoParams(StructDefOp structDef) const {
     return originalStructsWithExprsAndNoParams.contains(structDef.getOperation());
   }
@@ -1207,6 +1213,14 @@ public:
 
     // A type with no arguments is normally already concrete. It still needs a clone when its
     // original definition's template has no parameters and the struct references an expression.
+    if (!tracker_.mayBeOriginalStructWithExprsAndNoParams(orig)) {
+      LLVM_DEBUG(
+          llvm::dbgs()
+          << "[StructCloner]   skip: definition was not originally in a template with expressions "
+             "and no parameters\n"
+      );
+      return failure();
+    }
     SymbolTableCollection tables;
     FailureOr<SymbolLookupResult<StructDefOp>> definition =
         orig.getDefinition(tables, rootMod, /*reportMissing=*/false);
@@ -1216,11 +1230,7 @@ public:
     }
     StructDefOp structDef = definition->get();
     if (!tracker_.isOriginalStructWithExprsAndNoParams(structDef)) {
-      LLVM_DEBUG(
-          llvm::dbgs()
-          << "[StructCloner]   skip: definition was not originally in a template with expressions "
-             "and no parameters\n"
-      );
+      LLVM_DEBUG(llvm::dbgs() << "[StructCloner]   skip: definition is not an original source\n");
       return failure();
     }
     TemplateOp parentTemplate = getParentOfType<TemplateOp>(structDef);
@@ -1406,6 +1416,9 @@ LogicalResult instantiateMainStruct(ModuleOp modOp, ConversionTracker &tracker) 
   }
 
   if (isNullOrEmpty(mainType.getParams())) {
+    if (!tracker.mayBeOriginalStructWithExprsAndNoParams(mainType)) {
+      return success();
+    }
     SymbolTableCollection tables;
     FailureOr<SymbolLookupResult<StructDefOp>> definition =
         mainType.getDefinition(tables, modOp, /*reportMissing=*/false);
