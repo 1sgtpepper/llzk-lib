@@ -156,8 +156,8 @@ module attributes {llzk.lang} {
 
 // -----
 
-// Omitted type-only parameters must reject conflicting inferences from repeated contract
-// signature positions.
+// Omitted parameters with `!poly.tvar` restrictions reject conflicting inferences from repeated
+// contract signature positions.
 module attributes {llzk.lang} {
   poly.template @RepeatedTypeOnly {
     poly.param @T : !poly.tvar<@T>
@@ -191,8 +191,8 @@ module attributes {llzk.lang} {
 
 // -----
 
-// Omitted type-only parameters must reject a unique value inferred through an unrestricted struct
-// parameter.
+// Omitted parameters with `!poly.tvar` restrictions reject a unique value inferred through an
+// unrestricted struct parameter.
 module attributes {llzk.lang} {
   poly.template @BoxTemplate {
     poly.param @P

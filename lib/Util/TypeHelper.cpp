@@ -975,10 +975,10 @@ bool isTemplateParamTypeCompatible(Type actualType, Type requiredType) {
   // TypeVarType is a template-argument kind restriction, not an ordinary type wildcard. Keep
   // that distinction here rather than weakening typesUnify(), whose type-variable behavior is
   // required for general type inference.
-  bool actualIsTypeOnly = isa<TypeVarType>(actualType);
-  bool requiredIsTypeOnly = isa<TypeVarType>(requiredType);
-  if (actualIsTypeOnly || requiredIsTypeOnly) {
-    return actualIsTypeOnly && requiredIsTypeOnly;
+  bool actualIsTypeVar = isa<TypeVarType>(actualType);
+  bool requiredIsTypeVar = isa<TypeVarType>(requiredType);
+  if (actualIsTypeVar || requiredIsTypeVar) {
+    return actualIsTypeVar && requiredIsTypeVar;
   }
 
   FeltType requiredFelt = dyn_cast<FeltType>(requiredType);

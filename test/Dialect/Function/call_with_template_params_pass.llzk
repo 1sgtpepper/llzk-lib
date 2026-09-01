@@ -77,8 +77,8 @@ module attributes {llzk.lang} {
 // CHECK-NEXT:  }
 // -----
 
-// Same-spelled type-only parameters in separate templates are distinct bindings, but a matching
-// compatible type-only caller binding is still accepted by omitted template inference.
+// Same-spelled `!poly.tvar` parameters in separate templates are distinct bindings, but a caller
+// binding with a `!poly.tvar` restriction is accepted by omitted template inference.
 module attributes {llzk.lang} {
   poly.template @TypeOnlyTarget {
     poly.param @T : !poly.tvar<@T>
@@ -114,7 +114,7 @@ module attributes {llzk.lang} {
 // CHECK-NEXT:  }
 // -----
 
-// Repeated type-only signature positions accept one concrete type when omitted inference finds
+// Repeated `!poly.tvar` signature positions accept one concrete type when omitted inference finds
 // the same value at both positions.
 module attributes {llzk.lang} {
   poly.template @RepeatedTypeOnly {
@@ -144,7 +144,7 @@ module attributes {llzk.lang} {
 // CHECK-NEXT:  }
 // -----
 
-// A concrete type inferred through a struct parameter satisfies a type-only template restriction.
+// A concrete type inferred through a struct parameter satisfies a `!poly.tvar` restriction.
 module attributes {llzk.lang} {
   poly.template @BoxTemplate {
     poly.param @P

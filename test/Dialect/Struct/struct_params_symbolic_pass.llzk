@@ -88,9 +88,9 @@ module attributes {llzk.lang} {
 // CHECK-NEXT:  }
 // -----
 
-// A qualified global with a concrete type satisfies an index restriction, a local type-only
-// parameter satisfies a type-only restriction, and an unrestricted local may remain deferred as
-// a struct template argument until its caller is specialized.
+// A qualified global with a concrete type satisfies an index restriction, a local parameter with
+// a `!poly.tvar` restriction satisfies a `!poly.tvar` restriction, and an unrestricted local may
+// remain deferred as a struct template argument until its enclosing template is specialized.
 module attributes {llzk.lang} {
   poly.template @IndexTarget {
     poly.param @N : index

@@ -27,7 +27,7 @@ module attributes {llzk.lang} {
 
 // -----
 
-// A value-valued qualified global cannot satisfy a type-only restriction.
+// A qualified global holding a value cannot satisfy a `!poly.tvar` restriction.
 module attributes {llzk.lang} {
   poly.template @Target {
     // expected-note@+1 {{required parameter declared here}}
@@ -54,7 +54,7 @@ module attributes {llzk.lang} {
 
 // -----
 
-// A felt-valued qualified global cannot satisfy a type-only restriction.
+// A qualified global holding a felt value cannot satisfy a `!poly.tvar` restriction.
 module attributes {llzk.lang} {
   poly.template @Target {
     // expected-note@+1 {{required parameter declared here}}
@@ -81,7 +81,7 @@ module attributes {llzk.lang} {
 
 // -----
 
-// A value-valued local parameter cannot satisfy a type-only restriction.
+// A local parameter with a value restriction cannot satisfy a `!poly.tvar` restriction.
 module attributes {llzk.lang} {
   poly.template @Target {
     // expected-note@+1 {{required parameter declared here}}
@@ -108,7 +108,7 @@ module attributes {llzk.lang} {
 
 // -----
 
-// A type-only local parameter cannot satisfy a value-valued index restriction.
+// A local parameter with a `!poly.tvar` restriction cannot satisfy an index restriction.
 module attributes {llzk.lang} {
   poly.template @Target {
     // expected-note@+1 {{required parameter declared here}}
@@ -135,7 +135,7 @@ module attributes {llzk.lang} {
 
 // -----
 
-// An unrestricted local parameter does not establish a type-only argument kind.
+// An unrestricted local parameter does not establish a type argument.
 module attributes {llzk.lang} {
   poly.template @Target {
     // expected-note@+1 {{required parameter declared here}}

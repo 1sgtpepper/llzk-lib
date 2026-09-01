@@ -222,7 +222,7 @@ LogicalResult verifyTemplateSymbolType(
   if (requiredParamType) {
     std::optional<Type> actualType = binding.getTypeOpt();
     // A direct array-dimension symbol must establish its index kind at the use site. Other
-    // template arguments may remain unrestricted until their enclosing caller is specialized.
+    // template arguments may remain unrestricted until their enclosing template is specialized.
     bool missingArrayDimensionType = !actualType && llvm::isa<array::ArrayType>(parameterizedType);
     if (missingArrayDimensionType ||
         !isTemplateParamTypeCompatible(actualType, *requiredParamType)) {
@@ -563,8 +563,8 @@ LogicalResult verifyTemplateParamValuesCompatibility(
 
   for (auto [paramOp, attr] : llvm::zip_equal(targetParamDefs, explicitParams.getValue())) {
     // Affine maps are deferred within parameterized types, where a later operation supplies their
-    // operands. A direct function or contract template-argument list has no such context and has
-    // historically required an integer value for an index or integer restriction.
+    // operands. Direct function and contract template-argument lists have no affine-map operands,
+    // so index and integer restrictions require integer arguments.
     std::optional<Type> restriction = paramOp.getTypeOpt();
     if (llvm::isa<AffineMapAttr>(attr) && restriction &&
         llvm::isa<IndexType, IntegerType>(*restriction)) {

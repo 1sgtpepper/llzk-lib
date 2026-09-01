@@ -338,10 +338,9 @@ def CallOp : FunctionDialectOp<
     function.call @OtherStruct::@constrain(%5, %6) : (!struct.type<@OtherStruct>, !felt.type) -> ()
     ```
 
-    When the return StructType of a `compute()` function uses AffineMapAttr to
-    express struct parameter(s) that depend on a loop variable, the optional
-    instantiation parameter list of this operation must be used to instantiate
-    all AffineMap used as parameters to the StructType.
+    When the return `struct.type` of a `compute()` function uses affine-map parameters that
+    depend on loop values, supply every affine-map operand through this operation's optional
+    affine-map operand list.
 
     Examples:
     ```llzk
@@ -354,7 +353,8 @@ def CallOp : FunctionDialectOp<
     omitted only when every parameter appears in the function signature; omitted values are
     inferred by unifying the call's operand and result types with that signature. The `?` wildcard
     is valid for any parameter with a `poly.tvar` restriction and leaves that type for later
-    inference based on the body of the callee function.
+    inference based on the body of the callee function. Verification fails if the type cannot be
+    inferred from the callee.
 
     Every explicit or inferred argument must satisfy its `poly.param` type restriction. If the
     function signature independently infers a value for an explicitly supplied parameter, the
@@ -481,7 +481,7 @@ def CallOp : FunctionDialectOp<
     ::mlir::Operation *resolveCallable();
 
     /// Return the FunctionType inferred from the arg operands and result types of this CallOp.
-    /// This is not necessarily the same as the callee's FunctionType but should unify with it
+    /// This is not necessarily the same as the callee's FunctionType but must unify with it
     /// or else IR verification will fail.
     ::mlir::FunctionType getTypeSignature();
 
