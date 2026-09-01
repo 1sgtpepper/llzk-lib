@@ -100,7 +100,7 @@ static void reportDelayedDiagnostics(CallOp caller, SmallVector<Diagnostic> &&di
 }
 
 class ConversionTracker {
-  /// Exact specialization identity: source definition plus ordered concrete parameter bindings.
+  /// Key fields used for full-function reuse: source definition and ordered concrete bindings.
   using FuncInstantiationKey = std::pair<Operation *, ArrayAttr>;
 
   /// Published result of one successful partial-function conversion.

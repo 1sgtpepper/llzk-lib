@@ -1,6 +1,6 @@
 // RUN: llzk-opt -split-input-file -llzk-flatten=cleanup=disabled %s | FileCheck %s
 
-// Ordered bindings are part of specialization identity: swapping them changes the result.
+// Full-function reuse preserves binding order: swapping the bindings changes the result.
 module attributes {llzk.lang} {
   poly.template @Ordered {
     poly.param @A : index
