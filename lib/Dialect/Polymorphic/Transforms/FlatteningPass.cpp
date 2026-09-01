@@ -838,8 +838,7 @@ static FailureOr<std::optional<SmallVector<TemplateExprOp>>> evaluateTemplateExp
       continue;
     }
     TemplateExprOp convertedExprOp = **convertedExpr;
-    FailureOr<std::optional<Attribute>> result =
-        evaluateExpr(convertedExprOp, paramNameToConcrete);
+    FailureOr<std::optional<Attribute>> result = evaluateExpr(convertedExprOp, paramNameToConcrete);
     if (failed(result)) {
       convertedExprOp->destroy();
       destroyDeferredExprs();
