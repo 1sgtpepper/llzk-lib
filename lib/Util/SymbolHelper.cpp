@@ -18,6 +18,7 @@
 #include "llzk/Dialect/Felt/IR/Types.h"
 #include "llzk/Dialect/Function/IR/Ops.h"
 #include "llzk/Dialect/Global/IR/Ops.h"
+#include "llzk/Dialect/POD/IR/Types.h"
 #include "llzk/Dialect/Polymorphic/IR/Types.h"
 #include "llzk/Dialect/Verif/IR/Ops.h"
 #include "llzk/Util/SymbolLookup.h"
@@ -1062,6 +1063,11 @@ LogicalResult verifyTypeResolution(SymbolTableCollection &tables, Operation *ori
       return failure();
     }
     return verifyTypeResolution(tables, origin, aTy.getElementType());
+  } else if (pod::PodType pTy = llvm::dyn_cast<pod::PodType>(ty)) {
+    return verifyTypeResolution(
+        tables, origin,
+        llvm::map_range(pTy.getRecords(), [](pod::RecordAttr record) { return record.getType(); })
+    );
   } else if (TypeVarType vTy = llvm::dyn_cast<TypeVarType>(ty)) {
     return verifyParamOfType(tables, vTy.getNameRef(), vTy, origin);
   } else {
