@@ -277,16 +277,19 @@ mlir::LogicalResult verifyParamsOfType(
     std::optional<mlir::Type> requiredParamType = std::nullopt
 );
 
-/// Ensure that all symbols used within the type can be resolved.
+/// Ensure that the referenced definition and template arguments of the given `StructType` can be
+/// resolved.
 mlir::FailureOr<component::StructDefOp> verifyStructTypeResolution(
     mlir::SymbolTableCollection &tables, component::StructType ty, mlir::Operation *origin
 );
 
-/// Ensure that all symbols used within the given Type instance can be resolved.
+/// Ensure that references in the given type can be resolved. `StructType` and `ArrayType` values
+/// are traversed recursively, and `TypeVarType` parameter references are resolved. Record member
+/// types within a `pod::PodType` are not traversed.
 mlir::LogicalResult
 verifyTypeResolution(mlir::SymbolTableCollection &tables, mlir::Operation *origin, mlir::Type type);
 
-/// Ensure that all symbols used within all Type instances can be resolved.
+/// Ensure that references in each given type instance can be resolved, reporting all failures.
 template <std::ranges::input_range Range>
 mlir::LogicalResult verifyTypeResolution(
     mlir::SymbolTableCollection &tables, mlir::Operation *origin, const Range &types

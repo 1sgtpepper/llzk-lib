@@ -45,7 +45,7 @@ module attributes {llzk.lang = "circom"} {
 
   A type argument may contain any valid LLZK type. The verifier recursively resolves references in
   `struct.type` and `array.type` arguments and resolves a `poly.tvar` parameter reference at the
-  `struct.type` use site.
+  `struct.type` use site. Record member types within a `pod.type` are not traversed.
 
   For example, given `poly.template @T` with `poly.param @P : !felt.type<"bn128">`
   and a nested `struct.def @S`, these arguments select the same value and field:
@@ -79,7 +79,8 @@ LLZK supports arrays where the element type is not truly homogeneous, specifical
 - A type argument must be a valid LLZK type. A `function.call` or `verif.include` verifier
   recursively resolves references in `struct.type` and `array.type` arguments and resolves a
   `poly.tvar` parameter reference at the call or inclusion site. A `poly.tvar` is accepted once its
-  parameter reference resolves, even when its concrete type remains deferred.
+  parameter reference resolves, even when its concrete type remains deferred. Record member types
+  within a `pod.type` are not traversed.
 - A `function.def` argument may have `function.arg_name = "..."` to preserve the source-level argument name independently from the SSA name printed by MLIR. The value must be a non-empty, untyped string attribute; typed string attributes such as `"x" : i1` are rejected. Attached argument names must be unique within the function. Argument-splitting transforms derive names for generated arguments, such as `input[0]` for array elements or `self.member` for struct members.
 - Ops marked with the `WitnessGen` trait can only be used in functions with the `allow_witness` attribute (`compute()` within `struct.def` has this by default). Similarly, ops marked with the `ConstraintGen` trait can only be used in functions with the `allow_constraint` attribute (`constrain()` within `struct.def` has this by default).
 - Functions with the `allow_witness` attribute can only call other functions marked with `allow_witness`. Likewise for `allow_constraint`.

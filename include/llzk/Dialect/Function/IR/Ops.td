@@ -365,7 +365,8 @@ def CallOp : FunctionDialectOp<
     restriction, a type argument must be a valid LLZK type. The verifier recursively resolves
     references in `struct.type` and `array.type` arguments and resolves a `poly.tvar` parameter
     reference at the call site. A `poly.tvar` is accepted once its parameter reference resolves,
-    even when its concrete type remains deferred.
+    even when its concrete type remains deferred. Record member types within a `pod.type` are not
+    traversed.
 
     When a target is reached through an `include.from` alias, verification resolves names in its
     signature relative to the included module. The `callee` attribute retains the caller-visible

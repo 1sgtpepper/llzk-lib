@@ -44,7 +44,8 @@ def LLZK_StructType : StructDialectType<"Struct", "type"> {
 
     A `TypeAttr` argument may contain any valid LLZK type. The verifier recursively resolves
     references in `struct.type` and `array.type` arguments and resolves a `poly.tvar` parameter
-    reference at the `struct.type` use site.
+    reference at the `struct.type` use site. Record member types within a `pod.type` are not
+    traversed.
 
     The examples below are schematic: `@A` names a non-parameterized struct; `@T` declares index,
     felt, and type parameters in that order, names its index parameter `@N`, and contains `@B`.
