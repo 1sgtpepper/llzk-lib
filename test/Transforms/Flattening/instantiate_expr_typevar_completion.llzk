@@ -91,7 +91,8 @@ module attributes {llzk.lang} {
 
 // -----
 
-// The same direct and deferred transitions are covered for struct specialization.
+// Direct struct specialization materializes the concrete value and type-variable bindings in the
+// referenced expression.
 module attributes {llzk.lang, llzk.main = !struct.type<@Direct>} {
   poly.template @InnerStruct {
     poly.param @Num

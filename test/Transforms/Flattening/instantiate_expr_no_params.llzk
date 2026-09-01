@@ -1,12 +1,15 @@
 // RUN: llzk-opt -split-input-file -llzk-flatten %s | FileCheck --enable-var-scope %s --check-prefix=DEFAULT
 // RUN: llzk-opt -split-input-file -llzk-flatten=cleanup=disabled %s | FileCheck --enable-var-scope %s --check-prefix=DISABLED
 
-// A zero-parameter function template still specializes when its body references a concrete
-// expression; no poly.param binding is required.
+// A zero-parameter function template evaluates a constant select and specializes its expression
+// to the selected value; no `poly.param` binding is required.
 module attributes {llzk.lang} {
   poly.template @ExprOnlyFunc {
     poly.expr @Value {
-      %value = arith.constant 42 : index
+      %condition = arith.constant true
+      %selected = arith.constant 42 : index
+      %unselected = arith.constant 99 : index
+      %value = arith.select %condition, %selected, %unselected : index
       poly.yield %value : index
     }
     function.def @value() -> index {
@@ -40,7 +43,10 @@ module attributes {llzk.lang} {
 // DISABLED-NEXT:    }
 // DISABLED-NEXT:    poly.template @ExprOnlyFunc {
 // DISABLED-NEXT:      poly.expr @Value {
-// DISABLED-NEXT:        %[[EXPR_VALUE:[0-9a-zA-Z_\.]+]] = arith.constant 42 : index
+// DISABLED-NEXT:        %[[EXPR_CONDITION:[0-9a-zA-Z_\.]+]] = arith.constant true
+// DISABLED-NEXT:        %[[EXPR_SELECTED:[0-9a-zA-Z_\.]+]] = arith.constant 42 : index
+// DISABLED-NEXT:        %[[EXPR_UNSELECTED:[0-9a-zA-Z_\.]+]] = arith.constant 99 : index
+// DISABLED-NEXT:        %[[EXPR_VALUE:[0-9a-zA-Z_\.]+]] = arith.select %[[EXPR_CONDITION]], %[[EXPR_SELECTED]], %[[EXPR_UNSELECTED]] : index
 // DISABLED-NEXT:        poly.yield %[[EXPR_VALUE]] : index
 // DISABLED-NEXT:      }
 // DISABLED-NEXT:      function.def @value() -> index {

@@ -1,13 +1,13 @@
 // RUN: not llzk-opt -llzk-flatten -verify-diagnostics %s
 
-// An expression with an unresolved dependency must not hide a later referenced expression with
-// concrete inputs. The later expression is intentionally non-foldable, so flattening must inspect
-// it and report the failure instead of silently making no progress.
+// A deferred expression must not hide a later referenced expression with concrete inputs. The
+// later expression is intentionally non-foldable, so flattening must inspect it and report the
+// failure instead of silently making no progress.
 module attributes {llzk.lang} {
-  poly.template @BlockedBeforeFailure {
+  poly.template @DeferredBeforeFailure {
     poly.param @Num
     poly.param @Ty : !poly.tvar<@Ty>
-    poly.expr @Blocked {
+    poly.expr @Deferred {
       %num = poly.read_const @Num : !poly.tvar<@Ty>
       %value = poly.unifiable_cast %num : (!poly.tvar<@Ty>) -> index
       poly.yield %value : index
@@ -21,7 +21,7 @@ module attributes {llzk.lang} {
       poly.yield %value : index
     }
     function.def @value(%arg: !poly.tvar<@Ty>) -> index {
-      %blocked = poly.read_const @Blocked : index
+      %deferred = poly.read_const @Deferred : index
       %ready = poly.read_const @ReadyButNotFoldable : index
       function.return %ready : index
     }
@@ -30,7 +30,7 @@ module attributes {llzk.lang} {
   poly.template @Bridge {
     poly.param @Ty : !poly.tvar<@Ty>
     function.def @value(%arg: !poly.tvar<@Ty>) -> index {
-      %value = function.call @BlockedBeforeFailure::@value<[35, @Ty]>(%arg) :
+      %value = function.call @DeferredBeforeFailure::@value<[35, @Ty]>(%arg) :
           (!poly.tvar<@Ty>) -> index
       function.return %value : index
     }

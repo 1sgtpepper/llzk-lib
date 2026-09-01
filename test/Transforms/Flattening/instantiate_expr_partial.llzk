@@ -208,7 +208,7 @@ module attributes {llzk.lang} {
 
 // -----
 
-// A function specialization normalizes NPlusM while retaining the remaining symbolic dimension.
+// A function specialization substitutes N in NPlusM while retaining the symbolic M dimension.
 module attributes {llzk.lang} {
   poly.template @InnerFunc {
     poly.param @N : index
@@ -260,7 +260,8 @@ module attributes {llzk.lang} {
 
 // -----
 
-// A struct specialization normalizes concrete scalar and type-variable bindings while retaining M.
+// A struct specialization materializes concrete scalar and type-variable bindings while retaining
+// the symbolic M parameter.
 module attributes {llzk.lang} {
   poly.template @Inner {
     poly.param @Num

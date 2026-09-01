@@ -135,7 +135,7 @@ form used by the witgen tests, namely JSON integers or decimal strings.
   natively converted to LLVM IR, then executes it with `mlir::ExecutionEngine`.
 
 The default backend is `interpreter`, as the `execution-engine` does not currently
-support all LLZK features due to existing lowering limitations (e.g., in the `-llzk-flattening` pass).
+support all LLZK features due to existing lowering limitations (e.g., in the `-llzk-flatten` pass).
 
 #### Preprocessing
 

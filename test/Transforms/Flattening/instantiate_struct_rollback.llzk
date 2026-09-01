@@ -98,7 +98,8 @@ module attributes {llzk.lang} {
     }
   }
 
-  // This specialization runs after the failed partial specialization above in the same pass.
+  // A later valid specialization must still succeed after the earlier partial specialization
+  // fails.
   poly.template @GoodStruct {
     poly.param @N : index
 

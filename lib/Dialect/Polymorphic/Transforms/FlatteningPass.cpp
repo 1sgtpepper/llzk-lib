@@ -114,9 +114,9 @@ class ConversionTracker {
   /// Maps original remote (i.e., use site) type to new remote type. A partially specialized result
   /// retains its remaining parameters.
   DenseMap<StructType, StructType> structInstantiations;
-  /// Maps each instantiated type to its canonical source type for legal conversion checks.
-  /// An explicit empty parameter list is a representation alias of an absent parameter list in the
-  /// forward cache, but the alias is not exposed as the reverse-conversion preimage.
+  /// Maps each instantiated type to its canonical source type for legal conversion checks. The
+  /// absent and explicitly empty parameter-list spellings share a forward-cache entry; only the
+  /// canonical spelling is stored in this reverse map.
   DenseMap<StructType, StructType> reverseInstantiations;
   /// Tracks original free function definitions for which instantiated clones were created.
   DenseSet<SymbolRefAttr> funcInstantiations;
@@ -178,7 +178,8 @@ public:
       if (aliasResult.second) {
         modified = true;
       } else {
-        // ASSERT: If a representation alias already existed it must be `newType`.
+        // ASSERT: If the alternate parameter-list spelling already existed it must map to
+        // `newType`.
         assert(aliasResult.first->getSecond() == newType);
       }
     }
@@ -555,7 +556,7 @@ public:
 /// Clone a referenced template expression and apply every currently concrete value and type
 /// binding. A reduced template no longer owns the removed parameter declarations, so its retained
 /// expression must contain neither reads nor type variables for those parameters. Return an empty
-/// result when a known value still has a non-concrete converted type, blocking that specialization
+/// result when a known value still has a non-concrete converted type, deferring that specialization
 /// attempt rather than discarding a binding that cannot yet be materialized.
 static FailureOr<std::optional<TemplateExprOp>> cloneDeferredExpr(
     TemplateExprOp exprOp, const DenseMap<Attribute, Attribute> &paramNameToConcrete,
@@ -563,7 +564,7 @@ static FailureOr<std::optional<TemplateExprOp>> cloneDeferredExpr(
 ) {
   MLIRContext *ctx = exprOp.getContext();
   TemplateParamTypeConverter tyConv(paramNameToConcrete);
-  WalkResult blocked = exprOp.walk([&](ConstReadOp readOp) {
+  WalkResult unresolvedDependency = exprOp.walk([&](ConstReadOp readOp) {
     if (!paramNameToConcrete.contains(readOp.getConstNameAttr())) {
       return WalkResult::advance();
     }
@@ -571,7 +572,7 @@ static FailureOr<std::optional<TemplateExprOp>> cloneDeferredExpr(
     return (!convertedType || !isConcreteType(convertedType)) ? WalkResult::interrupt()
                                                               : WalkResult::advance();
   });
-  if (blocked.wasInterrupted()) {
+  if (unresolvedDependency.wasInterrupted()) {
     return std::optional<TemplateExprOp>();
   }
 
@@ -750,10 +751,17 @@ evaluateExpr(TemplateExprOp exprOp, const DenseMap<Attribute, Attribute> &paramN
     for (auto [result, fr] : llvm::zip_equal(bodyOp.getResults(), foldResults)) {
       if (Attribute a = llvm::dyn_cast<Attribute>(fr)) {
         valueMap[result] = a;
-      } else {
-        bodyOp.emitOpError("template expression fold did not produce a constant attribute");
-        return failure();
+        continue;
       }
+      if (Value foldedValue = llvm::dyn_cast<Value>(fr)) {
+        auto it = valueMap.find(foldedValue);
+        if (it != valueMap.end()) {
+          valueMap[result] = it->second;
+          continue;
+        }
+      }
+      bodyOp.emitOpError("template expression fold did not produce a constant attribute");
+      return failure();
     }
   }
   exprOp.emitOpError("initializer has no yield operation");
@@ -764,9 +772,8 @@ evaluateExpr(TemplateExprOp exprOp, const DenseMap<Attribute, Attribute> &paramN
 /// boundaries, so inspect target regions separately. If analysis cannot prove that `target` has no
 /// use, conservatively treat the expression as referenced.
 static bool targetMayReferenceTemplateExpr(Operation *target, TemplateExprOp exprOp) {
-  // MemberDefOp stores its type as a native property rather than an operation attribute, so the
-  // generic symbol-use walker cannot see an expression used only in a member's type. These members
-  // belong directly to the target StructDefOp; do not walk into nested symbol-table scopes here.
+  // Symbol-use traversal stops at the StructDefOp symbol-table boundary, so inspect its direct
+  // member types separately without descending into nested symbol scopes.
   if (auto structDef = llvm::dyn_cast<StructDefOp>(target)) {
     SymbolRefAttr exprRef = FlatSymbolRefAttr::get(exprOp.getSymNameAttr());
     SymbolTableCollection tables;
@@ -810,7 +817,7 @@ static FailureOr<std::optional<SmallVector<TemplateExprOp>>> evaluateTemplateExp
     }
     deferredExprs.clear();
   };
-  bool hasBlockedExpression = false;
+  bool hasUnresolvedExpression = false;
   for (TemplateExprOp exprOp : templateOp.getConstOps<TemplateExprOp>()) {
     if (!targetMayReferenceTemplateExpr(target, exprOp)) {
       continue;
@@ -825,9 +832,9 @@ static FailureOr<std::optional<SmallVector<TemplateExprOp>>> evaluateTemplateExp
       return failure();
     }
     if (!convertedExpr->has_value()) {
-      // A known binding with a non-concrete converted type blocks this specialization, but
+      // A known binding with a non-concrete converted type defers this specialization, but
       // independent referenced expressions still need to be checked for fatal evaluation errors.
-      hasBlockedExpression = true;
+      hasUnresolvedExpression = true;
       continue;
     }
     TemplateExprOp convertedExprOp = **convertedExpr;
@@ -853,7 +860,7 @@ static FailureOr<std::optional<SmallVector<TemplateExprOp>>> evaluateTemplateExp
       deferredExprs.push_back(convertedExprOp);
     }
   }
-  if (hasBlockedExpression) {
+  if (hasUnresolvedExpression) {
     destroyDeferredExprs();
     return std::optional<SmallVector<TemplateExprOp>>();
   }
@@ -1005,7 +1012,6 @@ class StructCloner {
     // Reduced from `typeAtCallerParams` to contain only the non-concrete Attributes.
     ArrayAttr reducedCallerParams = nullptr;
     SmallVector<Attribute> nonConcreteParams;
-    SmallVector<Attribute> canonicalCallerParams;
     size_t concreteParamCount = 0;
     {
       ArrayAttr paramNamesAttr = typeAtDef.getParams();
@@ -1016,26 +1022,13 @@ class StructCloner {
       assert(paramNames.size() == typeAtCallerParams.size());
       auto paramOps = parentTemplate.getConstOps<TemplateParamOp>();
       assert(paramNames.size() == llvm::range_size(paramOps));
-      canonicalCallerParams.reserve(paramNames.size());
 
-      for (auto [paramName, paramOp, next] :
-           llvm::zip_equal(paramNames, paramOps, typeAtCallerParams)) {
+      for (auto [paramName, next] : llvm::zip_equal(paramNames, typeAtCallerParams)) {
         if (isConcreteAttr<false>(next)) {
-          FailureOr<Attribute> normalized =
-              materializeTemplateParamValue(next, paramOp.getTypeOpt());
-          if (failed(normalized)) {
-            origStruct.emitOpError().append(
-                "cannot materialize instantiation value '", next, "' for parameter \"@",
-                paramOp.getName(), '"'
-            );
-            return failure();
-          }
-          paramNameToConcrete[paramName] = *normalized;
-          canonicalCallerParams.push_back(*normalized);
+          paramNameToConcrete[paramName] = next;
           ++concreteParamCount;
         } else {
           nonConcreteParams.push_back(next);
-          canonicalCallerParams.push_back(next);
         }
       }
       // post-conditions
@@ -1045,9 +1038,7 @@ class StructCloner {
       }
     }
 
-    StructType canonicalCallerType =
-        StructType::get(typeAtCaller.getNameRef(), ArrayAttr::get(ctx, canonicalCallerParams));
-    if (auto cached = tracker_.getInstantiation(canonicalCallerType)) {
+    if (auto cached = tracker_.getInstantiation(typeAtCaller)) {
       return *cached;
     }
 
@@ -1202,7 +1193,7 @@ class StructCloner {
           std::make_move_iterator(conversionDiagnostics.end())
       );
     }
-    tracker_.recordInstantiation(canonicalCallerType, newRemoteType);
+    tracker_.recordInstantiation(typeAtCaller, newRemoteType);
     return newRemoteType;
   }
 
@@ -1285,7 +1276,6 @@ public:
           llvm::dbgs() << "[ParameterizedStructUseTypeConverter] instantiating " << inputTy
                        << " as " << newTy << '\n'
       );
-      tracker_.recordInstantiation(inputTy, newTy);
       return newTy;
     });
 
@@ -1863,15 +1853,7 @@ private:
       if (failed(op.verifyTemplateParamCompatibility(concreteValue, paramOp))) {
         return failIncompatibleInferredParam(op, rewriter, paramName, paramOp);
       }
-      FailureOr<Attribute> normalized =
-          materializeTemplateParamValue(concreteValue, paramOp.getTypeOpt());
-      if (failed(normalized)) {
-        return op.emitOpError().append(
-            "instantiation value '", concreteValue, "' is not compatible with parameter \"@",
-            paramOp.getName(), "\" type restriction ", *paramOp.getTypeOpt()
-        );
-      }
-      paramNameToConcrete[paramName] = *normalized;
+      paramNameToConcrete[paramName] = concreteValue;
       return success();
     };
 

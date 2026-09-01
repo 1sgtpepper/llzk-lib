@@ -148,11 +148,9 @@ LogicalResult TemplateExprOp::verifyRegions() {
     return emitOpError("expected initializer region to end with a '")
            << YieldOp::getOperationName() << '\'';
   }
-  // Check or ops with side-effects that are not allowed within `poly.expr`.
+  // Global references and function calls are intentionally unavailable in template initializers.
   Operation *illegalOp = nullptr;
   auto walkRes = block.walk([&illegalOp](Operation *p) {
-    // Note: If side-effect traits are added to ops in the future, this check should
-    // be updated to check for those traits instead of specific op types.
     if (llvm::isa<global::GlobalRefOpInterface, function::CallOp>(p)) {
       illegalOp = p;
       return WalkResult::interrupt();

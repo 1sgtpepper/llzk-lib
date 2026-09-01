@@ -1,6 +1,7 @@
 // RUN: llzk-opt -split-input-file --pass-pipeline='builtin.module(llzk-flatten{cleanup=disabled})' %s | FileCheck %s
 
-// Struct specialization leaves a non-foldable expression referenced only by another definition unchanged.
+// Struct specialization leaves a non-foldable expression referenced only by another definition
+// unchanged.
 module attributes {llzk.lang, llzk.main = !struct.type<@UnusedStructExpr::@Value<[5]>>} {
   poly.template @UnusedStructExpr {
     poly.param @N : index
