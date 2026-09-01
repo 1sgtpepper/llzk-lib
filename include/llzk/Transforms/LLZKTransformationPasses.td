@@ -116,17 +116,18 @@ def FuseProductControlFlowPass : LLZKPass<"llzk-fuse-product-control-flow"> {
       "Fuse matching compute/constrain control flow in a @product function";
   let description = [{
     Fuse uniquely matched compute/constrain `scf.for` and `scf.if` siblings in `@product`
-    functions. A pair must have opposite `product_source` roles. Unmatched, ambiguous, or unsafe
-    pairs remain unchanged.
+    functions. A pair must carry opposite `product_source` values: `compute` and `constrain`.
+    Unmatched, ambiguous, or unsafe pairs remain unchanged.
 
-    Loop pairs must be in the same block with the compute loop first and identify the same lower
-    bound, upper bound, and step; equal trip counts alone are insufficient. A missing
+    Loop pairs must be in the same block with the compute loop first. Each lower bound, upper bound,
+    and step must be the same SSA value, equal integer constants, or same-block `poly.read_const`
+    operations naming the same binding; the pass does not infer arithmetic equivalence. A missing
     `unsignedCmp` or `unsignedCmp = false` uses signed bounds; any other present `unsignedCmp` uses
     unsigned bounds. Fusion interleaves the loop bodies, so the compute loop must be
-    memory-effect-free and speculatable. The constrain loop may contain only supported
-    constraint and nondeterministic operations, nested conditionals, speculatable `scf.for`
-    operations, and other operations that MLIR proves pure. Storage effects, calls, allocation,
-    traps, `scf.while`, and unknown effects prevent fusion.
+    memory-effect-free and speculatable. The constrain loop may contain `constrain.eq`,
+    `constrain.in`, `llzk.nondet`, nested conditionals, speculatable `scf.for` operations, and other
+    operations that MLIR proves pure. Storage effects, calls, allocation, traps, `scf.while`, and
+    unknown effects prevent fusion.
 
     Compute-side operations moved after the constrain loop retain their relative order and must be
     direct member writes or operations that MLIR proves pure; every other intervening operation
