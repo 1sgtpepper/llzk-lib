@@ -83,6 +83,6 @@ LLZK supports arrays where the element type is not truly homogeneous, specifical
 - Only the outermost module should have the `llzk.lang` attribute (because the presence of that attribute is used to determine the “root” symbol table for symbol resolution).
 - All inner modules must be named because their names are used to build the fully-qualified path names for symbol references.
 - References to function and type definitions must use fully-qualified paths. Template arguments
-  may use binding names from their enclosing `poly.template`.
+  may use binding names from their enclosing `poly.template` or fully-qualified constant globals.
 
 [circomlib-and-gate]: https://github.com/iden3/circomlib/blob/master/circuits/gates.circom#L29-L35

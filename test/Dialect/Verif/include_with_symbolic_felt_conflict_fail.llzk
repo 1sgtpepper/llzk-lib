@@ -1,7 +1,7 @@
 // RUN: llzk-opt -split-input-file -verify-diagnostics %s
 
-// These cases reject field or value conflicts between explicit and independently inferred felt
-// arguments on verif.include, including local and qualified-global symbols.
+// Explicit and independently inferred felt arguments on verif.include must agree in field and
+// value, including when the explicit argument is a local or qualified-global symbol.
 module attributes {llzk.lang} {
   poly.template @BoxTemplate {
     poly.param @P

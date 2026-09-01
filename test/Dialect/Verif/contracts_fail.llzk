@@ -461,8 +461,8 @@ module attributes {llzk.lang} {
 }
 // -----
 
-// Type-only include arguments must resolve symbols nested in their TypeAttr while accepting a
-// concrete type argument.
+// Include arguments for a `poly.tvar` parameter must resolve symbols nested in their TypeAttr
+// while accepting a concrete type argument.
 module attributes {llzk.lang} {
   poly.template @TypeTarget {
     poly.param @T : !poly.tvar<@T>

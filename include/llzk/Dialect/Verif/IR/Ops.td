@@ -453,8 +453,8 @@ def IncludeOp
     remain deferred for an index, integer, or fieldless felt parameter; it cannot satisfy a fielded
     felt or `poly.tvar` restriction. The direct argument for an index or integer restriction must be
     an integer, not an affine map. The `?` wildcard is valid for any parameter with a `poly.tvar`
-    restriction and leaves that type for later inference based on the callee. For a parameter with a
-    `poly.tvar` restriction, a type
+    restriction and leaves that type for later inference based on the target contract. For a
+    parameter with a `poly.tvar` restriction, a type
     argument resolves nested `struct.type`, `array.type`, and `poly.tvar` symbols at the inclusion
     site. A nested `poly.tvar` is accepted once its parameter reference resolves, even when its
     concrete type remains deferred.
