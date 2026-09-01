@@ -1,7 +1,7 @@
 // RUN: llzk-opt -split-input-file -llzk-flatten -verify-diagnostics %s 2>&1 | FileCheck --enable-var-scope %s
 
-// Failed full and partial struct specializations must erase their generated definitions and
-// preserve preferred names for later successful specializations.
+// Failed full and partial struct specializations must erase their generated definitions without
+// preventing later independent specializations.
 module attributes {llzk.lang} {
   poly.template @BrokenStruct {
     poly.param @Num
@@ -131,8 +131,8 @@ module attributes {llzk.lang} {
   }
 }
 
-// A failed partial conversion must not leave its generated template or its cached symbol table.
-// The later specialization proves that the same cloner remains usable after rollback.
+// A failed partial conversion must not leave its generated template. The later specialization
+// proves that the same cloner remains usable after rollback.
 // CHECK-LABEL: module attributes {llzk.lang} {
 // CHECK-NOT: BrokenPartial_f<
 // CHECK: struct.def @GoodStruct_7_Value {

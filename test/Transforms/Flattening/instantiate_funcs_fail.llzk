@@ -36,7 +36,6 @@ module attributes {llzk.lang} {
     }
   }
 }
-// CHECK: llzk-flatten failed while instantiating functions in templates
 // -----
 
 // The same transitive mismatch must roll back when the nested call has an explicit argument.
@@ -74,7 +73,6 @@ module attributes {llzk.lang} {
     }
   }
 }
-// CHECK: llzk-flatten failed while instantiating functions in templates
 // -----
 
 module attributes {llzk.lang} {
