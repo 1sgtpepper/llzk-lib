@@ -188,10 +188,10 @@ def LLZK_TemplateExprOp
     Declares an expression over zero or more parameters of a `poly.template`. Its name can be used
     by `poly.read_const` and as a symbolic array dimension or template argument within the template.
 
-    The initializer cannot reference globals, call functions, or use another `poly.expr` defined
-    in the same template. Other operations are permitted, but when flattening evaluates a
-    referenced expression after its dependencies become concrete, every operation and the yielded
-    value must fold to a concrete attribute. Failure to fold is an error.
+    The initializer cannot reference globals, call functions, or use a `poly.expr` binding defined
+    in the same template, including itself. Other operations are permitted. Once flattening
+    evaluates the expression after its value and type dependencies become concrete, every
+    operation and the yielded value must fold to a concrete attribute; otherwise evaluation fails.
 
     Example:
     ```llzk

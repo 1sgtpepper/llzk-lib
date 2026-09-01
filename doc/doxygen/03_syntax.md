@@ -69,6 +69,32 @@ module attributes {llzk.lang = "circom"} {
 
 LLZK supports arrays where the element type is not truly homogeneous, specifically when a templated `struct.type` is used with an `affine_map` parameter. For example, the type `!array.type<10 x !struct.type<@X<[affine_map<(i)[] -> (i*5)>]>>>` contains instances of the struct `@X` instantiated with different parameter values per `affine_map<(i)[] -> (i*5)>`. Use of this type can be seen in [circom_example_2.llzk](\ref test/FrontendLang/Circom/circom_example_2.llzk). If the circuit is ultimately instantiated and flattened, the array will have to be split into scalar values since the instantiated struct type of each element is different.
 
+## Template expressions
+
+A `poly.template` may declare a named `poly.expr` that reads zero or more enclosing `poly.param`
+bindings with `poly.read_const`. The expression name may then be read as a constant or used as a
+symbolic array dimension or template argument within the template.
+
+```llzk
+poly.template @T {
+  poly.param @N : index
+  poly.expr @DoubleN {
+    %n = poly.read_const @N : index
+    %double = arith.addi %n, %n : index
+    poly.yield %double : index
+  }
+}
+```
+
+An initializer cannot reference globals, call functions, or use a `poly.expr` binding defined in
+the same template, including itself. Other operations are permitted. Once `llzk-flatten` evaluates
+the expression after its value and type dependencies become concrete, every operation and the
+yielded value must fold to a concrete attribute; otherwise evaluation fails. The yielded value must
+have an integral, felt, or type-variable type. A converted expression with valid remaining symbolic
+dependencies is kept in a partial specialization. If a supplied binding still has a non-concrete
+converted type, the specialization attempt is deferred. Templates with expressions and no
+`poly.param` declarations are specialized when a definition refers to a concrete expression.
+
 ## Semantic Rules
 
 - Each `array.new` operation creates a fresh mutable array allocation. Two identical `array.new` operations are not interchangeable when either result may be read or written. The same is true for `pod.new`.

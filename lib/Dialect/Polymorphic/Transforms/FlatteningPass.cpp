@@ -1341,7 +1341,7 @@ public:
   }
 };
 
-/// Convert a `MemberDefOp`'s native type property even when no body operation reads or writes it.
+/// Convert a `MemberDefOp`'s type property even when no body operation reads or writes it.
 class MemberDefOpPattern : public OpConversionPattern<MemberDefOp> {
 public:
   MemberDefOpPattern(TypeConverter &converter, MLIRContext *ctx)

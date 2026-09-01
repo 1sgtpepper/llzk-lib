@@ -67,7 +67,7 @@ def FlatteningPass : LLZKPass<"llzk-flatten"> {
       specialization attempt is deferred. Once every dependency is concrete, failure to fold is an
       error. A definition directly inside a template with `poly.expr` bindings and no `poly.param`
       operations is specialized when it references a concrete expression.
-    - Propagate concrete bindings through scalar type variables, array dimensions and element
+    - Propagate concrete bindings through type variables, array dimensions and element
       types, parameterized struct arguments, POD record types, and nested-call arguments.
     - Unroll loops with known bounds, instantiate affine-map parameters, and propagate resulting
       types.
