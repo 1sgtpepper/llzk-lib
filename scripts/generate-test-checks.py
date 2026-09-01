@@ -213,7 +213,7 @@ def process_source_lines(source_lines, note, args):
     """
     source_split_re = re.compile(args.source_delim_regex)
     directive_suffix = (
-        r"(?:-(?:NEXT|SAME|NOT|DAG|LABEL|EMPTY)|-COUNT-0*[1-9][0-9]*)?"
+        r"(?:-(?:NEXT|SAME|NOT|DAG|LABEL|EMPTY)|-COUNT-(?P<count>[0-9]+))?"
     )
     literal_modifier = r"(?:\{\s*LITERAL\s*(?:,\s*LITERAL\s*)*\})?"
     check_line_re = re.compile(
@@ -258,7 +258,18 @@ def process_source_lines(source_lines, note, args):
         line_text = line_without_ending(line)
         # Remove previous FileCheck directives, but preserve source text that
         # merely contains the check prefix.
-        if check_line_re.match(line_text):
+        directive_match = check_line_re.match(line_text)
+        count = directive_match.group("count") if directive_match else None
+        normalized_count = count.lstrip("0") if count is not None else None
+        # FileCheck accepts positive decimal counts up to signed 32-bit maximum.
+        count_is_valid = count is None or (
+            bool(normalized_count)
+            and (
+                len(normalized_count) < 10
+                or (len(normalized_count) == 10 and normalized_count <= "2147483647")
+            )
+        )
+        if directive_match and count_is_valid:
             line_index += 1
             continue
         # Segment the file based on --source_delim_regex.
@@ -922,11 +933,13 @@ class GenerateTestChecksTests(unittest.TestCase):
             "ALT-LABEL: stale label",
             "ALT-EMPTY: stale empty",
             "ALT-COUNT-0002: stale count",
+            "ALT-COUNT-2147483647: stale maximum count",
             "ALT-NEXT{LITERAL}: stale literal",
         )
         preserved = (
             "ALT-FOO: preserve unknown suffix",
             "ALT-COUNT-0: preserve invalid count",
+            "ALT-COUNT-2147483648: preserve out-of-range count",
             "ALT-explanation: preserve comment",
             "CHECK: preserve another prefix",
         )

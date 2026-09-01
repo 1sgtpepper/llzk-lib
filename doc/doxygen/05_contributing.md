@@ -95,10 +95,10 @@ unchanged.
 
 Run the utility's unit tests with `python3 -m unittest scripts/generate-test-checks.py -v`.
 
-Repeated runs replace the generator's note and FileCheck directives for the selected prefix while
-preserving unrelated source text and comments. The generated checks are not authoritative: verify
-that they cover the relevant behavior and retain complete transformed output where the IR is the
-test contract.
+Repeated runs replace the generator's note. They replace FileCheck directives only for the selected
+prefix and preserve unrelated source text and comments. The generated checks are not authoritative:
+verify that they cover the relevant behavior and retain complete transformed output where the IR is
+the test contract.
 
 ### Commit your update
 
