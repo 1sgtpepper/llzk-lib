@@ -70,7 +70,7 @@ issues must be marked `approved` before implementation begins.
 2. Install or update LLZK development dependencies. For more information, see \ref setup "the development guide"
 3. Create a working branch and start with your changes!
 
-#### Generate FileCheck checks
+#### Generate FileCheck directives
 
 The `scripts/generate-test-checks.py` utility generates heuristic FileCheck directives from printed
 MLIR or LLZK IR. Use it to bootstrap checks, then review them against the behavior the test is
@@ -87,10 +87,10 @@ default pattern is `func @`. Anchor custom patterns to the intended structural s
 be combined with `--output`, and refuses to modify a source whose supplied path or resolved target
 is in a dirty Git worktree, including untracked files. Use `--allow-dirty` only when updating
 generated directives in a dirty worktree is intentional.
-Generated output must contain one check block for each source segment; otherwise, the
-script exits without modifying the source. The script writes the complete result to a temporary
-file beside the resolved source, copies its permission bits, and then replaces the resolved source
-file; a source symlink remains intact. Generation or replacement failures leave the source
+In-place output must contain one check block for each source segment; otherwise, the script exits
+without modifying the source. In-place mode writes the complete result to a temporary file beside
+the resolved source, copies its permission bits, and then replaces the resolved source file; a
+source symlink remains intact. In-place generation or replacement failures leave the source
 unchanged.
 
 Run the utility's unit tests with `python3 -m unittest scripts/generate-test-checks.py -v`.

@@ -216,8 +216,8 @@ def process_source_lines(source_lines, note, args):
     """Return source segments after removing prior generated notes and check directives.
 
     Source text and comments are preserved unless they match the generator note or a FileCheck
-    directive for the selected check prefix. A new segment begins wherever the configured source
-    delimiter matches.
+    directive for the selected check prefix. Each source line matching the configured delimiter
+    begins a new segment.
     """
     source_split_re = re.compile(args.source_delim_regex)
     directive_suffix = (
@@ -299,7 +299,7 @@ def process_source_lines(source_lines, note, args):
 def workspace_is_dirty(path):
     """Return whether Git reports tracked or untracked changes for path's worktree.
 
-    Paths outside a Git worktree are treated as clean.
+    A path with no Git worktree metadata is treated as clean; other Git failures are reported.
     """
     result = subprocess.run(
         [
@@ -409,7 +409,7 @@ def main():
         "--source_delim_regex",
         type=str,
         default="func @",
-        help="Regex searched within each source line; every match begins a new segment. "
+        help="Regex searched within each source line; each matching line begins a new segment. "
         "Use '^' when the match must start the line (default: 'func @').",
     )
     parser.add_argument(
