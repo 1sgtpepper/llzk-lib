@@ -790,8 +790,8 @@ static bool targetMayReferenceTemplateExpr(Operation *target, TemplateExprOp exp
 
 /// Evaluate `TemplateExprOp`s referenced by `target` whose dependencies are concrete, adding their
 /// values to `paramNameToConcrete`. Skip unreferenced expressions. A failed result is a fatal
-/// conversion or evaluation error; a successful empty optional means a referenced value or type
-/// dependency is unresolved, so the caller should make no progress after the complete scan. A
+/// conversion or evaluation error; a successful empty optional means a known binding's converted
+/// type remains non-concrete, so the caller should make no progress after the complete scan. A
 /// successful value contains detached, converted clones for expressions that still depend on
 /// remaining parameters, which the caller must insert or destroy. Any concrete but malformed or
 /// non-foldable expression is a failure.
@@ -825,8 +825,8 @@ static FailureOr<std::optional<SmallVector<TemplateExprOp>>> evaluateTemplateExp
       return failure();
     }
     if (!convertedExpr->has_value()) {
-      // An expression with an unresolved dependency prevents this specialization, but independent
-      // referenced expressions still need to be checked for fatal evaluation errors.
+      // A known binding with a non-concrete converted type blocks this specialization, but
+      // independent referenced expressions still need to be checked for fatal evaluation errors.
       hasBlockedExpression = true;
       continue;
     }

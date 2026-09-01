@@ -191,7 +191,9 @@ def LLZK_TemplateExprOp
     The body of a `poly.expr` cannot contain any symbols defined via `poly.expr` to prevent
     cyclic initialization. The body must also have no side effects to ensure it can be safely
     duplicated if needed. This means operations such as read/write to globals or function
-    calls are not allowed in the body of a `poly.expr`.
+    calls are not allowed in the body of a `poly.expr`. When flattening a definition that
+    references the expression, the initializer must fold to a constant once every dependency is
+    concrete; failure to fold is an error.
 
     Example:
     ```llzk
