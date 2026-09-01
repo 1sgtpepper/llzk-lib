@@ -37,8 +37,9 @@ def LLZK_ArrayType
     The dimensions of the array are specified using a list of attributes, one
     per dimension. Each attribute must be one of the following:
       - IntegerAttr (with IndexType), specifying a fixed dimension size
-      - SymbolRefAttr, specifying a dimension size defined by an index-typed enclosing `poly.param`
-        or `poly.expr` binding or constant global
+      - SymbolRefAttr, specifying a dimension size by a flat reference to an index-typed
+        `poly.param` or `poly.expr` binding or a fully-qualified reference to an index-typed
+        constant global
       - AffineMapAttr, specifying a dimension size computed from surrounding loop
         induction variables
 

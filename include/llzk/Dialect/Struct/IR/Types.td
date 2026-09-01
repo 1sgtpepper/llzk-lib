@@ -30,14 +30,14 @@ def LLZK_StructType : StructDialectType<"Struct", "type"> {
     Type of a `struct.def` instance. An instantiation argument list supplies one attribute per
     `poly.param` in the definition's enclosing `poly.template`, in declaration order. For a
     definition with no parameters, the list may be omitted or explicitly empty. Every
-    argument must satisfy the corresponding parameter's type restriction; a symbol argument is
-    checked using its resolved enclosing `poly.param` or `poly.expr` binding or constant global
-    definition. Unresolved symbols, mutable globals, and symbols that resolve to another operation
-    kind are rejected. Each attribute must be one of the following:
+    argument must satisfy the corresponding parameter's type restriction. A flat symbol reference
+    may name a `poly.param` or `poly.expr` binding; a constant global reference must be
+    fully-qualified. Unresolved symbols, mutable globals, and symbols that resolve to another
+    operation kind are rejected. Each attribute must be one of the following:
       - IntegerAttr (with IndexType), specifying a fixed parameter value
       - FeltConstAttr, specifying a fixed finite-field parameter value
-      - SymbolRefAttr, specifying a parameter value defined by an enclosing `poly.param` or
-        `poly.expr` binding or global constant
+      - SymbolRefAttr, specifying a parameter value by a flat reference to a `poly.param` or
+        `poly.expr` binding or a fully-qualified reference to a constant global
       - AffineMapAttr, specifying a deferred single-result affine expression for an integer-like
         argument; one use is varying a struct argument across array elements
       - TypeAttr, specifying a type parameter
@@ -57,7 +57,7 @@ def LLZK_StructType : StructDialectType<"Struct", "type"> {
     // Supply concrete arguments to all three parameters of @T::@B.
     !struct.type<@T::@B<[5, #felt<const 35>, !felt.type]>>
 
-    // An argument can name an enclosing template binding with a compatible restriction.
+    // An argument can use the flat name of a template binding with a compatible restriction.
     !struct.type<@T::@B<[@N, #felt<const 35>, !felt.type]>>
     ```
   }];

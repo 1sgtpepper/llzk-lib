@@ -352,29 +352,32 @@ def CallOp : FunctionDialectOp<
     parameter list supplies one argument per `poly.param`, in declaration order. The list may be
     omitted only when every parameter appears in the function signature; omitted values are
     inferred by unifying the call's operand and result types with that signature. The `?` wildcard
-    is valid for any parameter with a `poly.tvar` restriction and leaves that argument for a later
-    type-inference pass.
+    is valid for any parameter with a `poly.tvar` restriction and leaves that type for later
+    inference based on the body of the callee function.
 
     Every explicit or inferred argument must satisfy its `poly.param` type restriction. If the
     function signature independently infers a value for an explicitly supplied parameter, the
     explicit and inferred values must unify. For felt-valued parameters, known fields and concrete
-    values must also agree. An argument that resolves to an enclosing binding without a declared
+    values must also agree. An argument that resolves to a binding without a declared
     type restriction may remain deferred for an index, integer, or fieldless felt parameter; it
-    cannot satisfy a fielded felt or `poly.tvar` restriction. A direct argument for an index or
-    integer restriction must be an integer, not an affine map. For a parameter with a `poly.tvar`
-    restriction, a type argument must be a valid LLZK type. The verifier recursively resolves
-    references in `struct.type` and `array.type` arguments and resolves a `poly.tvar` parameter
-    reference at the call site. A `poly.tvar` is accepted once its parameter reference resolves,
-    even when its concrete type remains deferred. Record member types within a `pod.type` are not
-    traversed.
+    cannot satisfy a fielded felt or `poly.tvar` restriction. A symbolic argument satisfies a
+    fielded felt restriction only when the referenced binding or global has the required field
+    type. A direct argument for an index or integer restriction must be an integer, not an affine
+    map. For a parameter with a `poly.tvar` restriction, a type argument must be a valid LLZK type.
+    The verifier recursively resolves references in `struct.type` and `array.type` arguments and
+    resolves a `poly.tvar` parameter reference at the call site. A `poly.tvar` is accepted once its
+    parameter reference resolves, even when its concrete type remains deferred. Record member
+    types within a `pod.type` are not traversed.
 
     When a target is reached through an `include.from` alias, verification resolves names in its
     signature relative to the included module. The `callee` attribute retains the caller-visible
     qualified alias path. This applies when checking explicit arguments and inferring omitted ones.
 
-    Symbol arguments must resolve to an enclosing `poly.param` or `poly.expr` binding or a constant
-    global; unresolved symbols, mutable globals, and symbols that resolve to another operation kind
-    are rejected.
+    Symbol arguments must refer to a `poly.param` or `poly.expr` binding by its flat name or to a
+    constant global by its fully-qualified name. For a call nested in a `verif.contract` whose
+    target is nested in a `poly.template`, flat binding names resolve in the target's template;
+    otherwise they resolve in the nearest enclosing template. Unresolved symbols, mutable globals,
+    and symbols that resolve to another operation kind are rejected.
   }];
 
   // See `VerifySizesForMultiAffineOps` for more explanation of these arguments.
