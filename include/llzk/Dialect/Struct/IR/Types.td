@@ -34,7 +34,8 @@ def LLZK_StructType : StructDialectType<"Struct", "type"> {
     may name a `poly.param` or `poly.expr` binding; a constant global reference must be
     fully-qualified. Unresolved symbols, mutable globals, and symbols that resolve to another
     operation kind are rejected. Each attribute must be one of the following:
-      - IntegerAttr (with IndexType), specifying a fixed parameter value
+      - IntegerAttr (with IndexType), specifying a fixed parameter value; the wildcard (`?`) is
+        not allowed
       - FeltConstAttr, specifying a fixed finite-field parameter value
       - SymbolRefAttr, specifying a parameter value by a flat reference to a `poly.param` or
         `poly.expr` binding or a fully-qualified reference to a constant global
@@ -43,13 +44,12 @@ def LLZK_StructType : StructDialectType<"Struct", "type"> {
       - TypeAttr, specifying a type parameter
 
     A `TypeAttr` argument may contain any valid LLZK type. The verifier recursively resolves
-    references in `struct.type` and `array.type` arguments and resolves a `poly.tvar` parameter
-    reference at the `struct.type` use site. Record member types within a `pod.type` are not
+    references in `struct.type` and `array.type` arguments. A `poly.tvar` must name a parameter of
+    the use site's enclosing `poly.template`. Record member types within a `pod.type` are not
     traversed.
 
     The examples below are schematic: `@A` names a non-parameterized struct; `@T` declares index,
     felt, and type parameters in that order, names its index parameter `@N`, and contains `@B`.
-
     ```llzk
     // Type for struct `A` with no parameters.
     !struct.type<@A>
