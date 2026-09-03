@@ -461,8 +461,8 @@ module attributes {llzk.lang} {
 }
 // -----
 
-// Include arguments for a `poly.tvar` parameter must resolve symbols nested in their TypeAttr
-// while accepting a concrete type argument.
+// Include arguments for a `poly.tvar` parameter are recursively verified while accepting a
+// concrete type argument.
 module attributes {llzk.lang} {
   poly.template @TypeTarget {
     poly.param @T : !poly.tvar<@T>
@@ -482,7 +482,7 @@ module attributes {llzk.lang} {
   }
 
   verif.contract @MissingTypeArgument for @entry () {
-    // expected-error@+1 {{'verif.include' op references unknown symbol "@MissingType"}}
+    // expected-error@+1 {{type variable '!poly.tvar<@MissingType>' must reference a parameter of its enclosing 'poly.template'}}
     verif.include @TypeTarget::@Base<[!poly.tvar<@MissingType>]>() : () -> ()
   }
 }
