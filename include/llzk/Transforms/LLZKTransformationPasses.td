@@ -144,12 +144,11 @@ def FuseProductControlFlowPass : LLZKPass<"llzk-fuse-product-control-flow"> {
     fused branch keeps compute operations before constrain operations and preserves the compute
     results. Between the pair, the pass permits only direct member writes of compute-if results and
     matching constrain-side signal member reads without a table offset. Each such read must have
-    operands available before the compute op, have at least
-    one use, have every use within the constrain-side conditional, and match exactly one intervening
-    write. The read remains the constraint operand rather than being replaced by the compute result.
-    Hoisting a read also requires the compute conditional to be recursively pure and speculatable;
-    nested effects or other non-pure operations prevent fusion. Other intervening operations prevent
-    fusion.
+    operands available before the compute op and at least one use, all within the constrain-side
+    conditional, and must match exactly one intervening write. The read remains the constraint
+    operand rather than being replaced by the compute result. Hoisting also requires MLIR to prove
+    the entire compute conditional pure; nested effects or non-speculatable operations prevent
+    fusion. Other intervening operations prevent fusion.
 
     Fused conditionals and their `scf.yield` operations combine source locations. Fused loops retain
     signed or unsigned bound comparison.
