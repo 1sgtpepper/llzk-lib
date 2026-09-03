@@ -280,6 +280,11 @@ static bool collectConstrainValueMappings(
     }
   }
 
+  // Hoisting a read crosses the entire compute conditional, so nested effects must be absent.
+  if (!readsToHoist.empty() && !isPure(computeIf.getOperation())) {
+    return false;
+  }
+
   return !hasUnsafeCrossedConstrainOp(constrainIf.getOperation());
 }
 
