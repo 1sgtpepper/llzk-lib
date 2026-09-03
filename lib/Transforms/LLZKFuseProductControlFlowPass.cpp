@@ -280,7 +280,7 @@ static bool collectConstrainValueMappings(
     }
   }
 
-  // Hoisting a read crosses the entire compute conditional, so nested effects must be absent.
+  // Hoisting a read crosses the entire compute conditional, so MLIR must prove it pure.
   if (!readsToHoist.empty() && !isPure(computeIf.getOperation())) {
     return false;
   }
