@@ -1,0 +1,98 @@
+name: Validate PR 484 cross-block loop matching
+
+on:
+  push:
+    branches:
+      - validate/pr484-loop-cross-block-20260903
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  reproduce:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out validation branch
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Install Nix
+        uses: cachix/install-nix-action@d1ca217b388ee87b2507a9a93bf01368bde7cec2
+        with:
+          install_url: https://releases.nixos.org/nix/nix-2.23.3/install
+          github_access_token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set Git credentials
+        run: |
+          git config --global 'url.https://api@github.com/'.insteadOf 'https://github.com/'
+          git config --global 'url.https://ssh@github.com/'.insteadOf 'ssh://git@github.com/'
+          git config --global 'url.https://git@github.com/'.insteadOf 'git@github.com:'
+
+      - name: Use project build cache
+        uses: cachix/cachix-action@v17
+        with:
+          name: veridise-public
+          skipPush: true
+
+      - name: Build exact validation head
+        shell: bash
+        run: |
+          set -euo pipefail
+          nix build --impure --print-build-logs --expr \
+            'let flake = builtins.getFlake (toString ./.) ; in flake.packages.x86_64-linux.debugGCC.overrideAttrs (_: { doCheck = false; })'
+
+      - name: Run focused reproducer
+        shell: bash
+        run: |
+          set -euo pipefail
+          output_dir="$RUNNER_TEMP/pr484-loop-cross-block"
+          mkdir -p "$output_dir"
+          llzk_opt="$GITHUB_WORKSPACE/result/bin/llzk-opt"
+          test -x "$llzk_opt"
+          "$llzk_opt" --version | tee "$output_dir/llzk-opt.version"
+          "$llzk_opt" --llzk-fuse-product-control-flow -split-input-file \
+            "$GITHUB_WORKSPACE/.github/validation/pr484-loop-cross-block.llzk" \
+            > "$output_dir/producer-output.llzk" 2>&1
+
+          python3 - "$output_dir/producer-output.llzk" "$output_dir/summary.txt" <<'PY'
+          from pathlib import Path
+          import sys
+
+          output = Path(sys.argv[1]).read_text()
+          sections = output.split("// -----")
+          if len(sections) != 2:
+              raise SystemExit(f"expected two output modules, got {len(sections)}")
+
+          baseline, cross_block = sections
+          checks = {
+              "baseline_scfs": baseline.count("scf.for") == 1,
+              "baseline_fused": baseline.count('product_source = "fused"') == 1,
+              "cross_block_scfs": cross_block.count("scf.for") == 3,
+              "cross_block_compute": cross_block.count('product_source = "compute"') == 1,
+              "cross_block_constrain": cross_block.count('product_source = "constrain"') == 2,
+              "cross_block_not_fused": 'product_source = "fused"' not in cross_block,
+          }
+          failed = [name for name, passed in checks.items() if not passed]
+          if failed:
+              raise SystemExit("failed checks: " + ", ".join(failed))
+
+          Path(sys.argv[2]).write_text(
+              "head=exact validation branch commit\n"
+              "baseline=scf.for: 1; fused: 1\n"
+              "cross_block_candidate=scf.for: 3; compute: 1; constrain: 2; fused: 0\n"
+              "result=PASS\n"
+          )
+          PY
+          cat "$output_dir/summary.txt"
+
+      - name: Upload reproducer output
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: pr484-loop-cross-block-${{ github.sha }}
+          path: ${{ runner.temp }}/pr484-loop-cross-block
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0

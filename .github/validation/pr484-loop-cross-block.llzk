@@ -1,0 +1,63 @@
+// This fixture isolates the loop-pair uniqueness check in PR #484.
+module attributes {llzk.lang = "llzk"} {
+  struct.def @Baseline {
+    struct.member @value : !felt.type
+
+    function.def @product() -> !struct.type<@Baseline> {
+      %self = struct.new : <@Baseline>
+      %c0 = arith.constant 0 : index
+      %c1 = arith.constant 1 : index
+      %c2 = arith.constant 2 : index
+      %zero = felt.const 0
+
+      scf.for %i = %c0 to %c2 step %c1 {
+        scf.yield
+      } {product_source = "compute"}
+      scf.for %i = %c0 to %c2 step %c1 {
+        constrain.eq %zero, %zero : !felt.type
+        scf.yield
+      } {product_source = "constrain"}
+
+      struct.writem %self[@value] = %zero : <@Baseline>, !felt.type
+      function.return %self : !struct.type<@Baseline>
+    }
+  }
+}
+
+// -----
+
+module attributes {llzk.lang = "llzk"} {
+  struct.def @CrossBlockCandidate {
+    struct.member @value : !felt.type
+
+    function.def @product() -> !struct.type<@CrossBlockCandidate> {
+      %self = struct.new : <@CrossBlockCandidate>
+      %c0 = arith.constant 0 : index
+      %c1 = arith.constant 1 : index
+      %c2 = arith.constant 2 : index
+      %zero = felt.const 0
+
+      // This same-block pair would fuse without the extra loop below.
+      scf.for %i = %c0 to %c2 step %c1 {
+        scf.yield
+      } {product_source = "compute"}
+      scf.for %i = %c0 to %c2 step %c1 {
+        constrain.eq %zero, %zero : !felt.type
+        scf.yield
+      } {product_source = "constrain"}
+      cf.br ^extra
+
+    ^extra:
+      // This loop shares the parent region and controls, but not the block, with the pair above.
+      scf.for %i = %c0 to %c2 step %c1 {
+        constrain.eq %zero, %zero : !felt.type
+        scf.yield
+      } {product_source = "constrain"}
+      cf.br ^exit
+
+    ^exit:
+      struct.writem %self[@value] = %zero : <@CrossBlockCandidate>, !felt.type
+      function.return %self : !struct.type<@CrossBlockCandidate>
+    }
+  }
+}
