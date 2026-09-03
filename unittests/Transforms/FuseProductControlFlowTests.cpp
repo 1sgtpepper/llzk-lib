@@ -351,6 +351,97 @@ TEST_F(FuseProductControlFlowTests, RepeatedMemberWritesPreventReadHoisting) {
   EXPECT_TRUE(read->isBeforeInBlock(writes[1]));
 }
 
+TEST_F(FuseProductControlFlowTests, ComputeIfEffectsPreventReadHoisting) {
+  // A nested compute-side member write is crossed by read hoisting, so the pair must remain
+  // separate even though the direct write/read interval is otherwise valid.
+  mlir::OwningOpRef<mlir::ModuleOp> module = mlir::parseSourceString<mlir::ModuleOp>(
+      R"mlir(
+    module attributes {llzk.lang = "llzk"} {
+      struct.def @A {
+        struct.member @value : !felt.type {signal}
+
+        function.def @product(%condition: i1) -> !struct.type<@A> {
+          %self = struct.new : <@A>
+
+          %result = scf.if %condition -> !felt.type {
+            %zero = felt.const 0
+            struct.writem %self[@value] = %zero : <@A>, !felt.type
+            scf.yield %zero : !felt.type
+          } else {
+            %one = felt.const 1
+            struct.writem %self[@value] = %one : <@A>, !felt.type
+            scf.yield %one : !felt.type
+          } {product_source = "compute"}
+
+          struct.writem %self[@value] = %result : <@A>, !felt.type {
+            product_source = "compute"
+          }
+          %observed = struct.readm %self[@value] : <@A>, !felt.type {
+            product_source = "constrain"
+          }
+
+          scf.if %condition {
+            %expected = felt.const 0
+            constrain.eq %observed, %expected : !felt.type, !felt.type
+          } else {
+            %expected = felt.const 1
+            constrain.eq %observed, %expected : !felt.type, !felt.type
+          } {product_source = "constrain"}
+
+          function.return %self : !struct.type<@A>
+        }
+      }
+    }
+  )mlir",
+      &ctx
+  );
+  ASSERT_TRUE(module);
+
+  mlir::PassManager pm(&ctx);
+  pm.addPass(llzk::createFuseProductControlFlowPass());
+  ASSERT_TRUE(mlir::succeeded(pm.run(*module)));
+
+  llzk::function::FuncDefOp product;
+  module->walk([&](llzk::function::FuncDefOp func) {
+    if (func.isStructProduct()) {
+      product = func;
+    }
+  });
+  ASSERT_TRUE(product);
+
+  mlir::scf::IfOp computeIf;
+  mlir::scf::IfOp constrainIf;
+  mlir::scf::IfOp fusedIf;
+  llzk::component::MemberWriteOp delayedWrite;
+  llzk::component::MemberReadOp read;
+  for (mlir::Operation &op : product.getBody().front()) {
+    if (auto write = llvm::dyn_cast<llzk::component::MemberWriteOp>(&op)) {
+      delayedWrite = write;
+    } else if (auto readOp = llvm::dyn_cast<llzk::component::MemberReadOp>(&op)) {
+      read = readOp;
+    } else if (auto ifOp = llvm::dyn_cast<mlir::scf::IfOp>(&op)) {
+      auto source = ifOp->getAttrOfType<mlir::StringAttr>("product_source");
+      if (source && source.getValue() == "compute") {
+        computeIf = ifOp;
+      } else if (source && source.getValue() == "constrain") {
+        constrainIf = ifOp;
+      } else if (source && source.getValue() == "fused") {
+        fusedIf = ifOp;
+      }
+    }
+  }
+
+  ASSERT_TRUE(computeIf);
+  ASSERT_TRUE(constrainIf);
+  ASSERT_TRUE(delayedWrite);
+  ASSERT_TRUE(read);
+  EXPECT_FALSE(fusedIf);
+  EXPECT_TRUE(computeIf->isBeforeInBlock(delayedWrite));
+  EXPECT_TRUE(computeIf->isBeforeInBlock(read));
+  EXPECT_TRUE(delayedWrite->isBeforeInBlock(read));
+  EXPECT_TRUE(read->isBeforeInBlock(constrainIf));
+}
+
 TEST_F(FuseProductControlFlowTests, UnsafeOperationsBetweenIfsPreventFusion) {
   // A generic intervening definition would lose dominance if the conditionals fused. Signal reads
   // also stay after their matching write when they are unused or have a user outside the constrain

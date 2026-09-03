@@ -147,7 +147,9 @@ def FuseProductControlFlowPass : LLZKPass<"llzk-fuse-product-control-flow"> {
     operands available before the compute op, have at least
     one use, have every use within the constrain-side conditional, and match exactly one intervening
     write. The read remains the constraint operand rather than being replaced by the compute result.
-    Other intervening operations prevent fusion.
+    Hoisting a read also requires the compute conditional to be recursively pure and speculatable;
+    nested effects or other non-pure operations prevent fusion. Other intervening operations prevent
+    fusion.
 
     Fused conditionals and their `scf.yield` operations combine source locations. Fused loops retain
     signed or unsigned bound comparison.
