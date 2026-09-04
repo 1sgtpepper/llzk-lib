@@ -864,15 +864,16 @@ private:
     assertValidAttrForParamOfType(rhsAttr);
     // Straightforward equality check.
     if (lhsAttr == rhsAttr) {
-      if (unifications && candidateRecorder) {
-        if (llvm::isa<FlatSymbolRefAttr>(lhsAttr)) {
-          // Equal flat references may belong to different template scopes. Record the RHS-to-LHS
-          // mapping so callers can resolve the mapped symbol in the operation's scope instead of
-          // treating the missing entry as evidence that the parameter was not exposed.
-          track(Side::RHS, llvm::cast<FlatSymbolRefAttr>(rhsAttr), lhsAttr);
-        } else if (TypeAttr lhsTy = llvm::dyn_cast<TypeAttr>(lhsAttr)) {
+      if (TypeAttr lhsTy = llvm::dyn_cast<TypeAttr>(lhsAttr)) {
+        if (!rhsRevPrefix.empty() || (unifications && candidateRecorder)) {
           return typesUnify(lhsTy.getValue(), llvm::cast<TypeAttr>(rhsAttr).getValue());
         }
+      }
+      if (unifications && candidateRecorder && llvm::isa<FlatSymbolRefAttr>(lhsAttr)) {
+        // Equal flat references may belong to different template scopes. Record the RHS-to-LHS
+        // mapping so callers can resolve the mapped symbol in the operation's scope instead of
+        // treating the missing entry as evidence that the parameter was not exposed.
+        track(Side::RHS, llvm::cast<FlatSymbolRefAttr>(rhsAttr), lhsAttr);
       }
       return true;
     }

@@ -123,6 +123,21 @@ TEST_F(TypeHelperTests, test_typesUnify_equalRecursiveTypesRespectRhsPrefix) {
   );
   StructType targetBox = StructType::get(targetBoxName);
   StructType includedBox = StructType::get(includedBoxName);
+  SymbolRefAttr targetHolderName = SymbolRefAttr::get(
+      &ctx, "Target", ArrayRef<FlatSymbolRefAttr> {FlatSymbolRefAttr::get(&ctx, "Holder")}
+  );
+  SymbolRefAttr includedHolderName = SymbolRefAttr::get(
+      &ctx, "Lib",
+      ArrayRef<FlatSymbolRefAttr> {
+          FlatSymbolRefAttr::get(&ctx, "Target"), FlatSymbolRefAttr::get(&ctx, "Holder")
+      }
+  );
+  StructType targetHolder =
+      StructType::get(targetHolderName, ArrayRef<Attribute> {TypeAttr::get(targetBox)});
+  StructType includedHolder =
+      StructType::get(includedHolderName, ArrayRef<Attribute> {TypeAttr::get(includedBox)});
+  StructType collidingHolder =
+      StructType::get(includedHolderName, ArrayRef<Attribute> {TypeAttr::get(targetBox)});
   ArrayType targetArray = ArrayType::get(targetBox, {2});
   PodType targetPod = PodType::get(
       &ctx, ArrayRef {RecordAttr::get(&ctx, StringAttr::get(&ctx, "value"), targetBox)}
@@ -132,7 +147,9 @@ TEST_F(TypeHelperTests, test_typesUnify_equalRecursiveTypesRespectRhsPrefix) {
   ArrayRef<llvm::StringRef> rhsPrefix(&includedNamespace, 1);
 
   EXPECT_TRUE(typesUnify(includedBox, targetBox, rhsPrefix));
+  EXPECT_TRUE(typesUnify(includedHolder, targetHolder, rhsPrefix));
   EXPECT_FALSE(typesUnify(targetBox, targetBox, rhsPrefix));
+  EXPECT_FALSE(typesUnify(collidingHolder, targetHolder, rhsPrefix));
   EXPECT_FALSE(typesUnify(targetArray, targetArray, rhsPrefix));
   EXPECT_FALSE(typesUnify(targetPod, targetPod, rhsPrefix));
   EXPECT_FALSE(typesUnify(targetFunction, targetFunction, rhsPrefix));
