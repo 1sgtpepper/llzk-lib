@@ -734,16 +734,18 @@ struct UnifierImpl {
 
   bool typesUnify(Type lhs, Type rhs) {
     if (lhs == rhs) {
-      // Structural equality does not prove that equal symbols have the same template owner.
-      // Contextual candidate collection revisits parameterized types so its caller can compare
-      // those bindings without changing the generic unifier's existing empty-map behavior.
-      if (unifications && candidateRecorder) {
+      // Structural equality does not prove that equal symbol paths resolve to the same definition.
+      // Revisit recursive types when qualifying RHS symbols or collecting contextual candidates,
+      // without changing the generic unifier's existing empty-map behavior.
+      if (!rhsRevPrefix.empty() || (unifications && candidateRecorder)) {
         if (TypeVarType lhsTvar = llvm::dyn_cast<TypeVarType>(lhs)) {
-          track(Side::RHS, llvm::cast<TypeVarType>(rhs).getNameRef(), lhsTvar.getNameRef());
+          if (unifications && candidateRecorder) {
+            track(Side::RHS, llvm::cast<TypeVarType>(rhs).getNameRef(), lhsTvar.getNameRef());
+          }
           return true;
         }
         if (StructType lhsStruct = llvm::dyn_cast<StructType>(lhs)) {
-          return typeParamsUnify(lhsStruct.getParams(), llvm::cast<StructType>(rhs).getParams());
+          return structTypesUnify(lhsStruct, llvm::cast<StructType>(rhs));
         }
         if (ArrayType lhsArray = llvm::dyn_cast<ArrayType>(lhs)) {
           return arrayTypesUnify(lhsArray, llvm::cast<ArrayType>(rhs));
@@ -862,15 +864,16 @@ private:
     assertValidAttrForParamOfType(rhsAttr);
     // Straightforward equality check.
     if (lhsAttr == rhsAttr) {
-      if (unifications && candidateRecorder) {
-        if (llvm::isa<FlatSymbolRefAttr>(lhsAttr)) {
-          // Equal flat references may belong to different template scopes. Record the RHS-to-LHS
-          // mapping so callers can resolve the mapped symbol in the operation's scope instead of
-          // treating the missing entry as evidence that the parameter was not exposed.
-          track(Side::RHS, llvm::cast<FlatSymbolRefAttr>(rhsAttr), lhsAttr);
-        } else if (TypeAttr lhsTy = llvm::dyn_cast<TypeAttr>(lhsAttr)) {
+      if (TypeAttr lhsTy = llvm::dyn_cast<TypeAttr>(lhsAttr)) {
+        if (!rhsRevPrefix.empty() || (unifications && candidateRecorder)) {
           return typesUnify(lhsTy.getValue(), llvm::cast<TypeAttr>(rhsAttr).getValue());
         }
+      }
+      if (unifications && candidateRecorder && llvm::isa<FlatSymbolRefAttr>(lhsAttr)) {
+        // Equal flat references may belong to different template scopes. Record the RHS-to-LHS
+        // mapping so callers can resolve the mapped symbol in the operation's scope instead of
+        // treating the missing entry as evidence that the parameter was not exposed.
+        track(Side::RHS, llvm::cast<FlatSymbolRefAttr>(rhsAttr), lhsAttr);
       }
       return true;
     }
