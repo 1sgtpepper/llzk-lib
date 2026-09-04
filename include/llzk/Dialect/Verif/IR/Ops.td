@@ -617,7 +617,6 @@ def IncludeOp
         ::llvm::iterator_range<::mlir::Region::op_iterator<::llzk::polymorphic::TemplateParamOp>> targetParamDefs,
         const UnificationMap &unifications
     );
-
   }];
 }
 
