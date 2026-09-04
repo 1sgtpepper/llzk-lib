@@ -118,7 +118,8 @@ TEST_F(TypeHelperTests, test_typesUnify_equalRecursiveTypesRespectRhsPrefix) {
   SymbolRefAttr includedBoxName = SymbolRefAttr::get(
       &ctx, "Lib",
       ArrayRef<FlatSymbolRefAttr> {
-          FlatSymbolRefAttr::get(&ctx, "Target"), FlatSymbolRefAttr::get(&ctx, "Box")}
+          FlatSymbolRefAttr::get(&ctx, "Target"), FlatSymbolRefAttr::get(&ctx, "Box")
+      }
   );
   StructType targetBox = StructType::get(targetBoxName);
   StructType includedBox = StructType::get(includedBoxName);
@@ -126,8 +127,7 @@ TEST_F(TypeHelperTests, test_typesUnify_equalRecursiveTypesRespectRhsPrefix) {
   PodType targetPod = PodType::get(
       &ctx, ArrayRef {RecordAttr::get(&ctx, StringAttr::get(&ctx, "value"), targetBox)}
   );
-  FunctionType targetFunction =
-      FunctionType::get(&ctx, {IndexType::get(&ctx)}, {targetBox});
+  FunctionType targetFunction = FunctionType::get(&ctx, {IndexType::get(&ctx)}, {targetBox});
   llvm::StringRef includedNamespace = "Lib";
   ArrayRef<llvm::StringRef> rhsPrefix(&includedNamespace, 1);
 
