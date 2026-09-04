@@ -1,4 +1,4 @@
-// RUN: llzk-opt -split-input-file -verify-diagnostics %s
+// RUN: llzk-opt -I %input_dir -split-input-file -verify-diagnostics %s
 
 // Reject missing or unresolved arguments, mutable globals, symbols that resolve to another
 // operation kind, and values that violate untyped or typed target parameter restrictions.
