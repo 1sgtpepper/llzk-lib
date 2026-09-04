@@ -1,0 +1,223 @@
+name: LLZK stack predecessor output replay
+
+on:
+  push:
+    branches:
+      - ci/verify-stack-predecessor-output-20260904
+
+permissions:
+  contents: read
+
+jobs:
+  replay:
+    name: PR ${{ matrix.pr }} predecessor checks
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - pr: 635
+            head: 5a6826d2b377de4707f42b99ee7089ede55ce9a2
+          - pr: 637
+            head: 3924b631f8ad99a8e73ba7bc31954202cb52c20f
+    steps:
+      - name: Check out exact PR head
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+          ref: ${{ matrix.head }}
+
+      - name: Install Nix
+        uses: cachix/install-nix-action@d1ca217b388ee87b2507a9a93bf01368bde7cec2
+        with:
+          install_url: https://releases.nixos.org/nix/nix-2.23.3/install
+          github_access_token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set Git credentials
+        run: |
+          git config --global 'url.https://api@github.com/'.insteadOf 'https://github.com/'
+          git config --global 'url.https://ssh@github.com/'.insteadOf 'ssh://git@github.com/'
+          git config --global 'url.https://git@github.com/'.insteadOf 'git@github.com:'
+
+      - name: Use project build cache
+        uses: cachix/cachix-action@v17
+        with:
+          name: veridise-public
+          skipPush: true
+
+      - name: Build exact-head llzk-opt
+        run: |
+          nix build --impure --print-build-logs --expr \
+            'let flake = builtins.getFlake (toString ./.) ; in flake.packages.x86_64-linux.debugGCC.overrideAttrs (_: { doCheck = false; })'
+
+      - name: Replay predecessor transformation checks
+        shell: bash
+        run: |
+          set -euo pipefail
+          output_path="$RUNNER_TEMP/pr${{ matrix.pr }}-predecessor-output"
+          mkdir -p "$output_path"
+          target_head=${{ matrix.head }}
+          test "$(git rev-parse HEAD)" = "$target_head"
+          filecheck=$(find /nix/store -type f -path '*/bin/FileCheck' -executable -print -quit)
+          test -n "$filecheck"
+          printf '%s\n' "$target_head" > "$output_path/target-head.txt"
+
+          tests=(
+            test/Dialect/Function/call_with_symbolic_felt_restriction_pass.llzk
+            test/Dialect/Function/call_with_template_params_pass.llzk
+            test/Dialect/Struct/struct_params_restrictions_pass.llzk
+            test/Dialect/Struct/struct_params_symbolic_pass.llzk
+            test/Dialect/Verif/contracts_pass.llzk
+            test/Dialect/Verif/include_with_symbolic_felt_restriction_pass.llzk
+          )
+
+          for test_file in "${tests[@]}"; do
+            stem="${test_file##*/}"
+            stem="${stem%.llzk}"
+            run_line=$(sed -n '1p' "$test_file")
+            producer_pipeline=${run_line#*llzk-opt }
+            producer_pipeline=${producer_pipeline%% %s*}
+            producer_pipeline=${producer_pipeline//%input_dir/test}
+            producer_pipeline=${producer_pipeline//\"/}
+            read -r -a producer_args <<< "$producer_pipeline"
+
+            printf '%s\n' "$run_line" > "$output_path/${stem}.run-line.txt"
+            printf 'result/bin/llzk-opt %s %s\n' "$producer_pipeline" "$test_file" \
+              > "$output_path/${stem}.producer-command.txt"
+            result/bin/llzk-opt "${producer_args[@]}" "$test_file" \
+              > "$output_path/${stem}.raw.llzk" 2>&1
+            scripts/generate-test-checks.py \
+              < "$output_path/${stem}.raw.llzk" \
+              > "$output_path/${stem}.checks.llzk"
+            printf 'scripts/generate-test-checks.py < %s.raw.llzk\n' "$stem" \
+              > "$output_path/${stem}.generator-command.txt"
+            cp "$test_file" "$output_path/${stem}.source.llzk"
+
+            python3 - "$test_file" "$output_path/${stem}.checks.llzk" \
+                "$output_path/${stem}.raw.llzk" \
+                "$output_path/${stem}.comparison.txt" \
+                "$output_path/${stem}.check-comparison.diff" \
+                "$output_path/${stem}.split-mapping.txt" <<'PY'
+          import difflib
+          import pathlib
+          import re
+          import sys
+
+          source, generated, raw, comparison, diff_path, mapping = (
+              pathlib.Path(arg) for arg in sys.argv[1:]
+          )
+
+          def check_lines(path):
+              return [
+                  line
+                  for line in path.read_text().splitlines()
+                  if line.startswith("// CHECK")
+              ]
+
+          def normalize(lines):
+              variable_names = {}
+
+              def variable(match):
+                  name = match.group(1)
+                  if name not in variable_names:
+                      variable_names[name] = f"VAR_{len(variable_names)}"
+                  return f"[[{variable_names[name]}]]"
+
+              normalized = []
+              for line in lines:
+                  line = re.sub(r'loc\("[^"]*"\)', 'loc("<location>")', line)
+                  line = re.sub(
+                      r'^// CHECK(?:-(?:LABEL|NEXT|SAME|NOT|DAG|EMPTY))?:',
+                      '// CHECK:',
+                      line,
+                  )
+                  line = re.sub(r'^(// CHECK:) +', r'\1 ', line)
+                  line = re.sub(
+                      r'\[\[([A-Za-z_][A-Za-z0-9_]*)(?::(.*?))?\]\]',
+                      variable,
+                      line,
+                  )
+                  if line != "// CHECK: // -----":
+                      normalized.append(line)
+              return normalized
+
+          committed = normalize(check_lines(source))
+          fresh = normalize(check_lines(generated))
+          if committed != fresh:
+              diff = difflib.unified_diff(
+                  [line + "\n" for line in committed],
+                  [line + "\n" for line in fresh],
+                  fromfile="committed",
+                  tofile="fresh",
+              )
+              diff_path.write_text("".join(diff))
+              comparison.write_text("full_check_block=FAIL\n")
+              raise SystemExit(f"CHECK block mismatch for {source}")
+          diff_path.write_text("")
+
+          source_text = source.read_text()
+          generated_text = generated.read_text()
+          raw_text = raw.read_text()
+          source_modules = len(re.findall(r"(?m)^module attributes ", source_text))
+          committed_module_labels = len(
+              re.findall(r"(?m)^// CHECK-LABEL: module attributes ", source_text)
+          )
+          generated_module_labels = len(
+              re.findall(r"(?m)^// CHECK-LABEL: module attributes ", generated_text)
+          )
+          emitted_modules = len(re.findall(r"(?m)^module attributes ", raw_text))
+          if not (
+              source_modules
+              == committed_module_labels
+              == generated_module_labels
+              == emitted_modules
+          ):
+              mapping.write_text(
+                  f"source_modules={source_modules}\n"
+                  f"committed_module_labels={committed_module_labels}\n"
+                  f"generated_module_labels={generated_module_labels}\n"
+                  f"emitted_modules={emitted_modules}\n"
+                  "split_mapping=FAIL\n"
+              )
+              raise SystemExit(f"module/check mapping mismatch for {source}")
+
+          mapping.write_text(
+              f"source_modules={source_modules}\n"
+              f"committed_module_labels={committed_module_labels}\n"
+              f"generated_module_labels={generated_module_labels}\n"
+              f"emitted_modules={emitted_modules}\n"
+              "split_mapping=PASS\n"
+          )
+          comparison.write_text(
+              f"committed_check_lines={len(check_lines(source))}\n"
+              f"fresh_generated_check_lines={len(check_lines(generated))}\n"
+              "generator_banner=STRIPPED\n"
+              "full_check_block=PASS\n"
+          )
+          PY
+
+            filecheck_pipeline=${run_line#*FileCheck }
+            filecheck_pipeline=${filecheck_pipeline//%s/$test_file}
+            read -r -a filecheck_args <<< "$filecheck_pipeline"
+            printf '%s %s\n' "$filecheck" "$filecheck_pipeline" \
+              > "$output_path/${stem}.filecheck-command.txt"
+            "$filecheck" "${filecheck_args[@]}" \
+              < "$output_path/${stem}.raw.llzk" \
+              > "$output_path/${stem}.filecheck-output.txt" 2>&1
+          done
+
+          {
+            printf 'pr=%s\n' '${{ matrix.pr }}'
+            printf 'target_head=%s\n' "$target_head"
+            printf 'logical_runs=%s\n' "${#tests[@]}"
+            printf 'full_output_replays=%s\n' "${#tests[@]}"
+            printf 'result=PASS\n'
+          } > "$output_path/summary.txt"
+
+      - name: Upload validation evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: pr${{ matrix.pr }}-predecessor-output-${{ matrix.head }}
+          path: ${{ runner.temp }}/pr${{ matrix.pr }}-predecessor-output
+          if-no-files-found: error
