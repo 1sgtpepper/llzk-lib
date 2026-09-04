@@ -372,6 +372,34 @@ module attributes {llzk.lang} {
 }
 // -----
 
+// A struct definition with the same name as a target parameter does not make that parameter
+// inferable from the function signature.
+module attributes {llzk.lang} {
+  struct.def @T {
+    function.def @compute() -> !struct.type<@T> {
+      %self = struct.new : !struct.type<@T>
+      function.return %self : !struct.type<@T>
+    }
+
+    function.def @constrain(%self: !struct.type<@T>) { function.return }
+  }
+
+  poly.template @Target {
+    poly.param @T
+
+    function.def @accept(%value: !struct.type<@T>) {
+      function.return
+    }
+  }
+
+  function.def @caller(%value: !struct.type<@T>) {
+    // expected-error@+1 {{'function.call' op cannot infer template instantiation value for parameter "@T" from function type signature}}
+    function.call @Target::@accept(%value) : (!struct.type<@T>) -> ()
+    function.return
+  }
+}
+// -----
+
 // Omitted parameters with `!poly.tvar` restrictions reject conflicting inferences from repeated
 // signature positions.
 module attributes {llzk.lang} {

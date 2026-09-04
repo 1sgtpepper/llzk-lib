@@ -156,6 +156,43 @@ module attributes {llzk.lang} {
 
 // -----
 
+// A struct definition with the same name as a target parameter does not make that parameter
+// inferable from the contract signature.
+module attributes {llzk.lang} {
+  struct.def @T {
+    function.def @compute() -> !struct.type<@T> {
+      %self = struct.new : !struct.type<@T>
+      function.return %self : !struct.type<@T>
+    }
+
+    function.def @constrain(%self: !struct.type<@T>) { function.return }
+  }
+
+  poly.template @Target {
+    poly.param @T
+
+    function.def @accept(%value: !struct.type<@T>) {
+      function.return
+    }
+
+    verif.contract @Base for @Target::@accept (%value: !struct.type<@T>) {
+      %ok = arith.constant true
+      verif.ensure_compute %ok
+    }
+  }
+
+  function.def @caller(%value: !struct.type<@T>) {
+    function.return
+  }
+
+  verif.contract @Wrapper for @caller (%value: !struct.type<@T>) {
+    // expected-error@+1 {{'verif.include' op cannot infer template instantiation value for parameter "@T" from contract type signature}}
+    verif.include @Target::@Base(%value) : (!struct.type<@T>) -> ()
+  }
+}
+
+// -----
+
 // Omitted parameters with `!poly.tvar` restrictions reject conflicting inferences from repeated
 // contract signature positions.
 module attributes {llzk.lang} {
