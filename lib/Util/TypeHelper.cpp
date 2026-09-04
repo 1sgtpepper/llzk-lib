@@ -762,8 +762,7 @@ struct UnifierImpl {
     }
     // A type variable can be any type, thus it unifies with anything.
     if (TypeVarType lhsTvar = llvm::dyn_cast<TypeVarType>(lhs)) {
-      if (TypeVarType rhsTvar = llvm::dyn_cast<TypeVarType>(rhs);
-          rhsTvar && candidateRecorder) {
+      if (TypeVarType rhsTvar = llvm::dyn_cast<TypeVarType>(rhs); rhsTvar && candidateRecorder) {
         // In contextual candidate mode, the caller's LHS binding is also the inferred value for
         // the target's RHS binding. Preserve both directions without changing generic unification
         // maps, which intentionally retain their existing one-sided behavior.
