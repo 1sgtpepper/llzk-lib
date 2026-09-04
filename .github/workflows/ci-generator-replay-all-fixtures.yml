@@ -14,7 +14,7 @@ jobs:
     runs-on: ubuntu-24.04
     env:
       BASE_HEAD: 265d68f678ab15018e3f6253b85557fbaeac9c0d
-      TARGET_HEAD: f3c30089e199a2c195e20b1505a90aaac557f358
+      TARGET_HEAD: 14a5a9df92dec1a2d57659debbf7d2aedc15e4b0
       OUTPUT_PATH: /home/runner/work/_temp/llzk-pr484-exact-head
 
     steps:
