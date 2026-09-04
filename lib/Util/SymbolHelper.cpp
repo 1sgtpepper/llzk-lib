@@ -692,8 +692,10 @@ LogicalResult verifyTemplateParamsMatchInferred(
       FlatSymbolRefAttr paramName = FlatSymbolRefAttr::get(paramOp.getNameAttr());
       auto it = unifications.find({paramName, Side::RHS});
       if (it == unifications.end()) {
-        // No inferred value means the signature did not expose this parameter to the operation.
-        continue;
+        return origin->emitOpError().append(
+            "cannot infer template instantiation value for parameter \"@", paramOp.getName(),
+            "\" from ", signatureDescription, " type signature"
+        );
       }
       ArrayRef<Attribute> inferredCandidates =
           candidates ? candidates(paramName, Side::RHS) : ArrayRef<Attribute>();
