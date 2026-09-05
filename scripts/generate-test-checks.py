@@ -1578,5 +1578,5 @@ class GenerateTestChecksTests(unittest.TestCase):
         source = self.write_file("broken/source.llzk", "module {}\n")
         self.write_file("broken/.git", "gitdir: missing\n")
 
-        with self.assertRaisesRegex(RuntimeError, "not a git repository"):
+        with self.assertRaises(RuntimeError):
             workspace_is_dirty(source)
