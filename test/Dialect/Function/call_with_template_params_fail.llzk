@@ -330,7 +330,7 @@ module attributes {llzk.lang} {
 // signature positions.
 module attributes {llzk.lang} {
   poly.template @RepeatedParam {
-    poly.param @N
+    poly.param @N : index
 
     function.def @accept(
         %lhs: !array.type<@N x index>, %rhs: !array.type<@N x index>
@@ -767,5 +767,28 @@ module attributes {llzk.lang} {
     }
 
     function.def @constrain(%self: !struct.type<@WildcardRequiresTypeVarParam2>) { function.return }
+  }
+}
+
+// -----
+
+// Equal repeated dimensions accept both explicit and inferred arguments.
+module attributes {llzk.lang} {
+  poly.template @RepeatedParam {
+    poly.param @N : index
+
+    function.def @accept(
+        %lhs: !array.type<@N x index>, %rhs: !array.type<@N x index>
+    ) {
+      function.return
+    }
+  }
+
+  function.def @caller(%lhs: !array.type<5 x index>, %rhs: !array.type<5 x index>) {
+    function.call @RepeatedParam::@accept<[5]>(%lhs, %rhs) :
+        (!array.type<5 x index>, !array.type<5 x index>) -> ()
+    function.call @RepeatedParam::@accept(%lhs, %rhs) :
+        (!array.type<5 x index>, !array.type<5 x index>) -> ()
+    function.return
   }
 }

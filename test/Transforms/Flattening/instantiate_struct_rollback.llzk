@@ -10,7 +10,7 @@ module attributes {llzk.lang} {
       struct.member @value : !felt.type<"bn128"> {column, llzk.pub}
 
       function.def @compute() -> !struct.type<@BrokenStruct::@Value<[@Num]>> {
-        // expected-error@+2 {{felt constant}}
+        // expected-error@+2 {{'poly.read_const' op felt constant #felt<const 35 : <"babybear">> : !felt.type<"babybear"> is incompatible with converted result type '!felt.type<"bn128">'}}
         // expected-error@+1 {{failed to legalize operation 'poly.read_const'}}
         %value = poly.read_const @Num : !felt.type<"bn128">
         %self = struct.new : !struct.type<@BrokenStruct::@Value<[@Num]>>
@@ -79,7 +79,7 @@ module attributes {llzk.lang} {
       struct.member @value : !felt.type<"bn128"> {column, llzk.pub}
 
       function.def @compute() -> !struct.type<@BrokenPartial::@Value<[@Num, @Offset]>> {
-        // expected-error@+2 {{felt constant}}
+        // expected-error@+2 {{'poly.read_const' op felt constant #felt<const 35 : <"babybear">> : !felt.type<"babybear"> is incompatible with converted result type '!felt.type<"bn128">'}}
         // expected-error@+1 {{failed to legalize operation 'poly.read_const'}}
         %value = poly.read_const @Num : !felt.type<"bn128">
         %self = struct.new : !struct.type<@BrokenPartial::@Value<[@Num, @Offset]>>

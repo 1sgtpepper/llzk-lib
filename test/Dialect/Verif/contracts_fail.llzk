@@ -90,7 +90,7 @@ module attributes {llzk.lang} {
 // contract signature positions.
 module attributes {llzk.lang} {
   poly.template @RepeatedParam {
-    poly.param @N
+    poly.param @N : index
 
     function.def @target(
         %lhs: !array.type<@N x index>, %rhs: !array.type<@N x index>
@@ -1812,5 +1812,40 @@ module attributes {llzk.lang} {
       // expected-error@+1 {{'verif.include' op wildcard `?` can only be used for template parameters with `!poly.tvar` type restriction, but parameter "@N" has no type restriction}}
       verif.include @SpecTemplate::@Base<[?]>() : () -> ()
     }
+  }
+}
+
+// -----
+
+// Equal repeated dimensions accept both explicit and inferred include arguments.
+module attributes {llzk.lang} {
+  poly.template @RepeatedParam {
+    poly.param @N : index
+
+    function.def @target(
+        %lhs: !array.type<@N x index>, %rhs: !array.type<@N x index>
+    ) {
+      function.return
+    }
+
+    verif.contract @Base for @RepeatedParam::@target (
+        %lhs: !array.type<@N x index>, %rhs: !array.type<@N x index>
+    ) {
+      %ok = arith.constant true
+      verif.ensure_compute %ok
+    }
+  }
+
+  function.def @caller(%lhs: !array.type<5 x index>, %rhs: !array.type<5 x index>) {
+    function.return
+  }
+
+  verif.contract @Wrapper for @caller (
+      %lhs: !array.type<5 x index>, %rhs: !array.type<5 x index>
+  ) {
+    verif.include @RepeatedParam::@Base<[5]>(%lhs, %rhs) :
+        (!array.type<5 x index>, !array.type<5 x index>) -> ()
+    verif.include @RepeatedParam::@Base(%lhs, %rhs) :
+        (!array.type<5 x index>, !array.type<5 x index>) -> ()
   }
 }
