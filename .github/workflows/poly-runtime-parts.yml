@@ -1,0 +1,44 @@
+name: Baseline runtime transfer
+on:
+  push:
+    branches: [ci/poly-runtime-parts-20260905]
+permissions:
+  actions: read
+  contents: read
+jobs:
+  split:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/download-artifact@v7
+        with:
+          name: upstream-baseline-runtime
+          repository: 1sgtpepper/llzk-lib
+          run-id: 33959325387
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: baseline
+      - name: Split baseline archive
+        run: |
+          set -euo pipefail
+          test "$(cat baseline/upstream-sha.txt)" = ba936ff5dca8c793421ab875d13a37ed7649696d
+          split -b 128M -d -a 2 baseline/runtime.tar.gz baseline/runtime.part
+          sha256sum baseline/runtime.part* > baseline/runtime-parts.sha256
+          rm baseline/runtime.tar.gz
+      - uses: actions/upload-artifact@v7
+        with:
+          name: baseline-metadata
+          path: |
+            baseline/*.txt
+            baseline/*.sha256
+            baseline/upstream.bundle
+          retention-days: 7
+      - uses: actions/upload-artifact@v7
+        with: {name: baseline-runtime-00, path: baseline/runtime.part00, compression-level: 0, retention-days: 7}
+      - uses: actions/upload-artifact@v7
+        with: {name: baseline-runtime-01, path: baseline/runtime.part01, compression-level: 0, retention-days: 7}
+      - uses: actions/upload-artifact@v7
+        with: {name: baseline-runtime-02, path: baseline/runtime.part02, compression-level: 0, retention-days: 7}
+      - uses: actions/upload-artifact@v7
+        with: {name: baseline-runtime-03, path: baseline/runtime.part03, compression-level: 0, retention-days: 7}
+      - uses: actions/upload-artifact@v7
+        with: {name: baseline-runtime-04, path: baseline/runtime.part04, compression-level: 0, retention-days: 7}
