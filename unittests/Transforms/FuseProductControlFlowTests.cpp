@@ -11,6 +11,7 @@
 
 #include "llzk/Dialect/Function/IR/Ops.h"
 #include "llzk/Dialect/Global/IR/Ops.h"
+#include "llzk/Dialect/Polymorphic/IR/Ops.h"
 #include "llzk/Dialect/RAM/IR/Ops.h"
 #include "llzk/Dialect/Struct/IR/Ops.h"
 #include "llzk/Transforms/LLZKTransformationPasses.h"
@@ -794,6 +795,106 @@ TEST_F(FuseProductControlFlowTests, CrossedLoopPairsUseLexicalApplicationOrder) 
   EXPECT_TRUE(fusedLoop->isBeforeInBlock(remainingCompute));
 }
 
+TEST_F(FuseProductControlFlowTests, DistinctConstReadsOfSameBindingCanFuse) {
+  // Direct fusion must accept distinct same-block reads of one template binding, while a pair
+  // naming different bindings remains separate. No earlier pass canonicalizes the two reads.
+  mlir::OwningOpRef<mlir::ModuleOp> module = mlir::parseSourceString<mlir::ModuleOp>(
+      R"mlir(
+    module attributes {llzk.lang = "llzk"} {
+      poly.template @T {
+        poly.param @N : index
+        poly.param @M : index
+        poly.param @K : index
+
+        struct.def @A {
+          struct.member @out : !felt.type
+
+          function.def @product() -> !struct.type<@T::@A<[@N, @M, @K]>> {
+            %self = struct.new : <@T::@A<[@N, @M, @K]>>
+            %c0 = arith.constant 0 : index
+            %c1 = arith.constant 1 : index
+            %same_compute = poly.read_const @N : index
+            %same_constrain = poly.read_const @N : index
+
+            scf.for %i = %c0 to %same_compute step %c1 {
+              %same_compute_value = arith.addi %i, %c0 : index
+              scf.yield
+            } {product_source = "compute"}
+            scf.for %i = %c0 to %same_constrain step %c1 {
+              %same_constrain_value = arith.addi %i, %c0 : index
+              scf.yield
+            } {product_source = "constrain"}
+
+            %different_compute = poly.read_const @M : index
+            %different_constrain = poly.read_const @K : index
+            scf.for %i = %c0 to %different_compute step %c1 {
+              %different_compute_value = arith.addi %i, %c0 : index
+              scf.yield
+            } {product_source = "compute"}
+            scf.for %i = %c0 to %different_constrain step %c1 {
+              %different_constrain_value = arith.addi %i, %c0 : index
+              scf.yield
+            } {product_source = "constrain"}
+
+            %zero = felt.const 0
+            struct.writem %self[@out] = %zero : <@T::@A<[@N, @M, @K]>>, !felt.type
+            function.return %self : !struct.type<@T::@A<[@N, @M, @K]>>
+          }
+        }
+      }
+    }
+  )mlir",
+      &ctx
+  );
+  ASSERT_TRUE(module);
+
+  mlir::PassManager pm(&ctx);
+  pm.addPass(llzk::createFuseProductControlFlowPass());
+  ASSERT_TRUE(mlir::succeeded(pm.run(*module)));
+
+  llzk::function::FuncDefOp product;
+  module->walk([&](llzk::function::FuncDefOp func) {
+    if (func.isStructProduct()) {
+      product = func;
+    }
+  });
+  ASSERT_TRUE(product);
+
+  mlir::scf::ForOp fusedLoop;
+  mlir::scf::ForOp differentComputeLoop;
+  mlir::scf::ForOp differentConstrainLoop;
+  product.walk([&](mlir::scf::ForOp loop) {
+    mlir::StringAttr source = loop->getAttrOfType<mlir::StringAttr>("product_source");
+    if (!source) {
+      return;
+    }
+    if (source.getValue() == "fused") {
+      fusedLoop = loop;
+    } else if (source.getValue() == "compute") {
+      differentComputeLoop = loop;
+    } else if (source.getValue() == "constrain") {
+      differentConstrainLoop = loop;
+    }
+  });
+
+  ASSERT_TRUE(fusedLoop);
+  ASSERT_TRUE(differentComputeLoop);
+  ASSERT_TRUE(differentConstrainLoop);
+
+  auto fusedUpperBound =
+      fusedLoop.getUpperBound().getDefiningOp<llzk::polymorphic::ConstReadOp>();
+  auto differentComputeUpperBound =
+      differentComputeLoop.getUpperBound().getDefiningOp<llzk::polymorphic::ConstReadOp>();
+  auto differentConstrainUpperBound =
+      differentConstrainLoop.getUpperBound().getDefiningOp<llzk::polymorphic::ConstReadOp>();
+  ASSERT_TRUE(fusedUpperBound);
+  ASSERT_TRUE(differentComputeUpperBound);
+  ASSERT_TRUE(differentConstrainUpperBound);
+  EXPECT_EQ(fusedUpperBound.getConstName(), "N");
+  EXPECT_EQ(differentComputeUpperBound.getConstName(), "M");
+  EXPECT_EQ(differentConstrainUpperBound.getConstName(), "K");
+}
+
 TEST_F(FuseProductControlFlowTests, LoopUnsignedComparisonMustMatch) {
   // Loops that select different signed or unsigned bound comparisons stay separate. Unit and true
   // select unsigned comparison; absent and false select signed comparison, and the fused loop
@@ -1186,9 +1287,10 @@ TEST_F(FuseProductControlFlowTests, ComputeLoopResultDependenciesPreventFusion) 
 }
 
 TEST_F(FuseProductControlFlowTests, EffectfulOperationsBetweenLoopsPreventFusion) {
-  // Global and RAM operations between the loops must keep their original order, whether the
-  // intervening effect has the compute role, the constrain role, or no role. Distinct parent
-  // structs and typed barriers identify each original loop pair independently.
+  // Effectful global and RAM operations between otherwise-admissible loops must remain in their
+  // original order, whether the intervening effect has the compute role, the constrain role, or
+  // no role. Distinct parent structs and typed barriers identify each original loop pair
+  // independently.
   mlir::OwningOpRef<mlir::ModuleOp> module = mlir::parseSourceString<mlir::ModuleOp>(
       R"mlir(
     module attributes {llzk.lang = "llzk"} {
@@ -1213,8 +1315,7 @@ TEST_F(FuseProductControlFlowTests, EffectfulOperationsBetweenLoopsPreventFusion
           global.write @g = %stored : !felt.type {product_source = "compute"}
 
           scf.for %i = %c0 to %c2 step %c1 {
-            %actual = global.read @g : !felt.type {product_source = "constrain"}
-            constrain.eq %actual, %value : !felt.type
+            constrain.eq %value, %one : !felt.type
             scf.yield
           } {product_source = "constrain"}
 
@@ -1243,8 +1344,7 @@ TEST_F(FuseProductControlFlowTests, EffectfulOperationsBetweenLoopsPreventFusion
           ram.store %addr, %stored : !felt.type {product_source = "compute"}
 
           scf.for %i = %c0 to %c2 step %c1 {
-            %actual = ram.load %addr : !felt.type {product_source = "constrain"}
-            constrain.eq %actual, %value : !felt.type
+            constrain.eq %value, %one : !felt.type
             scf.yield
           } {product_source = "constrain"}
 
@@ -1272,8 +1372,7 @@ TEST_F(FuseProductControlFlowTests, EffectfulOperationsBetweenLoopsPreventFusion
           global.write @g = %stored : !felt.type {product_source = "constrain"}
 
           scf.for %i = %c0 to %c2 step %c1 {
-            %actual = global.read @g : !felt.type {product_source = "constrain"}
-            constrain.eq %actual, %value : !felt.type
+            constrain.eq %value, %one : !felt.type
             scf.yield
           } {product_source = "constrain"}
 
@@ -1301,8 +1400,7 @@ TEST_F(FuseProductControlFlowTests, EffectfulOperationsBetweenLoopsPreventFusion
           global.write @g = %stored : !felt.type
 
           scf.for %i = %c0 to %c2 step %c1 {
-            %actual = global.read @g : !felt.type {product_source = "constrain"}
-            constrain.eq %actual, %value : !felt.type
+            constrain.eq %value, %one : !felt.type
             scf.yield
           } {product_source = "constrain"}
 
@@ -1348,29 +1446,21 @@ TEST_F(FuseProductControlFlowTests, EffectfulOperationsBetweenLoopsPreventFusion
     EXPECT_TRUE(loops[0]->isBeforeInBlock(loops[1]));
 
     llvm::SmallVector<mlir::Operation *> barriers;
-    llvm::SmallVector<mlir::Operation *> reads;
     product.walk([&](llzk::global::GlobalWriteOp write) {
       barriers.push_back(write.getOperation());
     });
     product.walk([&](llzk::ram::StoreOp store) { barriers.push_back(store.getOperation()); });
-    product.walk([&](llzk::global::GlobalReadOp read) { reads.push_back(read.getOperation()); });
-    product.walk([&](llzk::ram::LoadOp load) { reads.push_back(load.getOperation()); });
     ASSERT_EQ(barriers.size(), 1U);
-    ASSERT_EQ(reads.size(), 1U);
     mlir::Operation *barrier = barriers.front();
-    mlir::Operation *read = reads.front();
     EXPECT_EQ(barrier->getBlock(), loops[0]->getBlock());
     EXPECT_TRUE(loops[0]->isBeforeInBlock(barrier));
     EXPECT_TRUE(barrier->isBeforeInBlock(loops[1]));
-    EXPECT_EQ(read->getBlock(), loops[1].getBody());
 
     mlir::StringRef caseName = parent.getName();
     mlir::StringAttr barrierSource = barrier->getAttrOfType<mlir::StringAttr>("product_source");
     bool isRamCase = caseName == "RamCase";
     EXPECT_EQ(llvm::isa<llzk::ram::StoreOp>(barrier), isRamCase);
-    EXPECT_EQ(llvm::isa<llzk::ram::LoadOp>(read), isRamCase);
     EXPECT_EQ(llvm::isa<llzk::global::GlobalWriteOp>(barrier), !isRamCase);
-    EXPECT_EQ(llvm::isa<llzk::global::GlobalReadOp>(read), !isRamCase);
 
     mlir::StringRef expectedSource;
     if (caseName == "GlobalCase" || isRamCase) {
@@ -1390,9 +1480,91 @@ TEST_F(FuseProductControlFlowTests, EffectfulOperationsBetweenLoopsPreventFusion
   }
 }
 
+TEST_F(FuseProductControlFlowTests, InterveningMemberReadPreventsMemberWriteSink) {
+  // A non-signal read between the loops is the only rejection reason: sinking the preceding write
+  // would make the read observe the old member value instead of the value written before it.
+  mlir::OwningOpRef<mlir::ModuleOp> module = mlir::parseSourceString<mlir::ModuleOp>(
+      R"mlir(
+    module attributes {llzk.lang = "llzk"} {
+      struct.def @A {
+        struct.member @value : !felt.type
+
+        function.def @product(%input: !felt.type) -> !struct.type<@A> {
+          %self = struct.new : <@A>
+          %c0 = arith.constant 0 : index
+          %c1 = arith.constant 1 : index
+          %c2 = arith.constant 2 : index
+
+          scf.for %i = %c0 to %c2 step %c1 {
+            %computed = felt.add %input, %input
+            scf.yield
+          } {product_source = "compute"}
+
+          struct.writem %self[@value] = %input : <@A>, !felt.type {
+            product_source = "compute"
+          }
+          %observed = struct.readm %self[@value] : <@A>, !felt.type
+
+          scf.for %i = %c0 to %c2 step %c1 {
+            constrain.eq %observed, %input : !felt.type
+            scf.yield
+          } {product_source = "constrain"}
+
+          function.return %self : !struct.type<@A>
+        }
+      }
+    }
+  )mlir",
+      &ctx
+  );
+  ASSERT_TRUE(module);
+
+  mlir::PassManager pm(&ctx);
+  pm.addPass(llzk::createFuseProductControlFlowPass());
+  ASSERT_TRUE(mlir::succeeded(pm.run(*module)));
+
+  llzk::function::FuncDefOp product;
+  module->walk([&](llzk::function::FuncDefOp func) {
+    if (func.isStructProduct()) {
+      product = func;
+    }
+  });
+  ASSERT_TRUE(product);
+
+  mlir::scf::ForOp computeLoop;
+  mlir::scf::ForOp constrainLoop;
+  mlir::scf::ForOp fusedLoop;
+  llzk::component::MemberWriteOp write;
+  llzk::component::MemberReadOp read;
+  product.walk([&](mlir::scf::ForOp loop) {
+    mlir::StringAttr source = loop->getAttrOfType<mlir::StringAttr>("product_source");
+    if (!source) {
+      return;
+    }
+    if (source.getValue() == "compute") {
+      computeLoop = loop;
+    } else if (source.getValue() == "constrain") {
+      constrainLoop = loop;
+    } else if (source.getValue() == "fused") {
+      fusedLoop = loop;
+    }
+  });
+  product.walk([&](llzk::component::MemberWriteOp writeOp) { write = writeOp; });
+  product.walk([&](llzk::component::MemberReadOp readOp) { read = readOp; });
+
+  ASSERT_TRUE(computeLoop);
+  ASSERT_TRUE(constrainLoop);
+  ASSERT_TRUE(write);
+  ASSERT_TRUE(read);
+  EXPECT_FALSE(fusedLoop);
+  EXPECT_TRUE(computeLoop->isBeforeInBlock(write));
+  EXPECT_TRUE(write->isBeforeInBlock(read));
+  EXPECT_TRUE(read->isBeforeInBlock(constrainLoop));
+}
+
 TEST_F(FuseProductControlFlowTests, MemberWriteSinkDoesNotCrossConstrainRead) {
-  // A member write may be sunk only when the constrain loop cannot observe component state. The
-  // read observes the written value in the original order but the preceding value after fusion.
+  // A member write may be sunk only when the constrain loop cannot observe component state. This
+  // body-effect interaction case is distinct from the intervening-read interval case above.
   mlir::OwningOpRef<mlir::ModuleOp> module = mlir::parseSourceString<mlir::ModuleOp>(
       R"mlir(
     module attributes {llzk.lang = "llzk"} {

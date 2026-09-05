@@ -471,9 +471,8 @@ static bool isSafeToSinkComputeOp(Operation *op) { return isa<MemberWriteOp>(op)
 /// Collect operations marked `product_source = "compute"` between sibling loops that must move
 /// after `constrainLoop`.
 /// Fail if the compute loop is not before its constrain partner in the same block, a crossed
-/// non-compute operation is not recursively pure, a sunk member write would cross an unsafe
-/// constrain-loop effect, the move would cross already-fused constraint work, or a relocated result
-/// would lose dominance.
+/// non-compute operation is not recursively pure, a compute-sourced operation is not sinkable, the
+/// move would cross already-fused constraint work, or a relocated result would lose dominance.
 static FailureOr<SmallVector<Operation *>>
 canPrepareForFusion(scf::ForOp computeLoop, scf::ForOp constrainLoop) {
   if (computeLoop->getBlock() != constrainLoop->getBlock() ||
@@ -493,17 +492,6 @@ canPrepareForFusion(scf::ForOp computeLoop, scf::ForOp constrainLoop) {
       }
       opsToSink.push_back(op);
     } else if (!isPure(op)) {
-      return failure();
-    }
-  }
-
-  if (llvm::any_of(opsToSink, [](Operation *op) { return isa<MemberWriteOp>(op); })) {
-    // The pass deliberately moves a direct member write, but it cannot move across a
-    // constrain-loop read or unknown effect: without alias analysis, either may observe the
-    // component state after the write in the original order and before it in the fused order.
-    // Constraint emission, nondet values, and structured control flow remain admissible; their
-    // nested operations are checked by this walk as well.
-    if (hasUnsafeCrossedConstrainOp(constrainLoop.getOperation())) {
       return failure();
     }
   }
@@ -600,8 +588,8 @@ fuseMatchingLoopPairs(Region &body, MLIRContext *context, SymbolTableCollection 
     auto [computeLoop, constrainLoop] = *candidate;
 
     // Fusion interleaves the two loop bodies. Require the compute body to be recursively pure and
-    // the constrain body to contain only operations admitted by the crossing contract, regardless
-    // of how the shared controls are represented.
+    // the constrain body to contain only operations admitted by the crossing contract before
+    // preparation handles interstitial operations and relocated-result dominance.
     if (!isPure(computeLoop.getOperation()) ||
         hasUnsafeCrossedConstrainOp(constrainLoop.getOperation())) {
       continue;
