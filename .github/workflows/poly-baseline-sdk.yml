@@ -1,0 +1,96 @@
+name: Upstream baseline SDK
+on:
+  push:
+    branches: [ci/poly-baseline-sdk-20260905]
+permissions:
+  contents: read
+jobs:
+  baseline:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ba936ff5dca8c793421ab875d13a37ed7649696d
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: cachix/install-nix-action@d1ca217b388ee87b2507a9a93bf01368bde7cec2
+        with:
+          install_url: https://releases.nixos.org/nix/nix-2.23.3/install
+          github_access_token: ${{ secrets.GITHUB_TOKEN }}
+      - uses: cachix/cachix-action@v17
+        with:
+          name: veridise-public
+          skipPush: true
+      - name: Build and test unchanged upstream
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = ba936ff5dca8c793421ab875d13a37ed7649696d
+          nix --print-build-logs build .#llzk-debug
+          mkdir -p baseline-artifacts
+          git rev-parse HEAD > baseline-artifacts/upstream-sha.txt
+          readlink -f result > baseline-artifacts/package-path.txt
+          git branch baseline-export HEAD
+          git bundle create baseline-artifacts/upstream.bundle baseline-export
+          nix-store -qR "$(readlink -f result)" | sort > baseline-artifacts/runtime-paths.txt
+          sed 's@^/@@' baseline-artifacts/runtime-paths.txt > /tmp/runtime-tar-paths
+          tar -C / -czf baseline-artifacts/runtime.tar.gz -T /tmp/runtime-tar-paths
+          sha256sum baseline-artifacts/runtime.tar.gz > baseline-artifacts/runtime.sha256
+      - uses: actions/upload-artifact@v7
+        with:
+          name: upstream-baseline-runtime
+          path: baseline-artifacts/
+          compression-level: 0
+          retention-days: 7
+      - name: Export native development inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          nix print-dev-env .#llzk-debug --profile /tmp/llzk-baseline-env > baseline-artifacts/develop.sh
+          nix-store -qR "$(readlink -f /tmp/llzk-baseline-env)" | sort > /tmp/develop-paths
+          comm -23 /tmp/develop-paths baseline-artifacts/runtime-paths.txt | sed 's@^/@@' > /tmp/sdk-tar-paths
+          tar -C / -czf /tmp/sdk.tar.gz -T /tmp/sdk-tar-paths
+          split -b 128M -d -a 2 /tmp/sdk.tar.gz baseline-artifacts/sdk.part
+          sha256sum baseline-artifacts/sdk.part* > baseline-artifacts/sdk.sha256
+          ls -lh baseline-artifacts/sdk.part*
+          test "$(find baseline-artifacts -maxdepth 1 -name 'sdk.part*' | wc -l)" -le 16
+      - uses: actions/upload-artifact@v7
+        with:
+          name: upstream-baseline-env
+          path: |
+            baseline-artifacts/develop.sh
+            baseline-artifacts/sdk.sha256
+          retention-days: 7
+      - uses: actions/upload-artifact@v7
+        with: {name: upstream-sdk-00, path: baseline-artifacts/sdk.part00, compression-level: 0, if-no-files-found: ignore, retention-days: 7}
+      - uses: actions/upload-artifact@v7
+        with: {name: upstream-sdk-01, path: baseline-artifacts/sdk.part01, compression-level: 0, if-no-files-found: ignore, retention-days: 7}
+      - uses: actions/upload-artifact@v7
+        with: {name: upstream-sdk-02, path: baseline-artifacts/sdk.part02, compression-level: 0, if-no-files-found: ignore, retention-days: 7}
+      - uses: actions/upload-artifact@v7
+        with: {name: upstream-sdk-03, path: baseline-artifacts/sdk.part03, compression-level: 0, if-no-files-found: ignore, retention-days: 7}
+      - uses: actions/upload-artifact@v7
+        with: {name: upstream-sdk-04, path: baseline-artifacts/sdk.part04, compression-level: 0, if-no-files-found: ignore, retention-days: 7}
+      - uses: actions/upload-artifact@v7
+        with: {name: upstream-sdk-05, path: baseline-artifacts/sdk.part05, compression-level: 0, if-no-files-found: ignore, retention-days: 7}
+      - uses: actions/upload-artifact@v7
+        with: {name: upstream-sdk-06, path: baseline-artifacts/sdk.part06, compression-level: 0, if-no-files-found: ignore, retention-days: 7}
+      - uses: actions/upload-artifact@v7
+        with: {name: upstream-sdk-07, path: baseline-artifacts/sdk.part07, compression-level: 0, if-no-files-found: ignore, retention-days: 7}
+      - uses: actions/upload-artifact@v7
+        with: {name: upstream-sdk-08, path: baseline-artifacts/sdk.part08, compression-level: 0, if-no-files-found: ignore, retention-days: 7}
+      - uses: actions/upload-artifact@v7
+        with: {name: upstream-sdk-09, path: baseline-artifacts/sdk.part09, compression-level: 0, if-no-files-found: ignore, retention-days: 7}
+      - uses: actions/upload-artifact@v7
+        with: {name: upstream-sdk-10, path: baseline-artifacts/sdk.part10, compression-level: 0, if-no-files-found: ignore, retention-days: 7}
+      - uses: actions/upload-artifact@v7
+        with: {name: upstream-sdk-11, path: baseline-artifacts/sdk.part11, compression-level: 0, if-no-files-found: ignore, retention-days: 7}
+      - uses: actions/upload-artifact@v7
+        with: {name: upstream-sdk-12, path: baseline-artifacts/sdk.part12, compression-level: 0, if-no-files-found: ignore, retention-days: 7}
+      - uses: actions/upload-artifact@v7
+        with: {name: upstream-sdk-13, path: baseline-artifacts/sdk.part13, compression-level: 0, if-no-files-found: ignore, retention-days: 7}
+      - uses: actions/upload-artifact@v7
+        with: {name: upstream-sdk-14, path: baseline-artifacts/sdk.part14, compression-level: 0, if-no-files-found: ignore, retention-days: 7}
+      - uses: actions/upload-artifact@v7
+        with: {name: upstream-sdk-15, path: baseline-artifacts/sdk.part15, compression-level: 0, if-no-files-found: ignore, retention-days: 7}
