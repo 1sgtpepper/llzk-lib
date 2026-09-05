@@ -583,6 +583,18 @@ public:
   }
 };
 
+/// Return whether an operation still has a non-concrete operand or result type after applying the
+/// currently known template bindings. Non-read operations may remain in a reduced expression with
+/// such types; the evaluator must wait until a later specialization makes them concrete.
+static bool hasUnresolvedOperationType(Operation *op, const TypeConverter &tyConv) {
+  auto hasUnresolvedType = [&tyConv](Type type) {
+    Type converted = tyConv.convertType(type);
+    return !converted || !isConcreteType(converted);
+  };
+  return llvm::any_of(op->getOperandTypes(), hasUnresolvedType) ||
+         llvm::any_of(op->getResultTypes(), hasUnresolvedType);
+}
+
 /// Clone a referenced template expression and apply every currently concrete value and type
 /// binding. A reduced template no longer owns the removed parameter declarations, so its retained
 /// expression must contain neither reads nor type variables for those parameters. Return an empty
@@ -594,13 +606,15 @@ static FailureOr<std::optional<TemplateExprOp>> cloneDeferredExpr(
 ) {
   MLIRContext *ctx = exprOp.getContext();
   TemplateParamTypeConverter tyConv(paramNameToConcrete);
+  // A known read cannot remain after its binding is removed, so defer the whole clone if its
+  // converted result type is still symbolic. Other operations can remain symbolic in a reduced
+  // expression; evaluateExpr checks those operation types before attempting a fold.
   WalkResult unresolvedDependency = exprOp.walk([&](ConstReadOp readOp) {
     if (!paramNameToConcrete.contains(readOp.getConstNameAttr())) {
       return WalkResult::advance();
     }
-    Type convertedType = tyConv.convertType(readOp.getType());
-    return (!convertedType || !isConcreteType(convertedType)) ? WalkResult::interrupt()
-                                                              : WalkResult::advance();
+    return hasUnresolvedOperationType(readOp, tyConv) ? WalkResult::interrupt()
+                                                      : WalkResult::advance();
   });
   if (unresolvedDependency.wasInterrupted()) {
     return std::optional<TemplateExprOp>();
@@ -716,16 +730,21 @@ static bool calleeReferencesTemplateParam(CallOp op) {
   return parentTemplate.hasConstNamed<TemplateParamOp>(callee.getRootReference());
 }
 
-/// Evaluate a single template expression. An unresolved parameter defers evaluation; malformed,
-/// incompatible, effectful, non-speculatable, or non-foldable concrete expressions are semantic
-/// errors.
+/// Evaluate a single template expression. An unresolved value or operation-type dependency defers
+/// evaluation; malformed, incompatible, effectful, non-speculatable, or non-foldable concrete
+/// expressions are semantic errors.
 static FailureOr<std::optional<Attribute>>
 evaluateExpr(TemplateExprOp exprOp, const DenseMap<Attribute, Attribute> &paramNameToConcrete) {
-  // Deferral depends on the expression's complete parameter set, not operation order. Do not
-  // diagnose a non-foldable prefix while a later read still requires partial instantiation.
-  WalkResult unresolvedParam = exprOp.walk([&](ConstReadOp op) {
-    return paramNameToConcrete.contains(op.getConstNameAttr()) ? WalkResult::advance()
-                                                               : WalkResult::interrupt();
+  TemplateParamTypeConverter tyConv(paramNameToConcrete);
+  // Deferral depends on the expression's complete value and type dependency set, not operation
+  // order. Do not diagnose a non-foldable prefix while a later read or operation type still
+  // requires partial instantiation.
+  WalkResult unresolvedParam = exprOp.walk([&](Operation *op) {
+    if (auto constReadOp = llvm::dyn_cast<ConstReadOp>(op);
+        constReadOp && !paramNameToConcrete.contains(constReadOp.getConstNameAttr())) {
+      return WalkResult::interrupt();
+    }
+    return hasUnresolvedOperationType(op, tyConv) ? WalkResult::interrupt() : WalkResult::advance();
   });
   if (unresolvedParam.wasInterrupted()) {
     return std::optional<Attribute>();
