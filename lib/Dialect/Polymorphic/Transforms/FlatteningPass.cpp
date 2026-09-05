@@ -718,8 +718,7 @@ evaluateExpr(TemplateExprOp exprOp, const DenseMap<Attribute, Attribute> &paramN
         constReadOp && !paramNameToConcrete.contains(constReadOp.getConstNameAttr())) {
       return WalkResult::interrupt();
     }
-    return hasUnresolvedOperationType(op, tyConv) ? WalkResult::interrupt()
-                                                 : WalkResult::advance();
+    return hasUnresolvedOperationType(op, tyConv) ? WalkResult::interrupt() : WalkResult::advance();
   });
   if (unresolvedParam.wasInterrupted()) {
     return std::optional<Attribute>();
