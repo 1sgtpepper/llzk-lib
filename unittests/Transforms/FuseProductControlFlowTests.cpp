@@ -881,8 +881,7 @@ TEST_F(FuseProductControlFlowTests, DistinctConstReadsOfSameBindingCanFuse) {
   ASSERT_TRUE(differentComputeLoop);
   ASSERT_TRUE(differentConstrainLoop);
 
-  auto fusedUpperBound =
-      fusedLoop.getUpperBound().getDefiningOp<llzk::polymorphic::ConstReadOp>();
+  auto fusedUpperBound = fusedLoop.getUpperBound().getDefiningOp<llzk::polymorphic::ConstReadOp>();
   auto differentComputeUpperBound =
       differentComputeLoop.getUpperBound().getDefiningOp<llzk::polymorphic::ConstReadOp>();
   auto differentConstrainUpperBound =
