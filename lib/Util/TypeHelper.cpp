@@ -718,6 +718,23 @@ struct UnifierImpl {
 
   bool typesUnify(Type lhs, Type rhs) {
     if (lhs == rhs) {
+      // Structural equality does not prove that equal flat symbols have the same template owner.
+      // Revisit parameterized types while collecting unifications so that callers can reconcile
+      // those bindings in their respective scopes.
+      if (unifications) {
+        if (StructType lhsStruct = llvm::dyn_cast<StructType>(lhs)) {
+          return typeParamsUnify(lhsStruct.getParams(), llvm::cast<StructType>(rhs).getParams());
+        }
+        if (ArrayType lhsArray = llvm::dyn_cast<ArrayType>(lhs)) {
+          return arrayTypesUnify(lhsArray, llvm::cast<ArrayType>(rhs));
+        }
+        if (PodType lhsPod = llvm::dyn_cast<PodType>(lhs)) {
+          return podTypesUnify(lhsPod, llvm::cast<PodType>(rhs));
+        }
+        if (FunctionType lhsFunction = llvm::dyn_cast<FunctionType>(lhs)) {
+          return functionTypesUnify(lhsFunction, llvm::cast<FunctionType>(rhs));
+        }
+      }
       return true;
     }
     if (overrideSuccess && overrideSuccess(lhs, rhs)) {
@@ -810,6 +827,16 @@ private:
     assertValidAttrForParamOfType(rhsAttr);
     // Straightforward equality check.
     if (lhsAttr == rhsAttr) {
+      if (unifications) {
+        if (llvm::isa<FlatSymbolRefAttr>(lhsAttr)) {
+          // Equal flat references may belong to different template scopes. Record the RHS-to-LHS
+          // mapping so callers can resolve the mapped symbol in the operation's scope instead of
+          // treating the missing entry as evidence that the parameter was not exposed.
+          track(Side::RHS, llvm::cast<FlatSymbolRefAttr>(rhsAttr), lhsAttr);
+        } else if (TypeAttr lhsTy = llvm::dyn_cast<TypeAttr>(lhsAttr)) {
+          return typesUnify(lhsTy.getValue(), llvm::cast<TypeAttr>(rhsAttr).getValue());
+        }
+      }
       return true;
     }
     // AffineMapAttr can unify with IntegerAttr (other than kDynamic) because struct parameter
@@ -928,6 +955,133 @@ bool typesUnify(
   return UnifierImpl(unifications, rhsReversePrefix).typesUnify(lhs, rhs);
 }
 
+bool isTemplateParamTypeCompatible(Type actualType, Type requiredType) {
+  // TypeVarType is a template-argument kind restriction, not an ordinary type wildcard. Keep
+  // that distinction here rather than weakening typesUnify(), whose type-variable behavior is
+  // required for general type inference.
+  bool actualIsTypeOnly = isa<TypeVarType>(actualType);
+  bool requiredIsTypeOnly = isa<TypeVarType>(requiredType);
+  if (actualIsTypeOnly || requiredIsTypeOnly) {
+    return actualIsTypeOnly && requiredIsTypeOnly;
+  }
+
+  FeltType requiredFelt = dyn_cast<FeltType>(requiredType);
+  if (requiredFelt) {
+    FeltType actualFelt = dyn_cast<FeltType>(actualType);
+    if (!actualFelt) {
+      return false;
+    }
+    if (!requiredFelt.hasField()) {
+      return true;
+    }
+    return actualFelt.hasField() && actualFelt == requiredFelt;
+  }
+  return typesUnify(actualType, requiredType);
+}
+
+bool isTemplateParamTypeCompatible(std::optional<Type> actualType, Type requiredType) {
+  if (!actualType) {
+    if (isa<TypeVarType>(requiredType)) {
+      return false;
+    }
+    if (FeltType requiredFelt = dyn_cast<FeltType>(requiredType)) {
+      return !requiredFelt.hasField();
+    }
+    return true;
+  }
+  return isTemplateParamTypeCompatible(*actualType, requiredType);
+}
+
+FailureOr<Attribute>
+materializeTemplateParamValue(Attribute actualValue, std::optional<Type> requiredType) {
+  if (!requiredType) {
+    return actualValue;
+  }
+
+  Type restriction = *requiredType;
+  if (isa<TypeVarType>(restriction)) {
+    if (isa<TypeAttr>(actualValue)) {
+      return actualValue;
+    }
+    return failure();
+  }
+
+  if (FeltType feltType = dyn_cast<FeltType>(restriction)) {
+    if (FeltConstAttr feltValue = dyn_cast<FeltConstAttr>(actualValue)) {
+      FailureOr<FeltConstAttr> materialized = feltValue.materializeAs(feltType);
+      if (failed(materialized)) {
+        return failure();
+      }
+      return *materialized;
+    }
+    if (IntegerAttr integerValue = dyn_cast<IntegerAttr>(actualValue)) {
+      if (!isValidConstReadType(integerValue.getType())) {
+        return failure();
+      }
+      return FeltConstAttr::get(actualValue.getContext(), integerValue.getValue(), feltType);
+    }
+    return failure();
+  }
+
+  if (isa<IndexType, IntegerType>(restriction)) {
+    if (IntegerAttr integerValue = dyn_cast<IntegerAttr>(actualValue)) {
+      if (isValidConstReadType(integerValue.getType())) {
+        return actualValue;
+      }
+      return failure();
+    }
+    if (AffineMapAttr affineValue = dyn_cast<AffineMapAttr>(actualValue)) {
+      if (affineValue.getValue().getNumResults() == 1) {
+        return actualValue;
+      }
+      return failure();
+    }
+  }
+
+  return failure();
+}
+
+bool templateParamValuesUnify(
+    Attribute actualValue, Attribute inferredValue, std::optional<Type> requiredType
+) {
+  FeltType requiredFelt;
+  if (requiredType) {
+    requiredFelt = dyn_cast<FeltType>(*requiredType);
+  }
+  if (!requiredFelt) {
+    return typeParamsUnify({actualValue}, {inferredValue});
+  }
+
+  auto asFeltConst = [requiredFelt](Attribute value) -> FeltConstAttr {
+    if (auto feltValue = dyn_cast<FeltConstAttr>(value)) {
+      FailureOr<FeltConstAttr> materialized = feltValue.materializeAs(requiredFelt);
+      return succeeded(materialized) ? *materialized : FeltConstAttr();
+    }
+    if (auto intValue = dyn_cast<IntegerAttr>(value)) {
+      return FeltConstAttr::get(value.getContext(), intValue.getValue(), requiredFelt);
+    }
+    return FeltConstAttr();
+  };
+
+  FeltConstAttr actualFelt = asFeltConst(actualValue);
+  FeltConstAttr inferredFelt = asFeltConst(inferredValue);
+  if (!actualFelt || !inferredFelt) {
+    if ((!actualFelt && !isa<SymbolRefAttr>(actualValue)) ||
+        (!inferredFelt && !isa<SymbolRefAttr>(inferredValue))) {
+      return false;
+    }
+    return typeParamsUnify({actualValue}, {inferredValue});
+  }
+
+  if (!llvm::APInt::isSameValue(actualFelt.getValue(), inferredFelt.getValue())) {
+    return false;
+  }
+  FeltType actualFeltType = actualFelt.getType();
+  FeltType inferredFeltType = inferredFelt.getType();
+  return !actualFeltType.hasField() || !inferredFeltType.hasField() ||
+         actualFeltType == inferredFeltType;
+}
+
 bool isMoreConcreteUnification(
     Type oldTy, Type newTy, llvm::function_ref<bool(Type oldTy, Type newTy)> knownOldToNew
 ) {
@@ -946,7 +1100,17 @@ bool isMoreConcreteUnification(
   // the "least concrete" attribute kind) where the old type contained any other attribute. In the
   // AffineInstantiations map, a RHS key would indicate that the new type contains an AffineMapAttr
   // where the old type contains an IntegerAttr.
-  auto entryIsRHS = [](const auto &entry) { return entry.first.second == Side::RHS; };
+  auto entryIsRHS = [](const auto &entry) {
+    if (entry.first.second != Side::RHS) {
+      return false;
+    }
+    // Equal flat symbols are tracked so template inference can preserve their scope path, but an
+    // identity mapping does not make the new type less concrete than the old type.
+    if (auto mappedSymbol = llvm::dyn_cast<SymbolRefAttr>(entry.second)) {
+      return mappedSymbol != entry.first.first;
+    }
+    return true;
+  };
   return !llvm::any_of(unifications, entryIsRHS) && !llvm::any_of(affineInstantiations, entryIsRHS);
 }
 
