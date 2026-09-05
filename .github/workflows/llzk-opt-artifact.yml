@@ -137,6 +137,14 @@ jobs:
               "$(wc -l < "$VALIDATION_ROOT/metadata/changed-llzk-tests.txt")"
           } > "$VALIDATION_ROOT/metadata/diff-summary.txt"
 
+      - name: Run the repository generator unit tests
+        if: hashFiles('.github/workflows/test-generate-test-checks.yml') != ''
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m unittest scripts/generate-test-checks.py -v \
+            2>&1 | tee "$VALIDATION_ROOT/generator-tests.log"
+
       - name: Build the cached llzk-opt toolchain
         shell: bash
         run: |
