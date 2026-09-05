@@ -633,3 +633,126 @@ module attributes {llzk.lang} {
     }
   }
 }
+
+// -----
+
+
+// Distinct symbols with the same field remain compatible after an unrestricted binding.
+module attributes {llzk.lang} {
+  poly.template @BoxTemplate {
+    poly.param @P
+    struct.def @Box {
+      function.def @compute() -> !struct.type<@BoxTemplate::@Box<[@P]>> {
+        %self = struct.new : <@BoxTemplate::@Box<[@P]>>
+        function.return %self : !struct.type<@BoxTemplate::@Box<[@P]>>
+      }
+      function.def @constrain(%self: !struct.type<@BoxTemplate::@Box<[@P]>>) {
+        function.return
+      }
+    }
+  }
+
+  poly.template @RepeatedFelt {
+    poly.param @F : !felt.type
+    function.def @accept(
+        %unknown: !struct.type<@BoxTemplate::@Box<[@F]>>,
+        %first: !struct.type<@BoxTemplate::@Box<[@F]>>,
+        %second: !struct.type<@BoxTemplate::@Box<[@F]>>
+    ) {
+      function.return
+    }
+    verif.contract @Base for @RepeatedFelt::@accept (
+        %unknown: !struct.type<@BoxTemplate::@Box<[@F]>>,
+        %first: !struct.type<@BoxTemplate::@Box<[@F]>>,
+        %second: !struct.type<@BoxTemplate::@Box<[@F]>>
+    ) {
+      %ok = arith.constant true
+      verif.ensure_compute %ok
+    }
+  }
+
+  poly.template @Caller {
+    poly.param @Unknown
+    poly.param @First : !felt.type<"bn128">
+    poly.param @Second : !felt.type<"bn128">
+    function.def @caller(
+        %unknown: !struct.type<@BoxTemplate::@Box<[@Unknown]>>,
+        %first: !struct.type<@BoxTemplate::@Box<[@First]>>,
+        %second: !struct.type<@BoxTemplate::@Box<[@Second]>>
+    ) {
+      function.return
+    }
+    verif.contract @Wrapper for @Caller::@caller (
+        %unknown: !struct.type<@BoxTemplate::@Box<[@Unknown]>>,
+        %first: !struct.type<@BoxTemplate::@Box<[@First]>>,
+        %second: !struct.type<@BoxTemplate::@Box<[@Second]>>
+    ) {
+      verif.include @RepeatedFelt::@Base(%unknown, %first, %second) :
+          (!struct.type<@BoxTemplate::@Box<[@Unknown]>>,
+           !struct.type<@BoxTemplate::@Box<[@First]>>,
+           !struct.type<@BoxTemplate::@Box<[@Second]>>) -> ()
+    }
+  }
+}
+
+// -----
+
+
+// An unrestricted binding cannot hide conflicting fields in later symbolic candidates.
+module attributes {llzk.lang} {
+  poly.template @BoxTemplate {
+    poly.param @P
+    struct.def @Box {
+      function.def @compute() -> !struct.type<@BoxTemplate::@Box<[@P]>> {
+        %self = struct.new : <@BoxTemplate::@Box<[@P]>>
+        function.return %self : !struct.type<@BoxTemplate::@Box<[@P]>>
+      }
+      function.def @constrain(%self: !struct.type<@BoxTemplate::@Box<[@P]>>) {
+        function.return
+      }
+    }
+  }
+
+  poly.template @RepeatedFelt {
+    poly.param @F : !felt.type
+    function.def @accept(
+        %unknown: !struct.type<@BoxTemplate::@Box<[@F]>>,
+        %first: !struct.type<@BoxTemplate::@Box<[@F]>>,
+        %second: !struct.type<@BoxTemplate::@Box<[@F]>>
+    ) {
+      function.return
+    }
+    verif.contract @Base for @RepeatedFelt::@accept (
+        %unknown: !struct.type<@BoxTemplate::@Box<[@F]>>,
+        %first: !struct.type<@BoxTemplate::@Box<[@F]>>,
+        %second: !struct.type<@BoxTemplate::@Box<[@F]>>
+    ) {
+      %ok = arith.constant true
+      verif.ensure_compute %ok
+    }
+  }
+
+  poly.template @Caller {
+    poly.param @Unknown
+    poly.param @First : !felt.type<"bn128">
+    poly.param @Second : !felt.type<"goldilocks">
+    function.def @caller(
+        %unknown: !struct.type<@BoxTemplate::@Box<[@Unknown]>>,
+        %first: !struct.type<@BoxTemplate::@Box<[@First]>>,
+        %second: !struct.type<@BoxTemplate::@Box<[@Second]>>
+    ) {
+      function.return
+    }
+    verif.contract @Wrapper for @Caller::@caller (
+        %unknown: !struct.type<@BoxTemplate::@Box<[@Unknown]>>,
+        %first: !struct.type<@BoxTemplate::@Box<[@First]>>,
+        %second: !struct.type<@BoxTemplate::@Box<[@Second]>>
+    ) {
+      // expected-error@+1 {{'verif.include' op cannot infer template instantiation value for parameter "@F" from contract type signature}}
+      verif.include @RepeatedFelt::@Base(%unknown, %first, %second) :
+          (!struct.type<@BoxTemplate::@Box<[@Unknown]>>,
+           !struct.type<@BoxTemplate::@Box<[@First]>>,
+           !struct.type<@BoxTemplate::@Box<[@Second]>>) -> ()
+    }
+  }
+}

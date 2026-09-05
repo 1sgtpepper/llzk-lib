@@ -29,6 +29,7 @@
 #include <mlir/IR/Operation.h>
 
 #include <llvm/ADT/STLExtras.h>
+#include <llvm/ADT/SetVector.h>
 #include <llvm/ADT/TypeSwitch.h>
 #include <llvm/Support/Debug.h>
 #include <llvm/Support/ErrorHandling.h>
@@ -262,52 +263,7 @@ FailureOr<bool> resolvedTemplateParamValuesUnify(
 LogicalResult verifyRepeatedFeltCandidates(
     Operation *origin, TemplateParamOp paramOp, ArrayRef<Attribute> inferredCandidates,
     StringRef signatureDescription, Attribute explicitValue = nullptr
-) {
-  for (Attribute candidate : inferredCandidates) {
-    if (failed(verifyTemplateParamValueCompatibility(origin, candidate, paramOp))) {
-      return failure();
-    }
-  }
-
-  SymbolTableCollection tables;
-  if (explicitValue) {
-    for (Attribute inferredCandidate : inferredCandidates) {
-      FailureOr<bool> resolved = resolvedTemplateParamValuesUnify(
-          tables, origin, explicitValue, inferredCandidate, paramOp.getTypeOpt()
-      );
-      if (failed(resolved)) {
-        return failure();
-      }
-      if (!*resolved) {
-        return origin->emitOpError().append(
-            "template instantiation value '", explicitValue, "' for parameter \"@",
-            paramOp.getName(), "\" conflicts with value '", inferredCandidate, "' inferred from ",
-            signatureDescription, " type signature"
-        );
-      }
-    }
-  }
-
-  // Compare every pair because compatibility is not transitive: one symbolic felt can be
-  // compatible with two concrete values that conflict with each other.
-  for (auto [i, lhsCandidate] : llvm::enumerate(inferredCandidates)) {
-    for (Attribute rhsCandidate : inferredCandidates.drop_front(i + 1)) {
-      FailureOr<bool> resolved = resolvedTemplateParamValuesUnify(
-          tables, origin, lhsCandidate, rhsCandidate, paramOp.getTypeOpt()
-      );
-      if (failed(resolved)) {
-        return failure();
-      }
-      if (!*resolved) {
-        return origin->emitOpError().append(
-            "cannot infer template instantiation value for parameter \"@", paramOp.getName(),
-            "\" from ", signatureDescription, " type signature"
-        );
-      }
-    }
-  }
-  return success();
-}
+);
 
 } // namespace
 
@@ -593,17 +549,14 @@ LogicalResult verifyKnownTargetTemplateParams(
     llvm::function_ref<FailureOr<UnificationMap>(UnificationCandidateFn)> unify
 ) {
   using CandidateMap =
-      llvm::DenseMap<std::pair<SymbolRefAttr, Side>, llvm::SmallVector<Attribute, 2>>;
+      llvm::DenseMap<std::pair<SymbolRefAttr, Side>, llvm::SmallSetVector<Attribute, 2>>;
   CandidateMap candidateValues;
   auto recordCandidate = [&](SymbolRefAttr symbol, Side side, Attribute value) {
-    auto &values = candidateValues[{symbol, side}];
-    if (llvm::find(values, value) == values.end()) {
-      values.push_back(value);
-    }
+    candidateValues[{symbol, side}].insert(value);
   };
   auto getCandidates = [&](SymbolRefAttr symbol, Side side) -> ArrayRef<Attribute> {
     auto it = candidateValues.find({symbol, side});
-    return it == candidateValues.end() ? ArrayRef<Attribute>() : it->second;
+    return it == candidateValues.end() ? ArrayRef<Attribute>() : it->second.getArrayRef();
   };
   UnificationCandidateFn candidateRecorder = recordCandidate;
 
@@ -1013,6 +966,88 @@ FailureOr<bool> resolvedTemplateParamValuesUnify(
     );
   }
   return contextFreeResult;
+}
+
+LogicalResult verifyRepeatedFeltCandidates(
+    Operation *origin, TemplateParamOp paramOp, ArrayRef<Attribute> inferredCandidates,
+    StringRef signatureDescription, Attribute explicitValue
+) {
+  for (Attribute candidate : inferredCandidates) {
+    if (failed(verifyTemplateParamValueCompatibility(origin, candidate, paramOp))) {
+      return failure();
+    }
+  }
+
+  SymbolTableCollection tables;
+  if (explicitValue) {
+    for (Attribute inferredCandidate : inferredCandidates) {
+      FailureOr<bool> resolved = resolvedTemplateParamValuesUnify(
+          tables, origin, explicitValue, inferredCandidate, paramOp.getTypeOpt()
+      );
+      if (failed(resolved)) {
+        return failure();
+      }
+      if (!*resolved) {
+        return origin->emitOpError().append(
+            "template instantiation value '", explicitValue, "' for parameter \"@",
+            paramOp.getName(), "\" conflicts with value '", inferredCandidate, "' inferred from ",
+            signatureDescription, " type signature"
+        );
+      }
+    }
+  }
+
+  // A candidate can constrain the field, the value, or both. Keep a witness for each fact:
+  // comparing only to the first candidate would miss conflicts after an unknown binding.
+  // Retain the first candidate for the existing materialization and unresolved-symbol rules.
+  Attribute fieldWitness, valueWitness;
+  for (Attribute candidate : inferredCandidates) {
+    for (Attribute witness : {inferredCandidates.front(), fieldWitness, valueWitness}) {
+      if (!witness || witness == candidate) {
+        continue;
+      }
+      FailureOr<bool> resolved = resolvedTemplateParamValuesUnify(
+          tables, origin, witness, candidate, paramOp.getTypeOpt()
+      );
+      if (failed(resolved)) {
+        return failure();
+      }
+      if (!*resolved) {
+        return origin->emitOpError().append(
+            "cannot infer template instantiation value for parameter \"@", paramOp.getName(),
+            "\" from ", signatureDescription, " type signature"
+        );
+      }
+    }
+
+    Attribute concreteValue = candidate;
+    std::optional<Type> restriction;
+    if (auto symbol = llvm::dyn_cast<SymbolRefAttr>(candidate)) {
+      auto evidence = resolveTemplateParamSymbolEvidence(tables, origin, symbol);
+      if (failed(evidence)) {
+        return failure();
+      }
+      if (!*evidence) {
+        continue;
+      }
+      concreteValue = evidence->value().concreteValue;
+      restriction = evidence->value().restriction;
+    }
+    if (concreteValue && !valueWitness) {
+      valueWitness = candidate;
+    }
+    auto field = restriction ? llvm::dyn_cast<felt::FeltType>(*restriction) : felt::FeltType();
+    if (!field || !field.hasField()) {
+      if (auto typedValue = llvm::dyn_cast_if_present<TypedAttr>(concreteValue)) {
+        field = llvm::dyn_cast<felt::FeltType>(typedValue.getType());
+      }
+    }
+    if (field && field.hasField() && !fieldWitness) {
+      fieldWitness = candidate;
+    }
+  }
+
+  return success();
 }
 
 } // namespace
