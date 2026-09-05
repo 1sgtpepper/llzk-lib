@@ -1,518 +1,148 @@
-name: LLZK PR validation evidence
+name: LLZK repository validation
 
 on:
-  pull_request:
-    types: [opened, synchronize, reopened]
   workflow_dispatch:
-    inputs:
-      target_repository:
-        description: Repository containing the exact target commit
-        required: false
-        default: 1sgtpepper/llzk-lib
-        type: string
-      target_head:
-        description: Exact target commit to validate
-        required: true
-        type: string
-      base_repository:
-        description: Repository containing the comparison base commit
-        required: false
-        default: project-llzk/llzk-lib
-        type: string
-      base_head:
-        description: Exact comparison base commit
-        required: true
-        type: string
-      pr_number:
-        description: Optional PR number for the evidence manifest
-        required: false
-        default: "none"
-        type: string
 
 permissions:
   contents: read
 
-concurrency:
-  group: llzk-pr-validation-${{ github.ref }}
-  cancel-in-progress: true
-
 jobs:
-  validate:
+  repository:
+    name: PR ${{ matrix.target.pr }} - ${{ matrix.check.name }}
     runs-on: ubuntu-24.04
     timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      max-parallel: 10
+      matrix:
+        target:
+          - pr: 484
+            head: 497072739d96ba1faa4f0b9322745e991982edaf
+          - pr: 634
+            head: 579b770ae9c5f105f0f4a56873c056def9aa2718
+          - pr: 637
+            head: 0da7a08b73d5c173d6cd4d71f1d5f5326730d74d
+          - pr: 635
+            head: aacde9b653ac7f690675a3125b788ee5fad603a2
+        check:
+          - name: GCC
+            attr: .#debugGCC
+            report: gcc-report.xml
+          - name: Clang
+            attr: .#debugClangCov
+            report: clang-report.xml
+          - name: debug-install
+            attr: .#checks.x86_64-linux.llzk-installcheck-debug
+            report: ''
+          - name: release-install
+            attr: .#checks.x86_64-linux.llzk-installcheck-release
+            report: ''
+          - name: docs
+            attr: .#docs
+            report: ''
     env:
+      TARGET_HEAD: ${{ matrix.target.head }}
+      BUILD_ATTR: ${{ matrix.check.attr }}
+      CHECK_NAME: ${{ matrix.check.name }}
+      TEST_REPORT: ${{ matrix.check.report }}
       NIX_CONFIG: |
         max-jobs = 1
         cores = 2
         experimental-features = nix-command flakes
         access-tokens = github.com=${{ github.token }}
-      TARGET_REPOSITORY: ${{ inputs.target_repository || github.event.pull_request.head.repo.full_name || '1sgtpepper/llzk-lib' }}
-      TARGET_HEAD: ${{ inputs.target_head || github.event.pull_request.head.sha || github.sha }}
-      BASE_REPOSITORY: ${{ inputs.base_repository || github.event.pull_request.base.repo.full_name || 'project-llzk/llzk-lib' }}
-      BASE_HEAD: ${{ inputs.base_head || github.event.pull_request.base.sha || github.event.before }}
-      PR_NUMBER: ${{ inputs.pr_number || github.event.pull_request.number || 'none' }}
-      VALIDATION_ROOT: /tmp/llzk-pr-validation
-
     steps:
-      - name: Check out the exact target
+      - name: Check out published source
         uses: actions/checkout@v6
         with:
-          repository: ${{ env.TARGET_REPOSITORY }}
+          repository: 1sgtpepper/llzk-lib
           ref: ${{ env.TARGET_HEAD }}
-          fetch-depth: 0
           persist-credentials: false
-
-      - name: Prepare evidence directory
+      - name: Record source identity
         shell: bash
         run: |
           set -euo pipefail
-          rm -rf "$VALIDATION_ROOT"
-          mkdir -p "$VALIDATION_ROOT/metadata" "$VALIDATION_ROOT/toolchain" \
-            "$VALIDATION_ROOT/tests"
-          {
-            printf 'event=%s\n' "$GITHUB_EVENT_NAME"
-            printf 'workflow=%s\n' "$GITHUB_WORKFLOW"
-            printf 'run_id=%s\n' "$GITHUB_RUN_ID"
-            printf 'run_url=https://github.com/%s/actions/runs/%s\n' \
-              "$GITHUB_REPOSITORY" "$GITHUB_RUN_ID"
-            printf 'pr_number=%s\n' "$PR_NUMBER"
-            printf 'target_repository=%s\n' "$TARGET_REPOSITORY"
-            printf 'target_head=%s\n' "$TARGET_HEAD"
-            printf 'base_repository=%s\n' "$BASE_REPOSITORY"
-            printf 'base_head=%s\n' "$BASE_HEAD"
-          } > "$VALIDATION_ROOT/metadata/manifest.txt"
-          git rev-parse HEAD > "$VALIDATION_ROOT/metadata/checked-out-head.txt"
-          git status --short > "$VALIDATION_ROOT/metadata/worktree-status.txt"
-
+          mkdir -p "$RUNNER_TEMP/repository-evidence"
+          git rev-parse HEAD | tee "$RUNNER_TEMP/repository-evidence/source-head.txt"
+          test "$(git rev-parse HEAD)" = "$TARGET_HEAD"
+          git status --porcelain > "$RUNNER_TEMP/repository-evidence/worktree-status.txt"
+          test ! -s "$RUNNER_TEMP/repository-evidence/worktree-status.txt"
       - name: Install Nix
         uses: cachix/install-nix-action@d1ca217b388ee87b2507a9a93bf01368bde7cec2
         with:
           install_url: https://releases.nixos.org/nix/nix-2.23.3/install
-          github_access_token: "${{ secrets.GITHUB_TOKEN }}"
-
-      - name: Set Git credentials
-        shell: bash
+          github_access_token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Configure source transport
         run: |
           git config --global 'url.https://api@github.com/'.insteadOf 'https://github.com/'
           git config --global 'url.https://ssh@github.com/'.insteadOf 'ssh://git@github.com/'
           git config --global 'url.https://git@github.com/'.insteadOf 'git@github.com:'
-
-      - name: Use project build cache
+      - name: Use the project cache
         uses: cachix/cachix-action@v17
         with:
           name: veridise-public
           skipPush: true
-
-      - name: Resolve exact comparison heads
+      - name: Run repository check
         shell: bash
         run: |
           set -euo pipefail
-          if git fetch --no-tags --filter=blob:none \
-            "https://github.com/${BASE_REPOSITORY}.git" "$BASE_HEAD"; then
-            printf 'base_resolution=%s\n' "$BASE_REPOSITORY" \
-              > "$VALIDATION_ROOT/metadata/base-resolution.txt"
-          else
-            git fetch --no-tags --filter=blob:none \
-              "https://github.com/${TARGET_REPOSITORY}.git" "$BASE_HEAD"
-            printf 'base_resolution=%s\n' "$TARGET_REPOSITORY" \
-              > "$VALIDATION_ROOT/metadata/base-resolution.txt"
+          options=()
+          if [[ "$CHECK_NAME" == docs ]]; then
+            options+=(--option sandbox false)
           fi
-          git fetch --no-tags --filter=blob:none \
-            "https://github.com/${TARGET_REPOSITORY}.git" "$TARGET_HEAD"
-          test "$(git rev-parse HEAD)" = "$TARGET_HEAD"
-          test "$(git rev-parse "$BASE_HEAD^{commit}")" = "$BASE_HEAD"
-          git diff --check "$BASE_HEAD" "$TARGET_HEAD" \
-            > "$VALIDATION_ROOT/metadata/diff-check.txt"
-          git diff --name-status "$BASE_HEAD" "$TARGET_HEAD" \
-            > "$VALIDATION_ROOT/metadata/changed-files.txt"
-          git diff --name-only "$BASE_HEAD" "$TARGET_HEAD" -- test/ \
-            | awk '/\.llzk$/' \
-            > "$VALIDATION_ROOT/metadata/changed-llzk-tests.txt"
-          {
-            printf 'base=%s:%s\n' "$BASE_REPOSITORY" "$BASE_HEAD"
-            printf 'target=%s:%s\n' "$TARGET_REPOSITORY" "$TARGET_HEAD"
-            printf 'changed_files=%s\n' \
-              "$(wc -l < "$VALIDATION_ROOT/metadata/changed-files.txt")"
-            printf 'changed_llzk_tests=%s\n' \
-              "$(wc -l < "$VALIDATION_ROOT/metadata/changed-llzk-tests.txt")"
-          } > "$VALIDATION_ROOT/metadata/diff-summary.txt"
-
-      - name: Run the repository generator unit tests
-        if: hashFiles('.github/workflows/test-generate-test-checks.yml') != ''
-        shell: bash
-        run: |
-          set -euo pipefail
-          python3 -m unittest scripts/generate-test-checks.py -v \
-            2>&1 | tee "$VALIDATION_ROOT/generator-tests.log"
-
-      - name: Build the cached llzk-opt toolchain
-        shell: bash
-        run: |
-          set -euo pipefail
-          printf '%s\n' \
-            'let flake = builtins.getFlake (toString ./.) ; in flake.packages.x86_64-linux.debugGCC.overrideAttrs (_: { doCheck = false; })' \
-            > "$VALIDATION_ROOT/toolchain/nix-build-expression.txt"
-          nix build \
-            --option max-jobs 1 \
-            --option cores 2 \
-            --impure \
-            --print-build-logs \
-            --out-link "$RUNNER_TEMP/llzk-debug" \
-            --expr "$(<"$VALIDATION_ROOT/toolchain/nix-build-expression.txt")" \
-            2>&1 | tee "$VALIDATION_ROOT/toolchain/nix-build.log"
-
-      - name: Collect toolchain identity and package evidence
-        if: always()
-        shell: bash
-        run: |
-          set -euo pipefail
-          toolchain_root="$VALIDATION_ROOT/toolchain"
-          result_link="$RUNNER_TEMP/llzk-debug"
-          if [[ ! -e "$result_link" ]]; then
-            printf 'build_status=UNAVAILABLE\n' > "$toolchain_root/manifest.txt"
-            exit 0
-          fi
-
-          result_path="$(readlink -f "$result_link")"
-          llzk_opt="$result_path/bin/llzk-opt"
-          if [[ ! -x "$llzk_opt" ]]; then
-            printf 'build_status=INVALID\nresult_path=%s\n' "$result_path" \
-              > "$toolchain_root/manifest.txt"
-            exit 1
-          fi
-
-          cp --preserve=mode "$llzk_opt" "$toolchain_root/llzk-opt"
-          "$llzk_opt" --version | tee "$toolchain_root/llzk-opt.version"
-          file "$llzk_opt" > "$toolchain_root/llzk-opt.file.txt"
-          sha256sum "$llzk_opt" > "$toolchain_root/llzk-opt.sha256"
-          printf '%s\n' "$result_path" > "$toolchain_root/store-path.txt"
-          printf '%s\n' "$llzk_opt" > "$toolchain_root/executable-path.txt"
-          printf '%s\n' "$TARGET_HEAD" > "$toolchain_root/source-sha.txt"
-          nix-store --query --deriver "$result_path" \
-            > "$toolchain_root/deriver.txt" || true
-          nix-store --query --requisites "$result_path" \
-            | sort -u > "$toolchain_root/nix-closure-paths.txt"
-          du -sh "$result_path" > "$toolchain_root/result-size.txt"
-
-          mapfile -t filecheck_candidates < <(
-            find /nix/store -type f -path '*/bin/FileCheck' -executable -print \
-              | sort
-          )
-          if [[ "${#filecheck_candidates[@]}" -eq 0 ]]; then
-            : > "$toolchain_root/filecheck-candidates.txt"
-            printf 'FileCheck unavailable\n' > "$toolchain_root/filecheck.version"
-          else
-            printf '%s\n' "${filecheck_candidates[@]}" \
-              > "$toolchain_root/filecheck-candidates.txt"
-            filecheck="${filecheck_candidates[0]}"
-            printf '%s\n' "$filecheck" > "$toolchain_root/filecheck.path"
-            "$filecheck" --version > "$toolchain_root/filecheck.version"
-          fi
-
-          {
-            printf 'build_status=PASS\n'
-            printf 'target_head=%s\n' "$TARGET_HEAD"
-            printf 'result_path=%s\n' "$result_path"
-            printf 'llzk_opt=%s\n' "$llzk_opt"
-            printf 'closure_paths=%s\n' \
-              "$(wc -l < "$toolchain_root/nix-closure-paths.txt")"
-            printf 'filecheck_candidates=%s\n' "${#filecheck_candidates[@]}"
-            printf 'cache_mode=read-only Cachix lookup\n'
-          } > "$toolchain_root/manifest.txt"
-
-          cat > "$VALIDATION_ROOT/README.txt" <<EOF
-          LLZK PR validation evidence
-
-          Target: $TARGET_REPOSITORY@$TARGET_HEAD
-          Base:   $BASE_REPOSITORY@$BASE_HEAD
-          Run:    https://github.com/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID
-
-          The toolchain was built by Nix with one build job and two build cores, using the
-          project's read-only Cachix cache. The copied toolchain/llzk-opt file is a forensic
-          copy and keeps Nix-store runtime references; it is not a standalone portable binary.
-          For reuse in another CI job, install Nix and rebuild the same flake output so the
-          cache can supply the exact closure. toolchain/nix-closure-paths.txt records that
-          closure; no large closure export is made by this workflow.
-
-          metadata/ contains exact source/base identities, the changed-file scope, and diff
-          whitespace validation. tests/ contains changed LLZK fixture inputs, RUN lines, raw
-          producer output, diagnostics, FileCheck output, freshly generated checks, and
-          comparisons when the fixture is directly replayable. Fixtures requiring unsupported
-          lit substitutions or other tools are listed as delegated in their run metadata and
-          remain covered by the project's standard CI test job.
-          For diagnostic fixtures, raw producer output is also captured without
-          -verify-diagnostics so the artifact preserves the underlying compiler diagnostics.
-          Generated-check comparison normalizes only the repository's split-file separator
-          spelling (CHECK versus CHECK-NEXT); all other generated-check differences fail validation.
-          EOF
-
-      - name: Replay changed LLZK fixtures and compare generated checks
-        if: success()
-        shell: bash
-        run: |
-          set -euo pipefail
-          toolchain_root="$VALIDATION_ROOT/toolchain"
-          result_path="$(<"$toolchain_root/store-path.txt")"
-          filecheck=''
-          if [[ -s "$toolchain_root/filecheck.path" ]]; then
-            filecheck="$(<"$toolchain_root/filecheck.path")"
-          fi
-          not_tool=''
-          while IFS= read -r candidate; do
-            if [[ "$(basename "$candidate")" == not ]]; then
-              not_tool="$candidate"
-              break
-            fi
-          done < <(find /nix/store -type f -path '*/bin/not' -executable -print | sort)
-          tool_path="$result_path/bin"
-          if [[ -n "$not_tool" ]]; then
-            tool_path="$(dirname "$not_tool"):$tool_path"
-          fi
-
-          mapfile -t test_files < "$VALIDATION_ROOT/metadata/changed-llzk-tests.txt"
-          overall_status=0
-          directly_replayed=0
-          delegated=0
-          failed=0
-
-          for test_file in "${test_files[@]}"; do
-            [[ -n "$test_file" ]] || continue
-            test_output="$VALIDATION_ROOT/tests/$test_file"
-            mkdir -p "$test_output"
-            source_abs="$GITHUB_WORKSPACE/$test_file"
-            cp "$source_abs" "$test_output/source.llzk"
-            grep '^// RUN:' "$source_abs" > "$test_output/run-lines.txt" || true
-            mapfile -t run_lines < "$test_output/run-lines.txt"
-            if [[ "${#run_lines[@]}" -eq 0 ]]; then
-              printf 'status=DELEGATED\nreason=no RUN line\n' \
-                > "$test_output/summary.txt"
-              delegated=$((delegated + 1))
-              continue
-            fi
-
-            test_status=0
-            run_index=0
-            for run_line in "${run_lines[@]}"; do
-              run_index=$((run_index + 1))
-              run_output="$test_output/run-$(printf '%02d' "$run_index")"
-              mkdir -p "$run_output"
-              printf '%s\n' "$run_line" > "$run_output/run-line.txt"
-              run_body="${run_line#// RUN: }"
-              run_body="${run_body//%input_dir/$GITHUB_WORKSPACE/test}"
-
-              if [[ "$run_body" == *'%t'* || "$run_body" == *'%T'* \
-                || "$run_body" == *'%S'* || "$run_body" == *'%p'* \
-                || "$run_body" == *'split-file'* || "$run_body" != *'llzk-opt'* ]]; then
-                printf 'status=DELEGATED\nreason=requires lit substitution or another tool\n' \
-                  > "$run_output/status.txt"
-                delegated=$((delegated + 1))
-                continue
-              fi
-
-              if [[ "$run_body" == *'-verify-diagnostics'* ]]; then
-                raw_body="${run_body//-verify-diagnostics/}"
-                if [[ "$raw_body" == *'| FileCheck'* ]]; then
-                  raw_body="${raw_body%%| FileCheck*}"
-                fi
-                raw_producer_cmd="${raw_body//%s/$source_abs}"
-                printf '%s\n' "$raw_producer_cmd" > "$run_output/raw-producer-command.txt"
-                set +e
-                PATH="$tool_path:$PATH" bash -o pipefail -c "$raw_producer_cmd" \
-                  > "$run_output/raw-producer-output.txt" \
-                  2> "$run_output/raw-producer-stderr.txt"
-                raw_status=$?
-                set -e
-                printf 'run_exit_status=%s\n' "$raw_status" \
-                  > "$run_output/raw-status.txt"
-              fi
-
-              if [[ -z "$filecheck" && "$run_body" == *'| FileCheck'* ]]; then
-                printf 'status=FAIL\nreason=FileCheck was not found in the Nix environment\n' \
-                  > "$run_output/status.txt"
-                test_status=1
-                failed=$((failed + 1))
-                continue
-              fi
-
-              if [[ "$run_body" == *'| FileCheck'* ]]; then
-                producer_part="${run_body%%| FileCheck*}"
-                checker_part="FileCheck${run_body#*| FileCheck}"
-                producer_cmd="${producer_part//%s/$source_abs}"
-                checker_cmd="${checker_part//%s/$source_abs}"
-                checker_cmd="${checker_cmd/FileCheck/$filecheck}"
-                printf '%s\n' "$producer_cmd" > "$run_output/producer-command.txt"
-                printf '%s\n' "$checker_cmd" > "$run_output/filecheck-command.txt"
-
-                set +e
-                PATH="$tool_path:$PATH" bash -o pipefail -c "$producer_cmd" \
-                  > "$run_output/producer-output.txt" \
-                  2> "$run_output/producer-stderr.txt"
-                producer_status=$?
-                PATH="$tool_path:$PATH" bash -o pipefail -c \
-                  "$producer_cmd | $checker_cmd" \
-                  > "$run_output/filecheck-output.txt" \
-                  2> "$run_output/filecheck-stderr.txt"
-                run_status=$?
-                set -e
-                printf 'producer_exit_status=%s\nrun_exit_status=%s\n' \
-                  "$producer_status" "$run_status" > "$run_output/status.txt"
-                if [[ "$run_status" -ne 0 ]]; then
-                  test_status=1
-                  failed=$((failed + 1))
-                  continue
-                fi
-
-                check_prefix="$(python3 - "$checker_cmd" <<'PY'
-          import shlex
+          printf 'nix %s --print-build-logs build %s\n' "${options[*]}" "$BUILD_ATTR" > "$RUNNER_TEMP/repository-evidence/command.txt"
+          set +e
+          nix "${options[@]}" --print-build-logs build "$BUILD_ATTR" --out-link "$RUNNER_TEMP/validated-result" 2>&1 | tee "$RUNNER_TEMP/repository-evidence/build.log"
+          build_status=${PIPESTATUS[0]}
+          set -e
+          printf '%s\n' "$build_status" > "$RUNNER_TEMP/repository-evidence/exit-status.txt"
+          test "$build_status" -eq 0
+          readlink -f "$RUNNER_TEMP/validated-result" > "$RUNNER_TEMP/repository-evidence/store-path.txt"
+          if [[ -n "$TEST_REPORT" ]]; then
+            cp "$RUNNER_TEMP/validated-result/artifacts/$TEST_REPORT" "$RUNNER_TEMP/repository-evidence/report.xml"
+            python3 - "$RUNNER_TEMP/repository-evidence/report.xml" <<'PYTHON'
           import sys
-
-          args = shlex.split(sys.argv[1])
-          prefix = "CHECK"
-          for index, arg in enumerate(args):
-              if arg == "--check-prefix" and index + 1 < len(args):
-                  prefix = args[index + 1]
-              elif arg.startswith("--check-prefix="):
-                  prefix = arg.split("=", 1)[1]
-          print(prefix)
-          PY
-                )"
-                printf '%s\n' "$check_prefix" > "$run_output/check-prefix.txt"
-                if python3 "$GITHUB_WORKSPACE/scripts/generate-test-checks.py" \
-                  --check-prefix="$check_prefix" \
-                  < "$run_output/producer-output.txt" \
-                  > "$run_output/generated-checks.txt"; then
-                  generator_status=PASS
-                else
-                  generator_status=FAIL
-                  test_status=1
-                  failed=$((failed + 1))
-                fi
-
-                if python3 - "$source_abs" "$run_output/generated-checks.txt" \
-                  "$check_prefix" "$run_output/check-comparison.txt" \
-                  "$run_output/check-comparison.diff" <<'PY'
-          from difflib import unified_diff
-          from pathlib import Path
-          import re
-          import sys
-
-          source = Path(sys.argv[1])
-          generated = Path(sys.argv[2])
-          prefix = sys.argv[3]
-          comparison = Path(sys.argv[4])
-          diff_path = Path(sys.argv[5])
-          directive = re.compile(
-              rf"^// {re.escape(prefix)}(?:$|:|-LABEL:|-NEXT:|-SAME:|-NOT:|-DAG:|-EMPTY:)"
-          )
-          committed_raw_lines = [
-              line for line in source.read_text().splitlines() if directive.match(line)
-          ]
-          generated_raw_lines = [
-              line for line in generated.read_text().splitlines() if directive.match(line)
-          ]
-          separator = f"// {prefix}:  // -----"
-          separator_next = f"// {prefix}-NEXT:  // -----"
-
-          def normalize(lines):
-              normalized = []
-              separator_count = 0
-              for line in lines:
-                  if line == separator:
-                      normalized.append(separator_next)
-                      separator_count += 1
-                  else:
-                      normalized.append(line)
-              return normalized, separator_count
-
-          committed_lines, committed_separator_count = normalize(committed_raw_lines)
-          generated_lines, generated_separator_count = normalize(generated_raw_lines)
-          comparison.write_text(
-              f"committed_check_lines={len(committed_raw_lines)}\n"
-              f"generated_check_lines={len(generated_raw_lines)}\n"
-              f"normalized_check_lines={len(committed_lines)}\n"
-              f"separator_placement_normalized={committed_separator_count + generated_separator_count}\n"
-          )
-          if committed_lines != generated_lines:
-              diff_path.write_text(
-                  "\n".join(
-                      unified_diff(
-                          committed_lines,
-                          generated_lines,
-                          fromfile="committed",
-                          tofile="generated",
-                          lineterm="",
-                      )
-                  )
-                  + "\n"
-              )
-              comparison.write_text(
-                  comparison.read_text() + "full_check_block=FAIL\n"
-              )
-              raise SystemExit(1)
-          diff_path.write_text("")
-          comparison.write_text(comparison.read_text() + "full_check_block=PASS\n")
-          PY
-                then
-                  comparison_status=PASS
-                else
-                  comparison_status=FAIL
-                  test_status=1
-                  failed=$((failed + 1))
-                fi
-                {
-                  printf 'status=%s\n' "$([[ "$test_status" -eq 0 ]] && echo PASS || echo FAIL)"
-                  printf 'generator=%s\n' "$generator_status"
-                  printf 'check_comparison=%s\n' "$comparison_status"
-                } > "$run_output/replay-summary.txt"
-              else
-                producer_cmd="${run_body//%s/$source_abs}"
-                printf '%s\n' "$producer_cmd" > "$run_output/producer-command.txt"
-                set +e
-                PATH="$tool_path:$PATH" bash -o pipefail -c "$producer_cmd" \
-                  > "$run_output/producer-output.txt" \
-                  2> "$run_output/producer-stderr.txt"
-                run_status=$?
-                set -e
-                printf 'run_exit_status=%s\n' "$run_status" \
-                  > "$run_output/status.txt"
-                if [[ "$run_status" -ne 0 ]]; then
-                  test_status=1
-                  failed=$((failed + 1))
-                elif python3 "$GITHUB_WORKSPACE/scripts/generate-test-checks.py" \
-                  < "$run_output/producer-output.txt" \
-                  > "$run_output/generated-checks.txt"; then
-                  printf 'generator=PASS\n' > "$run_output/replay-summary.txt"
-                else
-                  printf 'generator=NOT_APPLICABLE\n' \
-                    > "$run_output/replay-summary.txt"
-                fi
-              fi
-            done
-
-            if [[ "$test_status" -eq 0 ]]; then
-              printf 'status=PASS\n' > "$test_output/summary.txt"
-              directly_replayed=$((directly_replayed + 1))
-            else
-              printf 'status=FAIL\n' > "$test_output/summary.txt"
-              overall_status=1
-            fi
-          done
-
-          {
-            printf 'changed_llzk_tests=%s\n' "${#test_files[@]}"
-            printf 'directly_replayed=%s\n' "$directly_replayed"
-            printf 'delegated_runs=%s\n' "$delegated"
-            printf 'failed_runs=%s\n' "$failed"
-            printf 'result=%s\n' "$([[ "$overall_status" -eq 0 ]] && echo PASS || echo FAIL)"
-          } > "$VALIDATION_ROOT/validation-summary.txt"
-          exit "$overall_status"
-
-      - name: Upload LLZK validation evidence
+          import xml.etree.ElementTree as ET
+          root = ET.parse(sys.argv[1]).getroot()
+          cases = list(root.iter('testcase'))
+          assert cases, 'repository test report is empty'
+          assert not list(root.iter('failure')) and not list(root.iter('error')), 'repository tests failed'
+          print(f'Repository test cases: {len(cases)}')
+          PYTHON
+          fi
+      - name: Upload check evidence
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: llzk-pr-validation-${{ env.TARGET_HEAD }}
-          path: ${{ env.VALIDATION_ROOT }}
+          name: repository-pr${{ matrix.target.pr }}-${{ matrix.check.name }}-${{ matrix.target.head }}
+          path: ${{ runner.temp }}/repository-evidence
           if-no-files-found: error
           retention-days: 30
-          compression-level: 0
+
+  generator:
+    name: PR 697 - generator unit tests
+    runs-on: ubuntu-24.04
+    env:
+      TARGET_HEAD: 7929e5dc0522652a8533a0f3675b379287744306
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          repository: 1sgtpepper/llzk-lib
+          ref: ${{ env.TARGET_HEAD }}
+          persist-credentials: false
+      - name: Run repository generator tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/generator-evidence"
+          git rev-parse HEAD | tee "$RUNNER_TEMP/generator-evidence/source-head.txt"
+          test "$(git rev-parse HEAD)" = "$TARGET_HEAD"
+          printf '%s\n' 'python3 -m unittest scripts/generate-test-checks.py -v' > "$RUNNER_TEMP/generator-evidence/command.txt"
+          python3 -m unittest scripts/generate-test-checks.py -v 2>&1 | tee "$RUNNER_TEMP/generator-evidence/tests.log"
+      - name: Upload generator evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: repository-pr697-generator-7929e5dc0522652a8533a0f3675b379287744306
+          path: ${{ runner.temp }}/generator-evidence
+          if-no-files-found: error
+          retention-days: 30
