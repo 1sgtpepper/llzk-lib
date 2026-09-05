@@ -62,13 +62,14 @@ def FlatteningPass : LLZKPass<"llzk-flatten"> {
       arguments, signature unification, or wildcard type parameters inferred from the body.
       When only some bindings are concrete, the result is a reduced `poly.template` containing the
       remaining non-concrete parameter bindings.
-    - Evaluate referenced `poly.expr` bindings once their value and type dependencies are concrete.
-      A referenced expression with remaining symbolic dependencies is retained in that reduced
-      template after known value and type bindings are substituted. If a known binding's
-      substituted type remains non-concrete, that specialization attempt is deferred. Once every
-      dependency is concrete, an operation that is unsafe to speculate, has memory effects, or
-      fails to fold is an error. A definition directly inside a template with `poly.expr` bindings
-      and no `poly.param` operations is specialized when it references a concrete expression.
+    - Evaluate referenced `poly.expr` bindings once their value dependencies and operation
+      operand/result type dependencies are concrete. A referenced expression with remaining
+      symbolic dependencies is retained in that reduced template after known value and type
+      bindings are substituted. If a known binding's substituted type remains non-concrete, that
+      specialization attempt is deferred. Once every dependency is concrete, an operation that is
+      unsafe to speculate, has memory effects, or fails to fold is an error. A definition directly
+      inside a template with `poly.expr` bindings and no `poly.param` operations is specialized
+      when it references a concrete expression.
     - Propagate concrete bindings through type variables, array dimensions and element
       types, parameterized struct arguments, POD record types, and nested-call arguments.
     - Unroll loops with known bounds, instantiate affine-map parameters, and propagate resulting

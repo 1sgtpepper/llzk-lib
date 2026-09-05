@@ -1,0 +1,41 @@
+// RUN: llzk-opt -split-input-file -llzk-flatten=cleanup=disabled %s | FileCheck --enable-var-scope %s
+
+// A type-only expression dependency remains deferred while a bridge forwards a symbolic type.
+// Direct and staged concrete calls must still materialize the same expression as 1.
+module attributes {llzk.lang} {
+  poly.template @TypeOnly {
+    poly.param @Num : index
+    poly.param @Ty : !poly.tvar<@Ty>
+    poly.expr @Value {
+      %one = arith.constant 1 : index
+      %typed = poly.unifiable_cast %one : (index) -> !poly.tvar<@Ty>
+      %back = poly.unifiable_cast %typed : (!poly.tvar<@Ty>) -> index
+      poly.yield %back : index
+    }
+    function.def @value() -> index {
+      %value = poly.read_const @Value : index
+      function.return %value : index
+    }
+  }
+
+  // This call creates the partial specialization with @Ty still symbolic.
+  poly.template @Bridge {
+    poly.param @Ty : !poly.tvar<@Ty>
+    function.def @value() -> index {
+      %value = function.call @TypeOnly::@value<[7, @Ty]>() : () -> index
+      function.return %value : index
+    }
+  }
+
+  function.def @direct() -> index {
+    %value = function.call @TypeOnly::@value<[7, index]>() : () -> index
+    function.return %value : index
+  }
+
+  function.def @main() -> index {
+    %value = function.call @Bridge::@value<[index]>() : () -> index
+    function.return %value : index
+  }
+}
+
+// CHECK-LABEL: module attributes {llzk.lang} {

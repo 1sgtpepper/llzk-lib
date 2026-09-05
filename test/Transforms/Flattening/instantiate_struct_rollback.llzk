@@ -137,3 +137,4 @@ module attributes {llzk.lang} {
 // CHECK-NOT: BrokenPartial_f<
 // CHECK: struct.def @GoodStruct_7_Value {
 // CHECK: struct.def @GoodUse {
+// CHECK-NEXT:    struct.member @inner : !struct.type<@GoodStruct_7_Value>
