@@ -1,7 +1,8 @@
 // RUN: llzk-opt -llzk-flatten -verify-diagnostics %s | FileCheck --enable-var-scope %s
 
-// One call to @F::@f is concrete before unrolling, while another becomes the same concrete call
-// only after unrolling and affine-map folding. Step 2 must reuse the first full specialization.
+// One call to @F::@f is concrete before affine-map folding, while another becomes the same
+// concrete call only in a later iteration through affine-map folding. Step 2 must reuse the first
+// full specialization.
 #len4 = affine_map<(i) -> (4)>
 module attributes {llzk.lang} {
   poly.template @F {
