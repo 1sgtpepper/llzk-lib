@@ -433,30 +433,31 @@ static void fuseIfPair(
 /// Fuse uniquely matchable marked compute/constrain `scf.if` pairs in `body`.
 static void
 fuseMatchingIfPairs(Region &body, MLIRContext *context, SymbolTableCollection &symbolTables) {
-  llvm::SmallVector<scf::IfOp> computeIfs, constrainIfs;
-  body.walk<WalkOrder::PreOrder>([&computeIfs, &constrainIfs](scf::IfOp ifOp) {
+  llvm::SmallVector<scf::IfOp> computeIfs;
+  body.walk<WalkOrder::PreOrder>([&computeIfs](scf::IfOp ifOp) {
     std::optional<llvm::StringRef> productSource = getProductSource(ifOp);
     if (!productSource) {
       return WalkResult::advance();
     }
     if (*productSource == FUNC_NAME_COMPUTE) {
       computeIfs.push_back(ifOp);
-    } else if (*productSource == FUNC_NAME_CONSTRAIN) {
-      constrainIfs.push_back(ifOp);
     }
     // Defer nested `if` until their enclosing pair has been fused.
     return WalkResult::skip();
   });
 
-  auto fusionCandidates = *alignmentHelpers::getMatchingPairs<scf::IfOp>(
-      computeIfs, constrainIfs,
-      [&symbolTables](scf::IfOp a, scf::IfOp b) { return canIfsBeFused(a, b, symbolTables); },
-      /*allowPartial=*/true
-  );
-
   IRRewriter rewriter {context};
-  for (auto [computeIf, constrainIf] : fusionCandidates) {
-    fuseIfPair(computeIf, constrainIf, context, symbolTables, rewriter);
+  for (scf::IfOp computeIf : computeIfs) {
+    // Only member writes and reads may separate a pair. Every other operation is a barrier,
+    // so the first following non-member operation is the only possible constrain partner.
+    Operation *next = computeIf->getNextNode();
+    while (next && isa<MemberWriteOp, MemberReadOp>(next)) {
+      next = next->getNextNode();
+    }
+    auto constrainIf = dyn_cast_if_present<scf::IfOp>(next);
+    if (constrainIf && canIfsBeFused(computeIf, constrainIf, symbolTables)) {
+      fuseIfPair(computeIf, constrainIf, context, symbolTables, rewriter);
+    }
   }
 }
 
