@@ -1,0 +1,83 @@
+// RUN: llzk-opt -split-input-file %s
+
+// Same-spelled caller and callee parameters are valid when their felt restrictions agree.
+module attributes {llzk.lang} {
+  poly.template @BoxTemplate {
+    poly.param @P
+    struct.def @Box {
+      function.def @compute() -> !struct.type<@BoxTemplate::@Box<[@P]>> {
+        %self = struct.new : <@BoxTemplate::@Box<[@P]>>
+        function.return %self : !struct.type<@BoxTemplate::@Box<[@P]>>
+      }
+      function.def @constrain(%self: !struct.type<@BoxTemplate::@Box<[@P]>>) {
+        function.return
+      }
+    }
+  }
+
+  poly.template @Target {
+    poly.param @F : !felt.type<"bn128">
+    function.def @accept(%value: !struct.type<@BoxTemplate::@Box<[@F]>>) {
+      function.return
+    }
+    verif.contract @Base for @Target::@accept (
+        %value: !struct.type<@BoxTemplate::@Box<[@F]>>
+    ) {
+      %ok = arith.constant true
+      verif.ensure_compute %ok
+    }
+  }
+
+  poly.template @Caller {
+    poly.param @F : !felt.type<"bn128">
+    function.def @same_name_omitted(%value: !struct.type<@BoxTemplate::@Box<[@F]>>) {
+      function.return
+    }
+    verif.contract @SameNameOmitted for @Caller::@same_name_omitted (
+        %value: !struct.type<@BoxTemplate::@Box<[@F]>>
+    ) {
+      verif.include @Target::@Base(%value) :
+          (!struct.type<@BoxTemplate::@Box<[@F]>>) -> ()
+    }
+    function.def @same_name_explicit(%value: !struct.type<@BoxTemplate::@Box<[@F]>>) {
+      function.return
+    }
+    verif.contract @SameNameExplicit for @Caller::@same_name_explicit (
+        %value: !struct.type<@BoxTemplate::@Box<[@F]>>
+    ) {
+      verif.include @Target::@Base<[#felt<const 35 : !felt.type<"bn128">>]>(%value) :
+          (!struct.type<@BoxTemplate::@Box<[@F]>>) -> ()
+    }
+  }
+
+  poly.template @SameOwner {
+    poly.param @F : !felt.type<"bn128">
+    function.def @accept(%value: !struct.type<@BoxTemplate::@Box<[@F]>>) {
+      function.return
+    }
+    verif.contract @Base for @SameOwner::@accept (
+        %value: !struct.type<@BoxTemplate::@Box<[@F]>>
+    ) {
+      %ok = arith.constant true
+      verif.ensure_compute %ok
+    }
+    function.def @same_owner_omitted(%value: !struct.type<@BoxTemplate::@Box<[@F]>>) {
+      function.return
+    }
+    verif.contract @SameOwnerOmitted for @SameOwner::@same_owner_omitted (
+        %value: !struct.type<@BoxTemplate::@Box<[@F]>>
+    ) {
+      verif.include @SameOwner::@Base(%value) :
+          (!struct.type<@BoxTemplate::@Box<[@F]>>) -> ()
+    }
+    function.def @same_owner_explicit(%value: !struct.type<@BoxTemplate::@Box<[@F]>>) {
+      function.return
+    }
+    verif.contract @SameOwnerExplicit for @SameOwner::@same_owner_explicit (
+        %value: !struct.type<@BoxTemplate::@Box<[@F]>>
+    ) {
+      verif.include @SameOwner::@Base<[#felt<const 35 : !felt.type<"bn128">>]>(%value) :
+          (!struct.type<@BoxTemplate::@Box<[@F]>>) -> ()
+    }
+  }
+}
