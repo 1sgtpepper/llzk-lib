@@ -290,6 +290,7 @@ jobs:
               mkdir -p "$run_output"
               printf '%s\n' "$run_line" > "$run_output/run-line.txt"
               run_body="${run_line#// RUN: }"
+              run_body="${run_body//%input_dir/$GITHUB_WORKSPACE/test}"
 
               if [[ "$run_body" == *'%t'* || "$run_body" == *'%T'* \
                 || "$run_body" == *'%S'* || "$run_body" == *'%p'* \
