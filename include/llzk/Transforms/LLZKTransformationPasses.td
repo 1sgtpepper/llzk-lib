@@ -120,12 +120,14 @@ def FuseProductControlFlowPass : LLZKPass<"llzk-fuse-product-control-flow"> {
     The pass determines the side from each candidate operation rather than inferring it from nested
     operations. Unmatched, ambiguous, or unsafe pairs remain unchanged.
 
-    Loop pairs must be in the same block with the compute loop first. Each lower bound, upper bound,
-    and step must be the same SSA value, equal integer constants, or same-block `poly.read_const`
-    operations naming the same binding; the pass does not infer arithmetic equivalence. An absent
-    `unsignedCmp` attribute or `unsignedCmp = false` selects signed bound comparisons; a unit
-    attribute or `unsignedCmp = true` selects unsigned comparisons. Both loops must select the same
-    behavior. Fusion interleaves the loop bodies, so the compute loop must be
+    **Loops.** Loop pairs must be in the same block with the compute loop first.
+    Each lower bound, upper bound, and step must be the same SSA value, equal integer constants,
+    or same-block `poly.read_const` operations naming the same binding; the pass does not infer
+    arithmetic equivalence. An absent `unsignedCmp` attribute or `unsignedCmp = false` selects
+    signed bound comparisons; a unit attribute or `unsignedCmp = true` selects unsigned comparisons.
+    Both loops must select the same behavior.
+
+    Fusion interleaves the loop bodies, so the compute loop must be
     memory-effect-free and speculatable. The constrain loop may contain `constrain.eq`,
     `constrain.in`, `llzk.nondet`, nested conditionals, speculatable `scf.for` operations, and other
     operations that MLIR proves pure. Storage effects, calls, allocation, traps, `scf.while`, and
@@ -136,13 +138,15 @@ def FuseProductControlFlowPass : LLZKPass<"llzk-fuse-product-control-flow"> {
     must be pure. A member write cannot move across observable effects in the constrain loop, and
     moving any result must preserve dominance.
 
-    Conditional pairs must be in the same block with the compute op first, use the exact same SSA
-    condition, both have or both omit an else region, have compatible attributes, and have a
-    resultless constrain op. After ignoring whether a conditional is compute-side or
+    **Conditionals.** Conditional pairs must be in the same block with the compute op first, use
+    the exact same SSA condition, both have or both omit an else region, have compatible attributes,
+    and have a resultless constrain op. After ignoring whether a conditional is compute-side or
     constrain-side, all remaining attributes on the conditionals and each pair of corresponding
     `scf.yield` operations must be exactly equal and are retained on the fused operations. Each
     fused branch keeps compute operations before constrain operations and preserves the compute
-    results. Between the pair, the pass permits only direct member writes of compute-if results and
+    results.
+
+    Between the pair, the pass permits only direct member writes of compute-if results and
     matching constrain-side signal member reads without a table offset. Each such read must have
     operands available before the compute op and at least one use, all within the constrain-side
     conditional, and must match exactly one intervening write. The read remains the constraint
@@ -150,8 +154,7 @@ def FuseProductControlFlowPass : LLZKPass<"llzk-fuse-product-control-flow"> {
     the entire compute conditional pure; nested effects or non-speculatable operations prevent
     fusion. Other intervening operations prevent fusion.
 
-    Fused conditionals and their `scf.yield` operations combine source locations. Fused loops retain
-    signed or unsigned bound comparison.
+    Fused conditionals and their `scf.yield` operations combine source locations.
   }];
 }
 
