@@ -73,7 +73,11 @@ LLZK supports arrays where the element type is not truly homogeneous, specifical
 
 - Each `array.new` operation creates a fresh mutable array allocation. Two identical `array.new` operations are not interchangeable when either result may be read or written. The same is true for `pod.new`.
 - Felt-valued template arguments on `struct.type`, templated free-function calls, and `verif.include` may be integer literals, felt constants, or symbols.
-  A fieldless felt restriction accepts any felt field. For a fielded restriction, a fieldless felt constant or integer is accepted as a value in the required field, while an explicitly fielded constant must use that field. A symbol is accepted only when the referenced binding or global has the required field type; a fieldless or absent type is rejected.
+  A fieldless felt restriction accepts any felt field.
+  For a fielded restriction, a fieldless felt constant or integer is accepted as a value in the
+  required field, while an explicitly fielded constant must use that field. A symbolic argument
+  must also have that explicit field on its referenced binding or global; a fieldless or absent
+  type cannot satisfy a fielded restriction.
   For a felt-valued parameter inferred independently from multiple positions, all known fields and concrete values must agree.
 - A symbolic template argument must refer to a `poly.param` or `poly.expr` binding by its flat name
   or to a constant global by its fully-qualified name; unresolved symbols, mutable globals, and
