@@ -234,7 +234,7 @@ LogicalResult verifyTemplateSymbolType(
         );
         diag.attachNote(binding->getLoc()).append("referenced binding declared here");
         if (requiredParamLoc) {
-          diag.attachNote(*requiredParamLoc).append("required parameter declared here");
+          diag.attachNote(requiredParamLoc).append("required parameter declared here");
         }
         return diag;
       }
@@ -244,7 +244,7 @@ LogicalResult verifyTemplateSymbolType(
       );
       diag.attachNote(binding->getLoc()).append("referenced binding declared here");
       if (requiredParamLoc) {
-        diag.attachNote(*requiredParamLoc).append("required parameter declared here");
+        diag.attachNote(requiredParamLoc).append("required parameter declared here");
       }
       return diag;
     }
@@ -769,7 +769,7 @@ LogicalResult verifyParamOfType(
                                     << " refers to a global that is not marked as 'const'";
     diag.attachNote(global.getLoc()).append("global defined here");
     if (requiredParamLoc) {
-      diag.attachNote(*requiredParamLoc).append("required parameter declared here");
+      diag.attachNote(requiredParamLoc).append("required parameter declared here");
     }
     return diag;
   }
@@ -779,7 +779,7 @@ LogicalResult verifyParamOfType(
                                     << " but expected " << *requiredParamType;
     diag.attachNote(global.getLoc()).append("global defined here");
     if (requiredParamLoc) {
-      diag.attachNote(*requiredParamLoc).append("required parameter declared here");
+      diag.attachNote(requiredParamLoc).append("required parameter declared here");
     }
     return diag;
   }
