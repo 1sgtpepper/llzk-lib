@@ -173,6 +173,8 @@ public:
     return originalStructsWithExprsAndNoParams.contains(structDef.getOperation());
   }
 
+  /// Record a stable source-to-specialization mapping and mark newly recorded mappings as progress.
+  /// Treat absent and empty parameter lists as forward aliases of one canonical reverse identity.
   void recordInstantiation(StructType oldType, StructType newType) {
     StructType canonicalOldType =
         getStructTypeWithParams(oldType.getNameRef(), oldType.getParams());

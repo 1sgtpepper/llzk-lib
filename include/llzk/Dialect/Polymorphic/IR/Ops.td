@@ -188,14 +188,20 @@ def LLZK_TemplateExprOp
     Declares an expression over zero or more parameters of a `poly.template`. Its name can be used
     by `poly.read_const` and as a symbolic array dimension or template argument within the template.
 
-    The initializer cannot reference globals, call functions, or use a `poly.expr` binding defined
-    in the same template, including itself. Other operations may appear in the initializer, but
-    once flattening evaluates the expression after all value dependencies and operation
-    operand/result type dependencies become concrete, each `poly.read_const` must resolve to a
-    concrete value, each other operation before `poly.yield` must be safe to speculate, have no
-    memory effects, and fold to concrete attributes, and the value passed to `poly.yield` must
-    resolve to a concrete attribute; otherwise evaluation fails. The yielded value must have an
-    integral, felt, or type-variable type.
+    The initializer cannot reference globals, call functions, or use a `poly.expr` binding defined in
+    the same template, including itself. The yielded value must have an integral, felt, or
+    type-variable type.
+
+    `llzk-flatten` waits until all value dependencies and operation operand/result type dependencies
+    are concrete before evaluating the expression. Evaluation then requires:
+
+    - each `poly.read_const` to resolve to a concrete value;
+    - each other operation before `poly.yield` to be safe to speculate, have no memory effects, and
+      fold to concrete attributes; and
+    - the value passed to `poly.yield` to resolve to a concrete attribute.
+
+    Other operations may appear in an initializer while its dependencies remain symbolic. Once all
+    dependencies are concrete, failure to meet any evaluation requirement is an error.
 
     Example:
     ```llzk
