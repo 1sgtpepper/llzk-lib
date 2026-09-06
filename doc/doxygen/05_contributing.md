@@ -78,11 +78,12 @@ intended to cover:
 
 ```sh
 llzk-opt input.llzk --canonicalize | scripts/generate-test-checks.py
-llzk-opt input.llzk --canonicalize | scripts/generate-test-checks.py --source input.llzk
 ```
 
 When `--source` is provided, every line matching `--source_delim_regex` begins a source segment; the
-default pattern is `func @`. Anchor custom patterns to the intended structural source lines. Use
+default pattern is `func @`, which does not match LLZK's `function.def` spelling. Choose an
+anchored pattern that matches the actual source segments. For split-input tests, use the split
+boundaries or generate from a temporary file containing only the relevant input chunks. Use
 `-i`/`--inplace` only after checking the generated output. In-place mode requires `--source`, cannot
 be combined with `--output`, and refuses to modify a source whose supplied path or resolved target
 is in a dirty Git worktree, including untracked files. Use `--allow-dirty` only when updating
@@ -99,6 +100,12 @@ Repeated runs replace the generator's note. They replace recognized FileCheck di
 the selected prefix and preserve unrelated source text and comments. The generated checks are not
 authoritative: verify that they cover the relevant behavior, and retain complete transformed output
 for transformation tests.
+
+The generator places checks before source segments and adds a generated notice. Before committing
+an LLZK test, remove the notice and its explanatory banner, keep `// RUN:` on the first line, and
+place each complete check block after its input and before the next `// -----` separator. Keep
+the generated indentation and SSA substitutions, with no blank lines or prose inside a check
+block. These layout adjustments must not omit any transformed output.
 
 ### Commit your update
 
