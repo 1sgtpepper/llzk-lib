@@ -1,0 +1,83 @@
+name: LLZK coding style validation
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  style:
+    name: Style - ${{ matrix.label }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      max-parallel: 5
+      matrix:
+        label: [base, pr484, pr634, pr637, pr635]
+    env:
+      STYLE_LABEL: ${{ matrix.label }}
+      NIX_CONFIG: |
+        max-jobs = 1
+        cores = 2
+        experimental-features = nix-command flakes
+        access-tokens = github.com=${{ github.token }}
+    steps:
+      - name: Check out validation instructions
+        uses: actions/checkout@v6
+        with:
+          path: control
+          persist-credentials: false
+      - name: Resolve the fixed source revision
+        id: target
+        run: |
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          target = next(v for v in json.loads(Path('control/.github/style-targets.json').read_text()) if v['label'] == os.environ['STYLE_LABEL'])
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
+              output.write('head=' + target['head'] + '\n')
+          PY
+      - name: Check out source
+        uses: actions/checkout@v6
+        with:
+          repository: 1sgtpepper/llzk-lib
+          ref: ${{ steps.target.outputs.head }}
+          path: source
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Install Nix
+        uses: cachix/install-nix-action@d1ca217b388ee87b2507a9a93bf01368bde7cec2
+        with:
+          install_url: https://releases.nixos.org/nix/nix-2.23.3/install
+          github_access_token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Configure source transport
+        run: |
+          git config --global 'url.https://api@github.com/'.insteadOf 'https://github.com/'
+          git config --global 'url.https://ssh@github.com/'.insteadOf 'ssh://git@github.com/'
+          git config --global 'url.https://git@github.com/'.insteadOf 'git@github.com:'
+      - name: Use project dependency cache
+        uses: cachix/cachix-action@v17
+        with:
+          name: veridise-public
+          skipPush: true
+      - name: Configure, generate headers, and collect style diagnostics
+        working-directory: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          export STYLE_CONTROL="$GITHUB_WORKSPACE/control"
+          export STYLE_SOURCE="$GITHUB_WORKSPACE/source"
+          export STYLE_OUTPUT="$RUNNER_TEMP/style-evidence"
+          mkdir -p "$STYLE_OUTPUT"
+          git rev-parse HEAD > "$STYLE_OUTPUT/source-head.txt"
+          nix develop .#debugClang --command bash "$STYLE_CONTROL/.github/scripts/prepare-style-checks.sh" 2>&1 | tee "$STYLE_OUTPUT/setup-and-run.log"
+      - name: Upload style evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: style-${{ matrix.label }}-${{ steps.target.outputs.head }}
+          path: ${{ runner.temp }}/style-evidence
+          if-no-files-found: error
+          retention-days: 30
