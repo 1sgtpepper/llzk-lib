@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Configure the checked-out revision and generate the headers needed by Clang-tidy.
 set -eo pipefail
+source "$stdenv/setup"
 export CXXFLAGS="${NIX_CFLAGS_COMPILE:-}"
 runPhase configurePhase
 test -s compile_commands.json
