@@ -451,7 +451,7 @@ fuseMatchingIfPairs(Region &body, MLIRContext *context, SymbolTableCollection &s
     // Only member writes and reads may separate a pair. Every other operation is a barrier,
     // so the first following non-member operation is the only possible constrain partner.
     Operation *next = computeIf->getNextNode();
-    while (next && isa<MemberWriteOp, MemberReadOp>(next)) {
+    while (llvm::isa_and_present<MemberWriteOp, MemberReadOp>(next)) {
       next = next->getNextNode();
     }
     auto constrainIf = dyn_cast_if_present<scf::IfOp>(next);
@@ -580,7 +580,7 @@ fuseMatchingLoopPairs(Region &body, MLIRContext *context, SymbolTableCollection 
   // applying pairs, so the result does not depend on container iteration order.
   IRRewriter rewriter {context};
   for (scf::ForOp lexicalComputeLoop : computeLoops) {
-    auto candidate = llvm::find_if(fusionCandidates, [lexicalComputeLoop](auto pair) {
+    const auto *candidate = llvm::find_if(fusionCandidates, [lexicalComputeLoop](auto pair) {
       return pair.first == lexicalComputeLoop;
     });
     if (candidate == fusionCandidates.end()) {
