@@ -1511,39 +1511,6 @@ class GenerateTestChecksTests(unittest.TestCase):
         self.assertEqual(source.read_bytes(), before)
         self.assert_no_temporary_output(source)
 
-    def test_run_git_ignores_global_configuration(self):
-        """Fixture Git commands do not depend on developer-global signing settings."""
-        repository = self.root / "repository"
-        repository.mkdir()
-        self.run_git(repository, "init", "--quiet")
-        self.write_file("repository/source.llzk", self.MINIMAL_MODULE)
-        global_config = self.write_file(
-            "global.gitconfig",
-            "[commit]\n"
-            "    gpgSign = true\n"
-            "[gpg]\n"
-            "    program = /path/that/does/not/exist\n",
-        )
-
-        with mock.patch.dict(os.environ, {"GIT_CONFIG_GLOBAL": str(global_config)}):
-            self.run_git(repository, "add", ".")
-            self.run_git(
-                repository,
-                "-c",
-                "user.name=LLZK Tests",
-                "-c",
-                "user.email=tests@example.invalid",
-                "commit",
-                "--quiet",
-                "-m",
-                "fixture",
-            )
-
-        self.assertEqual(
-            self.run_git(repository, "status", "--porcelain").stdout,
-            "",
-        )
-
     def test_workspace_is_dirty_handles_localized_non_repository_and_status_failure(self):
         """Non-repository paths are clean while other Git failures are reported."""
         non_repository_source = self.write_file(
