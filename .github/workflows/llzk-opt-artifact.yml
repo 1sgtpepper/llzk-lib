@@ -16,14 +16,8 @@ jobs:
       max-parallel: 10
       matrix:
         target:
-          - pr: 484
-            head: 397f4846c9a784d0a83fa6e955064d01911cbf59
-          - pr: 634
-            head: e942a8399e728cc6f428a517c8abd24fd203dcb8
-          - pr: 637
-            head: 74201033ee481189aa12a1ea8bc93fb09b1de3dc
-          - pr: 635
-            head: 8845c1f2f38f66ff5fcd76b5dd13e01bbb26f94c
+          - pr: 697
+            head: 95d8b87882461ee0fb8ad8d0948f12cd4591a20d
         check:
           - name: GCC
             attr: .#debugGCC
@@ -118,3 +112,31 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
+  generator:
+    name: PR 697 - generator unit tests
+    runs-on: ubuntu-24.04
+    env:
+      TARGET_HEAD: 95d8b87882461ee0fb8ad8d0948f12cd4591a20d
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          repository: 1sgtpepper/llzk-lib
+          ref: ${{ env.TARGET_HEAD }}
+          persist-credentials: false
+      - name: Run repository generator tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/generator-evidence"
+          git rev-parse HEAD | tee "$RUNNER_TEMP/generator-evidence/source-head.txt"
+          test "$(git rev-parse HEAD)" = "$TARGET_HEAD"
+          printf '%s\n' 'python3 -m unittest scripts/generate-test-checks.py -v' > "$RUNNER_TEMP/generator-evidence/command.txt"
+          python3 -m unittest scripts/generate-test-checks.py -v 2>&1 | tee "$RUNNER_TEMP/generator-evidence/tests.log"
+      - name: Upload generator evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: repository-pr697-generator-95d8b87882461ee0fb8ad8d0948f12cd4591a20d
+          path: ${{ runner.temp }}/generator-evidence
+          if-no-files-found: error
+          retention-days: 30
