@@ -51,7 +51,6 @@ module attributes {llzk.lang} {
 // CHECK-NEXT:    global.def @c2s : !struct.type<@TComponent01A::@Component01A<[!string.type]>>
 // CHECK-NEXT:    global.def @c2i : !struct.type<@TComponent01A::@Component01A<[23423]>>
 // CHECK-NEXT:    global.def @c2a : !struct.type<@TComponent01A::@Component01A<[!array.type<2,2 x i1>]>>
-
 // -----
 
 // TEST: initialized globals
@@ -329,7 +328,6 @@ module attributes {llzk.lang} {
 // CHECK-NEXT:    global.def const @unsigned_min : !array.type<1 x index> = [0]
 // CHECK-NEXT:    global.def const @unsigned_max : !array.type<1 x index> = [255]
 // CHECK-NEXT:  }
-
 // -----
 
 module attributes {llzk.lang} {
