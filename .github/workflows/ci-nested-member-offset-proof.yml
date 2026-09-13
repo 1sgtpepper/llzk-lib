@@ -57,20 +57,30 @@ jobs:
             /^\/\/--- input\.json$/ { out = outdir "/input.json"; next }
             out != "" { print > out }
           ' "$test_file"
+          printf '[7]\n' > "$WORK/previous.input.json"
+          printf '[1]\n' > "$WORK/current.input.json"
 
           "$BIN/llzk-opt" --verify-each -llzk-full-struct-inlining \
             "$WORK/candidate.llzk" -o "$WORK/candidate.inline.mlir"
           "$BIN/llzk-opt" --verify-each -llzk-full-struct-inlining \
             "$WORK/control.llzk" -o "$WORK/control.inline.mlir"
-          "$BIN/llzk-witgen" "$WORK/candidate.inline.mlir" --inputs "$WORK/input.json" \
-            --output-scope=full-witness --output-wtns "$WORK/candidate.wtns" \
-            > "$WORK/candidate.witness.json"
-          "$BIN/llzk-witgen" "$WORK/control.inline.mlir" --inputs "$WORK/input.json" \
-            --output-scope=full-witness --output-wtns "$WORK/control.wtns" \
-            > "$WORK/control.witness.json"
+          # The source relation reads x[row - 1] and compares it with v[row].
+          # Generate both rows, then prove the current-row R1CS for v=1.
+          "$BIN/llzk-witgen" "$WORK/candidate.inline.mlir" \
+            --inputs "$WORK/previous.input.json" --output-scope=full-witness \
+            --output-wtns "$WORK/previous.wtns" > "$WORK/previous.witness.json"
+          "$BIN/llzk-witgen" "$WORK/candidate.inline.mlir" \
+            --inputs "$WORK/current.input.json" --output-scope=full-witness \
+            --output-wtns "$WORK/candidate.wtns" > "$WORK/candidate.witness.json"
+          "$BIN/llzk-witgen" "$WORK/control.inline.mlir" \
+            --inputs "$WORK/current.input.json" --output-scope=full-witness \
+            --output-wtns "$WORK/control.wtns" > "$WORK/control.witness.json"
           diff -u "$WORK/candidate.witness.json" "$WORK/control.witness.json"
+          test -s "$WORK/previous.wtns"
           test -s "$WORK/candidate.wtns"
           test 7 -ne 1
+          grep -F '"v": "7"' "$WORK/previous.witness.json"
+          grep -F '"child:!s<@Child>+x": "7"' "$WORK/previous.witness.json"
           grep -F '"v": "1"' "$WORK/candidate.witness.json"
           grep -F '"child:!s<@Child>+x": "1"' "$WORK/candidate.witness.json"
 
@@ -120,6 +130,10 @@ jobs:
           name: nested-member-offset-proof
           path: |
             ${{ runner.temp }}/llzk-proof/candidate.r1cs
+            ${{ runner.temp }}/llzk-proof/previous.input.json
+            ${{ runner.temp }}/llzk-proof/current.input.json
+            ${{ runner.temp }}/llzk-proof/previous.wtns
+            ${{ runner.temp }}/llzk-proof/previous.witness.json
             ${{ runner.temp }}/llzk-proof/candidate.wtns
             ${{ runner.temp }}/llzk-proof/candidate.witness.json
             ${{ runner.temp }}/llzk-proof/proof.json
