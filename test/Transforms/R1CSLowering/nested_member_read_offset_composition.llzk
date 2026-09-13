@@ -1,0 +1,142 @@
+// RUN: split-file %s %t
+// RUN: llzk-opt --verify-each -llzk-inline-structs -llzk-remove-unnecessary-ops-and-defs %t/candidate.llzk -o %t/candidate.inline.mlir
+// RUN: llzk-opt --verify-each -llzk-inline-structs -llzk-remove-unnecessary-ops-and-defs %t/control.llzk -o %t/control.inline.mlir
+// RUN: llzk-witgen %t/candidate.inline.mlir --inputs %t/input.json --output-scope=full-witness > %t/candidate.witness.json
+// RUN: llzk-witgen %t/control.inline.mlir --inputs %t/input.json --output-scope=full-witness > %t/control.witness.json
+// RUN: diff -u %t/candidate.witness.json %t/control.witness.json
+// RUN: test -s %t/candidate.witness.json
+// RUN: test 7 -ne 1
+// RUN: sed 's/, llzk.main = !struct.type<@Main>//' %t/candidate.inline.mlir > %t/candidate.r1cs.input.mlir
+// RUN: sed 's/, llzk.main = !struct.type<@Main>//' %t/control.inline.mlir > %t/control.r1cs.input.mlir
+// RUN: llzk-opt --verify-each -llzk-full-r1cs-lowering %t/candidate.r1cs.input.mlir -o %t/candidate.r1cs.mlir
+// RUN: llzk-opt --verify-each -llzk-full-r1cs-lowering %t/control.r1cs.input.mlir -o %t/control.r1cs.mlir
+// RUN: test -s %t/candidate.r1cs.mlir
+// RUN: test -s %t/control.r1cs.mlir
+// RUN: grep 'r1cs.constrain' %t/candidate.r1cs.mlir > %t/candidate.relation
+// RUN: grep 'r1cs.constrain' %t/control.r1cs.mlir > %t/control.relation
+// RUN: diff -u %t/candidate.relation %t/control.relation
+// RUN: FileCheck %s --input-file=%t/candidate.r1cs.mlir --check-prefix=CANDIDATE
+
+// CANDIDATE: r1cs.circuit @Main inputs (%arg0
+// CANDIDATE-DAG: r1cs.to_linear %arg0
+// CANDIDATE-DAG: r1cs.mul_const
+// CANDIDATE: r1cs.constrain
+
+//--- candidate.llzk
+
+module attributes {llzk.lang, llzk.main = !struct.type<@Main>} {
+  struct.def @Child {
+    struct.member @x : !felt.type<"babybear"> {column, llzk.pub}
+
+    function.def @compute(
+      %v: !felt.type<"babybear">
+    ) -> !struct.type<@Child> {
+      %self = struct.new : !struct.type<@Child>
+      struct.writem %self[@x] = %v :
+          !struct.type<@Child>, !felt.type<"babybear">
+      function.return %self : !struct.type<@Child>
+    }
+
+    function.def @constrain(
+      %self: !struct.type<@Child>,
+      %v: !felt.type<"babybear"> {llzk.pub}
+    ) {
+      %x = struct.readm %self[@x] :
+          !struct.type<@Child>, !felt.type<"babybear">
+      constrain.eq %x, %v : !felt.type<"babybear">
+      function.return
+    }
+  }
+
+  struct.def @Main {
+    struct.member @child : !struct.type<@Child>
+
+    function.def @compute(
+      %v: !felt.type<"babybear">
+    ) -> !struct.type<@Main> {
+      %self = struct.new : !struct.type<@Main>
+      %child = function.call @Child::@compute(%v) :
+          (!felt.type<"babybear">) -> !struct.type<@Child>
+      struct.writem %self[@child] = %child :
+          !struct.type<@Main>, !struct.type<@Child>
+      function.return %self : !struct.type<@Main>
+    }
+
+    function.def @constrain(
+      %self: !struct.type<@Main>,
+      %v: !felt.type<"babybear"> {llzk.pub}
+    ) {
+      %child = struct.readm %self[@child] :
+          !struct.type<@Main>, !struct.type<@Child>
+      function.call @Child::@constrain(%child, %v) :
+          (!struct.type<@Child>, !felt.type<"babybear">) -> ()
+
+      %previous = struct.readm %child[@x] :
+          !struct.type<@Child>, !felt.type<"babybear">
+          {tableOffset = -1 : index}
+      constrain.eq %previous, %v : !felt.type<"babybear">
+      function.return
+    }
+  }
+}
+
+//--- control.llzk
+
+module attributes {llzk.lang, llzk.main = !struct.type<@Main>} {
+  struct.def @Child {
+    struct.member @x : !felt.type<"babybear"> {column, llzk.pub}
+
+    function.def @compute(
+      %v: !felt.type<"babybear">
+    ) -> !struct.type<@Child> {
+      %self = struct.new : !struct.type<@Child>
+      struct.writem %self[@x] = %v :
+          !struct.type<@Child>, !felt.type<"babybear">
+      function.return %self : !struct.type<@Child>
+    }
+
+    function.def @constrain(
+      %self: !struct.type<@Child>,
+      %v: !felt.type<"babybear"> {llzk.pub}
+    ) {
+      %x = struct.readm %self[@x] :
+          !struct.type<@Child>, !felt.type<"babybear">
+      constrain.eq %x, %v : !felt.type<"babybear">
+      function.return
+    }
+  }
+
+  struct.def @Main {
+    struct.member @child : !struct.type<@Child>
+
+    function.def @compute(
+      %v: !felt.type<"babybear">
+    ) -> !struct.type<@Main> {
+      %self = struct.new : !struct.type<@Main>
+      %child = function.call @Child::@compute(%v) :
+          (!felt.type<"babybear">) -> !struct.type<@Child>
+      struct.writem %self[@child] = %child :
+          !struct.type<@Main>, !struct.type<@Child>
+      function.return %self : !struct.type<@Main>
+    }
+
+    function.def @constrain(
+      %self: !struct.type<@Main>,
+      %v: !felt.type<"babybear"> {llzk.pub}
+    ) {
+      %child = struct.readm %self[@child] :
+          !struct.type<@Main>, !struct.type<@Child>
+      function.call @Child::@constrain(%child, %v) :
+          (!struct.type<@Child>, !felt.type<"babybear">) -> ()
+
+      %current = struct.readm %child[@x] :
+          !struct.type<@Child>, !felt.type<"babybear">
+      constrain.eq %current, %v : !felt.type<"babybear">
+      function.return
+    }
+  }
+}
+
+//--- input.json
+
+[1]
