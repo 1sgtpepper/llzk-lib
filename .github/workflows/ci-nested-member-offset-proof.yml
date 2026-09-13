@@ -1,0 +1,127 @@
+name: Nested member offset proof
+
+on:
+  push:
+    branches:
+      - proof/nested-member-offset-snarkjs
+
+permissions:
+  contents: read
+
+jobs:
+  prove:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      # v37.1.0
+      - uses: cachix/install-nix-action@d1ca217b388ee87b2507a9a93bf01368bde7cec2
+        with:
+          install_url: https://releases.nixos.org/nix/nix-2.23.3/install
+          github_access_token: "${{ secrets.GITHUB_TOKEN }}"
+
+      - name: Set Git credentials
+        run: |
+          git config --global 'url.https://api@github.com/'.insteadOf 'https://github.com/'
+          git config --global 'url.https://ssh@github.com/'.insteadOf 'ssh://git@github.com/'
+          git config --global 'url.https://git@github.com/'.insteadOf 'git@github.com:'
+
+      - uses: cachix/cachix-action@v17
+        with:
+          name: veridise-public
+          authToken: '${{ secrets.CACHIX_PUBLIC_TOKEN }}'
+
+      - name: Generate exact-head R1CS and witness
+        env:
+          WORK: ${{ runner.temp }}/llzk-proof
+        run: |
+          set -euo pipefail
+          SOURCE="$RUNNER_TEMP/llzk-source"
+          SOURCE_COMMIT=2d6b89ff94fbcb0f78ea622e1c146537c9f20174
+          mkdir -p "$SOURCE"
+          git rev-parse "$SOURCE_COMMIT^{commit}"
+          git archive "$SOURCE_COMMIT" | tar -x -C "$SOURCE"
+          cd "$SOURCE"
+          mkdir -p "$WORK"
+          nix --print-build-logs build '.#debugGCC'
+          BIN="$SOURCE/result/bin"
+
+          test_file='test/Witgen/nested_member_offset_witness_composition.llzk'
+          awk -v outdir="$WORK" '
+            /^\/\/--- candidate\.llzk$/ { out = outdir "/candidate.llzk"; next }
+            /^\/\/--- control\.llzk$/ { out = outdir "/control.llzk"; next }
+            /^\/\/--- input\.json$/ { out = outdir "/input.json"; next }
+            out != "" { print > out }
+          ' "$test_file"
+
+          "$BIN/llzk-opt" --verify-each -llzk-full-struct-inlining \
+            "$WORK/candidate.llzk" -o "$WORK/candidate.inline.mlir"
+          "$BIN/llzk-opt" --verify-each -llzk-full-struct-inlining \
+            "$WORK/control.llzk" -o "$WORK/control.inline.mlir"
+          "$BIN/llzk-witgen" "$WORK/candidate.inline.mlir" --inputs "$WORK/input.json" \
+            --output-scope=full-witness --output-wtns "$WORK/candidate.wtns" \
+            > "$WORK/candidate.witness.json"
+          "$BIN/llzk-witgen" "$WORK/control.inline.mlir" --inputs "$WORK/input.json" \
+            --output-scope=full-witness --output-wtns "$WORK/control.wtns" \
+            > "$WORK/control.witness.json"
+          diff -u "$WORK/candidate.witness.json" "$WORK/control.witness.json"
+          test -s "$WORK/candidate.wtns"
+          test 7 -ne 1
+          grep -F '"v": "1"' "$WORK/candidate.witness.json"
+          grep -F '"child:!s<@Child>+x": "1"' "$WORK/candidate.witness.json"
+
+          "$BIN/llzk-opt" --verify-each -llzk-full-r1cs-lowering \
+            "$WORK/candidate.llzk" -o "$WORK/candidate.r1cs.mlir"
+          "$BIN/llzk-translate" \
+            --r1cs-to-binary \
+            --r1cs-prime=21888242871839275222246405745257275088548364400416034343698204186575808495617 \
+            "$WORK/candidate.r1cs.mlir" -o "$WORK/candidate.r1cs"
+          test -s "$WORK/candidate.r1cs"
+
+      - name: Install downstream prover
+        env:
+          WORK: ${{ runner.temp }}/llzk-proof
+        run: npm install --prefix "$WORK/npm" --no-save snarkjs@0.7.5
+
+      - name: Generate and verify Groth16 proof
+        env:
+          WORK: ${{ runner.temp }}/llzk-proof
+        run: |
+          set -euo pipefail
+          SNARKJS="$WORK/npm/node_modules/.bin/snarkjs"
+
+          "$SNARKJS" r1cs info "$WORK/candidate.r1cs"
+          "$SNARKJS" powersoftau new bn128 8 "$WORK/pot_0000.ptau" -v
+          "$SNARKJS" powersoftau contribute "$WORK/pot_0000.ptau" \
+            "$WORK/pot_0001.ptau" --name="CI contribution" -e="llzk-proof-test"
+          "$SNARKJS" powersoftau prepare phase2 "$WORK/pot_0001.ptau" \
+            "$WORK/pot_final.ptau" -v
+          "$SNARKJS" groth16 setup "$WORK/candidate.r1cs" "$WORK/pot_final.ptau" \
+            "$WORK/circuit_0000.zkey"
+          "$SNARKJS" zkey contribute "$WORK/circuit_0000.zkey" \
+            "$WORK/circuit_final.zkey" --name="CI contribution" -e="llzk-zkey-test"
+          "$SNARKJS" zkey export verificationkey "$WORK/circuit_final.zkey" \
+            "$WORK/verification_key.json"
+          "$SNARKJS" groth16 prove "$WORK/circuit_final.zkey" \
+            "$WORK/candidate.wtns" "$WORK/proof.json" "$WORK/public.json"
+          "$SNARKJS" groth16 verify "$WORK/verification_key.json" \
+            "$WORK/public.json" "$WORK/proof.json"
+          test -s "$WORK/proof.json"
+          test -s "$WORK/public.json"
+
+      - name: Upload proof artifacts
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: nested-member-offset-proof
+          path: |
+            ${{ runner.temp }}/llzk-proof/candidate.r1cs
+            ${{ runner.temp }}/llzk-proof/candidate.wtns
+            ${{ runner.temp }}/llzk-proof/candidate.witness.json
+            ${{ runner.temp }}/llzk-proof/proof.json
+            ${{ runner.temp }}/llzk-proof/public.json
+            ${{ runner.temp }}/llzk-proof/verification_key.json
