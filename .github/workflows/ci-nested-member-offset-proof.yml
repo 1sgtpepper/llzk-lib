@@ -59,11 +59,26 @@ jobs:
           ' "$test_file"
           printf '[7]\n' > "$WORK/previous.input.json"
           printf '[1]\n' > "$WORK/current.input.json"
+          printf '%s\n' \
+            'source candidate: child.x[row - 1] == v[row]' \
+            'previous row: child.x = 7' \
+            'current row: v = 1' \
+            'source result: 7 == 1 -> false' \
+            'control/current-row result after metadata loss: 1 == 1 -> true' \
+            > "$WORK/source-oracle.txt"
+          grep -F 'tableOffset = -1 : index' "$WORK/candidate.llzk"
+          if diff -u "$WORK/control.llzk" "$WORK/candidate.llzk" > "$WORK/source.diff"; then
+            echo 'candidate and control unexpectedly have identical source' >&2
+            exit 1
+          else
+            test "$?" -eq 1
+          fi
 
           "$BIN/llzk-opt" --verify-each -llzk-full-struct-inlining \
             "$WORK/candidate.llzk" -o "$WORK/candidate.inline.mlir"
           "$BIN/llzk-opt" --verify-each -llzk-full-struct-inlining \
             "$WORK/control.llzk" -o "$WORK/control.inline.mlir"
+          diff -u "$WORK/candidate.inline.mlir" "$WORK/control.inline.mlir"
           # The source relation reads x[row - 1] and compares it with v[row].
           # Generate both rows, then prove the current-row R1CS for v=1.
           "$BIN/llzk-witgen" "$WORK/candidate.inline.mlir" \
@@ -86,11 +101,23 @@ jobs:
 
           "$BIN/llzk-opt" --verify-each -llzk-full-r1cs-lowering \
             "$WORK/candidate.llzk" -o "$WORK/candidate.r1cs.mlir"
+          "$BIN/llzk-opt" --verify-each -llzk-full-r1cs-lowering \
+            "$WORK/control.llzk" -o "$WORK/control.r1cs.mlir"
           "$BIN/llzk-translate" \
             --r1cs-to-binary \
             --r1cs-prime=21888242871839275222246405745257275088548364400416034343698204186575808495617 \
             "$WORK/candidate.r1cs.mlir" -o "$WORK/candidate.r1cs"
+          "$BIN/llzk-translate" \
+            --r1cs-to-binary \
+            --r1cs-prime=21888242871839275222246405745257275088548364400416034343698204186575808495617 \
+            "$WORK/control.r1cs.mlir" -o "$WORK/control.r1cs"
           test -s "$WORK/candidate.r1cs"
+          test -s "$WORK/control.r1cs"
+          cmp -s "$WORK/candidate.r1cs" "$WORK/control.r1cs"
+          sha256sum \
+            "$WORK/candidate.r1cs" "$WORK/control.r1cs" \
+            "$WORK/candidate.wtns" "$WORK/control.wtns" \
+            "$WORK/previous.wtns" > "$WORK/artifact.sha256"
 
       - name: Install downstream prover
         env:
@@ -105,6 +132,7 @@ jobs:
           SNARKJS="$WORK/npm/node_modules/.bin/snarkjs"
 
           "$SNARKJS" r1cs info "$WORK/candidate.r1cs"
+          "$SNARKJS" r1cs info "$WORK/control.r1cs"
           "$SNARKJS" powersoftau new bn128 8 "$WORK/pot_0000.ptau" -v
           "$SNARKJS" powersoftau contribute "$WORK/pot_0000.ptau" \
             "$WORK/pot_0001.ptau" --name="CI contribution" -e="llzk-proof-test"
@@ -130,12 +158,24 @@ jobs:
           name: nested-member-offset-proof
           path: |
             ${{ runner.temp }}/llzk-proof/candidate.r1cs
+            ${{ runner.temp }}/llzk-proof/control.r1cs
+            ${{ runner.temp }}/llzk-proof/candidate.r1cs.mlir
+            ${{ runner.temp }}/llzk-proof/control.r1cs.mlir
+            ${{ runner.temp }}/llzk-proof/candidate.inline.mlir
+            ${{ runner.temp }}/llzk-proof/control.inline.mlir
+            ${{ runner.temp }}/llzk-proof/candidate.llzk
+            ${{ runner.temp }}/llzk-proof/control.llzk
+            ${{ runner.temp }}/llzk-proof/source.diff
+            ${{ runner.temp }}/llzk-proof/source-oracle.txt
+            ${{ runner.temp }}/llzk-proof/artifact.sha256
             ${{ runner.temp }}/llzk-proof/previous.input.json
             ${{ runner.temp }}/llzk-proof/current.input.json
             ${{ runner.temp }}/llzk-proof/previous.wtns
             ${{ runner.temp }}/llzk-proof/previous.witness.json
             ${{ runner.temp }}/llzk-proof/candidate.wtns
             ${{ runner.temp }}/llzk-proof/candidate.witness.json
+            ${{ runner.temp }}/llzk-proof/control.wtns
+            ${{ runner.temp }}/llzk-proof/control.witness.json
             ${{ runner.temp }}/llzk-proof/proof.json
             ${{ runner.temp }}/llzk-proof/public.json
             ${{ runner.temp }}/llzk-proof/verification_key.json
