@@ -15,7 +15,7 @@
 // RUN: diff -u %t/candidate.relation %t/control.relation
 // RUN: FileCheck %s --input-file=%t/candidate.r1cs.mlir --check-prefix=CANDIDATE
 
-// RUN: grep -F '"out": "1"' %t/candidate.witness.json
+// RUN: grep -F '"v": "1"' %t/candidate.witness.json
 // CANDIDATE: r1cs.circuit @Main inputs (%arg0
 // CANDIDATE-DAG: r1cs.to_linear %arg0
 // CANDIDATE-DAG: r1cs.mul_const
@@ -49,7 +49,6 @@ module attributes {llzk.lang, llzk.main = !struct.type<@Main>} {
 
   struct.def @Main {
     struct.member @child : !struct.type<@Child>
-    struct.member @out : !felt.type<"babybear"> {llzk.pub}
 
     function.def @compute(
       %v: !felt.type<"babybear">
@@ -59,8 +58,6 @@ module attributes {llzk.lang, llzk.main = !struct.type<@Main>} {
           (!felt.type<"babybear">) -> !struct.type<@Child>
       struct.writem %self[@child] = %child :
           !struct.type<@Main>, !struct.type<@Child>
-      struct.writem %self[@out] = %v :
-          !struct.type<@Main>, !felt.type<"babybear">
       function.return %self : !struct.type<@Main>
     }
 
@@ -110,7 +107,6 @@ module attributes {llzk.lang, llzk.main = !struct.type<@Main>} {
 
   struct.def @Main {
     struct.member @child : !struct.type<@Child>
-    struct.member @out : !felt.type<"babybear"> {llzk.pub}
 
     function.def @compute(
       %v: !felt.type<"babybear">
@@ -120,8 +116,6 @@ module attributes {llzk.lang, llzk.main = !struct.type<@Main>} {
           (!felt.type<"babybear">) -> !struct.type<@Child>
       struct.writem %self[@child] = %child :
           !struct.type<@Main>, !struct.type<@Child>
-      struct.writem %self[@out] = %v :
-          !struct.type<@Main>, !felt.type<"babybear">
       function.return %self : !struct.type<@Main>
     }
 
