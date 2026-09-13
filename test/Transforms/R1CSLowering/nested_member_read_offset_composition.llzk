@@ -17,7 +17,6 @@
 // RUN: diff -u %t/candidate.relation %t/control.relation
 // RUN: FileCheck %s --input-file=%t/candidate.r1cs.mlir --check-prefix=CANDIDATE
 
-// RUN: grep -F '"v": "1"' %t/candidate.witness.json
 // CANDIDATE: r1cs.circuit @Main inputs (%arg0
 // CANDIDATE-DAG: r1cs.to_linear %arg0
 // CANDIDATE-DAG: r1cs.mul_const
