@@ -1,6 +1,11 @@
 // RUN: split-file %s %t
 // RUN: llzk-opt --verify-each -llzk-inline-structs -llzk-remove-unnecessary-ops-and-defs %t/candidate.llzk -o %t/candidate.inline.mlir
 // RUN: llzk-opt --verify-each -llzk-inline-structs -llzk-remove-unnecessary-ops-and-defs %t/control.llzk -o %t/control.inline.mlir
+// RUN: llzk-witgen %t/candidate.inline.mlir --inputs %t/input.json --output-scope=full-witness > %t/candidate.witness.json
+// RUN: llzk-witgen %t/control.inline.mlir --inputs %t/input.json --output-scope=full-witness > %t/control.witness.json
+// RUN: diff -u %t/candidate.witness.json %t/control.witness.json
+// RUN: test -s %t/candidate.witness.json
+// RUN: test 7 -ne 1
 // RUN: llzk-opt --verify-each -llzk-full-r1cs-lowering %t/candidate.inline.mlir -o %t/candidate.r1cs.mlir
 // RUN: llzk-opt --verify-each -llzk-full-r1cs-lowering %t/control.inline.mlir -o %t/control.r1cs.mlir
 // RUN: test -s %t/candidate.r1cs.mlir
@@ -10,6 +15,7 @@
 // RUN: diff -u %t/candidate.relation %t/control.relation
 // RUN: FileCheck %s --input-file=%t/candidate.r1cs.mlir --check-prefix=CANDIDATE
 
+// RUN: grep -F '"out": "1"' %t/candidate.witness.json
 // CANDIDATE: r1cs.circuit @Main inputs (%arg0
 // CANDIDATE-DAG: r1cs.to_linear %arg0
 // CANDIDATE-DAG: r1cs.mul_const
@@ -17,7 +23,7 @@
 
 //--- candidate.llzk
 
-module attributes {llzk.lang} {
+module attributes {llzk.lang, llzk.main = !struct.type<@Main>} {
   struct.def @Child {
     struct.member @x : !felt.type<"babybear"> {column, llzk.pub}
 
@@ -78,7 +84,7 @@ module attributes {llzk.lang} {
 
 //--- control.llzk
 
-module attributes {llzk.lang} {
+module attributes {llzk.lang, llzk.main = !struct.type<@Main>} {
   struct.def @Child {
     struct.member @x : !felt.type<"babybear"> {column, llzk.pub}
 
@@ -135,3 +141,7 @@ module attributes {llzk.lang} {
     }
   }
 }
+
+//--- input.json
+
+[1]
