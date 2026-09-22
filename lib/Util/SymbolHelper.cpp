@@ -741,6 +741,11 @@ LogicalResult verifyTemplateParamsMatchInferred(
         }
         continue;
       }
+      if (requiredType && llvm::isa<TypeVarType>(*requiredType)) {
+        // Explicit type arguments select the specialization; defer conflicting signature types
+        // until substitution makes the operand types concrete.
+        continue;
+      }
       return origin->emitOpError().append(
           "cannot infer a unique template instantiation value for parameter \"@", paramOp.getName(),
           "\" from ", signatureDescription, " type signature"

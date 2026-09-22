@@ -42,7 +42,9 @@ module attributes {llzk.lang} {
 // CHECK-NEXT:      }
 // CHECK-NEXT:    }
 // CHECK-NEXT:  }
+// CHECK-NEXT:  // -----
 // -----
+
 
 // A fielded qualified global argument satisfies a fieldless struct restriction.
 module attributes {llzk.lang} {
@@ -80,13 +82,15 @@ module attributes {llzk.lang} {
 // CHECK-NEXT:      }
 // CHECK-NEXT:    }
 // CHECK-NEXT:    module @globals {
-// CHECK-NEXT:      global.def const @G : !felt.type<"bn128"> =  35
+// CHECK-NEXT:      global.def const @G : !felt.type<"bn128"> =  35 : <"bn128">
 // CHECK-NEXT:    }
 // CHECK-NEXT:    function.def @useGlobal(%[[VAL_2:[0-9a-zA-Z_\.]+]]: !struct.type<@Target::@S<[@globals::@G]>>) {
 // CHECK-NEXT:      function.return
 // CHECK-NEXT:    }
 // CHECK-NEXT:  }
+// CHECK-NEXT:  // -----
 // -----
+
 
 // A qualified global with a concrete type satisfies an index restriction, a local parameter with
 // a `!poly.tvar` restriction satisfies a `!poly.tvar` restriction, and an unrestricted local may

@@ -283,7 +283,6 @@ module attributes {llzk.lang} {
     }
   }
   module @globals {
-    // expected-note@+1 {{global defined here}}
     global.def @G : !felt.type<"bn128"> = 35
   }
   struct.def @Caller {
@@ -310,7 +309,6 @@ module attributes {llzk.lang} {
     }
   }
   module @globals {
-    // expected-note@+1 {{global defined here}}
     global.def @G : !felt.type<"bn128">
   }
   struct.def @Caller {
