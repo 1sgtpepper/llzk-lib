@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Add a closed SMT solver root around one lowered product function."""
+"""Add a pinned SMT solver root around one lowered product function."""
 
 from __future__ import annotations
 
@@ -12,6 +12,8 @@ def main() -> None:
     parser.add_argument("input", type=Path)
     parser.add_argument("function")
     parser.add_argument("expected", choices=("sat", "unsat"))
+    parser.add_argument("arg0", type=int)
+    parser.add_argument("arg1", type=int)
     args = parser.parse_args()
 
     module = args.input.read_text(encoding="utf-8")
@@ -31,6 +33,12 @@ def main() -> None:
     smt.set_info ":status" {args.expected}
     %a = smt.declare_fun "a" : !smt.int
     %b = smt.declare_fun "b" : !smt.int
+    %expected_a = smt.int.constant {args.arg0}
+    %expected_b = smt.int.constant {args.arg1}
+    %pin_a = smt.eq %a, %expected_a : !smt.int
+    %pin_b = smt.eq %b, %expected_b : !smt.int
+    smt.assert %pin_a
+    smt.assert %pin_b
     func.call @{args.function}(%a, %b) : (!smt.int, !smt.int) -> ()
     smt.check sat {{
       smt.yield

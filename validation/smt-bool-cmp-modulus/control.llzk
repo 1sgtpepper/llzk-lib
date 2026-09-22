@@ -6,14 +6,13 @@ module attributes {llzk.lang} {
       %self = struct.new : <@CmpBoundaryControl>
       %zero = felt.const 0
       %one = felt.const 1
-      %two = felt.const 2
 
       constrain.eq %a, %one : !felt.type
       constrain.eq %b, %one : !felt.type
 
       %sum = felt.add %a, %b : !felt.type, !felt.type
-      %is_two = bool.cmp eq(%sum, %two)
-      %selected = scf.if %is_two -> !felt.type {
+      %is_nonzero = bool.cmp ne(%sum, %zero)
+      %selected = scf.if %is_nonzero -> !felt.type {
         scf.yield %one : !felt.type
       } else {
         scf.yield %zero : !felt.type

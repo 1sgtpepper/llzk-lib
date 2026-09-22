@@ -35,6 +35,10 @@ def has_direct_equality(lines: list[str], lhs: str, rhs: str) -> bool:
     return any(needle in line or reverse in line for line in lines)
 
 
+def has_negation(lines: list[str]) -> bool:
+    return any("smt.not" in line for line in lines)
+
+
 def assert_candidate(naive_path: str, optimized_path: str) -> None:
     naive = read(naive_path)
     optimized = read(optimized_path)
@@ -44,22 +48,24 @@ def assert_candidate(naive_path: str, optimized_path: str) -> None:
     naive_zero = value_for_constant(naive, "0")
     optimized_zero = value_for_constant(optimized, "0")
 
-    if not has_direct_equality(naive, naive_sum, naive_zero):
+    if not has_direct_equality(naive, naive_sum, naive_zero) or not has_negation(naive):
         raise AssertionError(
-            "naive lowering did not expose the expected raw sum == zero comparison"
+            "naive lowering did not expose raw sum != zero"
         )
-    if not has_direct_equality(optimized, optimized_sum, optimized_zero):
+    if not has_direct_equality(optimized, optimized_sum, optimized_zero) or not has_negation(
+        optimized
+    ):
         raise AssertionError(
-            "optimized lowering did not expose the same raw sum == zero comparison"
+            "optimized lowering did not expose the same raw sum != zero comparison"
         )
 
 
 def assert_control(control_path: str) -> None:
     control = read(control_path)
     control_sum = add_result(control)
-    control_two = value_for_constant(control, "2")
-    if not has_direct_equality(control, control_sum, control_two):
-        raise AssertionError("control lowering did not preserve the ordinary comparison")
+    control_zero = value_for_constant(control, "0")
+    if not has_direct_equality(control, control_sum, control_zero) or not has_negation(control):
+        raise AssertionError("control lowering did not preserve the ordinary inequality")
 
 
 def assert_explicit_mod(control_path: str) -> None:
@@ -67,7 +73,7 @@ def assert_explicit_mod(control_path: str) -> None:
     zero = value_for_constant(control, "0")
     for line in control:
         match = re.match(r"^\s*(%[A-Za-z0-9_.]+) = smt\.int\.mod ", line)
-        if match and has_direct_equality(control, match.group(1), zero):
+        if match and has_direct_equality(control, match.group(1), zero) and has_negation(control):
             return
     raise AssertionError("explicit-mod control did not compare the canonicalized sum")
 

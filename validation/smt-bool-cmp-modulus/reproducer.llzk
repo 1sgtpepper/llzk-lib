@@ -1,5 +1,5 @@
 // Source relation: with a = p - 1 and b = 1, field addition produces 0.
-// Therefore the equality below is true and the selected value must be 1.
+// Therefore the inequality below is false and the selected value cannot be 1.
 
 module attributes {llzk.lang} {
   struct.def @CmpBoundary {
@@ -13,8 +13,8 @@ module attributes {llzk.lang} {
       constrain.eq %b, %one : !felt.type
 
       %sum = felt.add %a, %b : !felt.type, !felt.type
-      %is_zero = bool.cmp eq(%sum, %zero)
-      %selected = scf.if %is_zero -> !felt.type {
+      %is_nonzero = bool.cmp ne(%sum, %zero)
+      %selected = scf.if %is_nonzero -> !felt.type {
         scf.yield %one : !felt.type
       } else {
         scf.yield %zero : !felt.type

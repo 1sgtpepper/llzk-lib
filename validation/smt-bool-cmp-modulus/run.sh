@@ -50,22 +50,22 @@ python3 "$asset_dir/assert_ir.py" \
   "$output_dir/explicit-mod-optimized.mlir"
 
 python3 "$asset_dir/wrap_solver.py" \
-  "$output_dir/candidate-naive.mlir" smt_CmpBoundary unsat \
+  "$output_dir/candidate-naive.mlir" smt_CmpBoundary sat 2013265920 1 \
   > "$output_dir/candidate-naive-wrapper.mlir"
 python3 "$asset_dir/wrap_solver.py" \
-  "$output_dir/candidate-optimized.mlir" smt_CmpBoundary unsat \
+  "$output_dir/candidate-optimized.mlir" smt_CmpBoundary sat 2013265920 1 \
   > "$output_dir/candidate-optimized-wrapper.mlir"
 python3 "$asset_dir/wrap_solver.py" \
-  "$output_dir/control-naive.mlir" smt_CmpBoundaryControl sat \
+  "$output_dir/control-naive.mlir" smt_CmpBoundaryControl sat 1 1 \
   > "$output_dir/control-naive-wrapper.mlir"
 python3 "$asset_dir/wrap_solver.py" \
-  "$output_dir/control-optimized.mlir" smt_CmpBoundaryControl sat \
+  "$output_dir/control-optimized.mlir" smt_CmpBoundaryControl sat 1 1 \
   > "$output_dir/control-optimized-wrapper.mlir"
 python3 "$asset_dir/wrap_solver.py" \
-  "$output_dir/explicit-mod-naive.mlir" smt_CmpBoundaryExplicitMod sat \
+  "$output_dir/explicit-mod-naive.mlir" smt_CmpBoundaryExplicitMod unsat 2013265920 1 \
   > "$output_dir/explicit-mod-naive-wrapper.mlir"
 python3 "$asset_dir/wrap_solver.py" \
-  "$output_dir/explicit-mod-optimized.mlir" smt_CmpBoundaryExplicitMod sat \
+  "$output_dir/explicit-mod-optimized.mlir" smt_CmpBoundaryExplicitMod unsat 2013265920 1 \
   > "$output_dir/explicit-mod-optimized-wrapper.mlir"
 
 for name in \
@@ -83,7 +83,6 @@ done
 
 printf '%s\n' \
   'SMT comparison validation passed:' \
-  '  candidate / naive lowering: unsat (wrong relation)' \
-  '  candidate / optimized lowering: unsat (same wrong relation)' \
+  '  candidate / both lowerings: sat (wrongly accepts field-zero inequality)' \
   '  no-wrap control / both lowerings: sat' \
-  '  explicit-mod control / both lowerings: sat'
+  '  explicit-mod control / both lowerings: unsat'
