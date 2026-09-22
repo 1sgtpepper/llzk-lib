@@ -90,10 +90,6 @@ jobs:
           grep -F 'product_source = "fused"' "$WORK/control.product.function.mlir"
           grep -F 'struct.writem' "$WORK/candidate.product.function.mlir"
           grep -F 'constrain.eq' "$WORK/candidate.product.function.mlir"
-          test "$(awk '/struct\\.writem.*\\[@out\\]/{n++} END{print n+0}' \
-            "$WORK/candidate.unfused.product.function.mlir")" -eq 2
-          test "$(awk '/struct\\.writem.*\\[@out\\]/{n++} END{print n+0}' \
-            "$WORK/candidate.product.function.mlir")" -eq 1
           grep -F 'scf.for %arg0 = %c0_0 to %c3_1 step %c3_2' \
             "$WORK/candidate.product.function.mlir"
 
@@ -116,6 +112,14 @@ jobs:
             "$WORK/candidate.unfused.product.mlir" -o "$WORK/candidate.unfused.flattened.mlir"
           "$BIN/llzk-opt" --verify-each --llzk-flatten \
             "$WORK/control.product.mlir" -o "$WORK/control.flattened.mlir"
+          awk '/function.def @product/{inside=1} inside{print} /function.def @compute/{exit}' \
+            "$WORK/candidate.flattened.mlir" > "$WORK/candidate.flattened.product.function.mlir"
+          awk '/function.def @product/{inside=1} inside{print} /function.def @compute/{exit}' \
+            "$WORK/candidate.unfused.flattened.mlir" > "$WORK/candidate.unfused.flattened.product.function.mlir"
+          test "$(awk '/struct\\.writem.*\\[@out\\]/{n++} END{print n+0}' \
+            "$WORK/candidate.unfused.flattened.product.function.mlir")" -eq 2
+          test "$(awk '/struct\\.writem.*\\[@out\\]/{n++} END{print n+0}' \
+            "$WORK/candidate.flattened.product.function.mlir")" -eq 1
 
           "$BIN/llzk-opt" --verify-each --llzk-to-smt-no-cf='field=babybear' \
             "$WORK/candidate.flattened.mlir" -o "$WORK/candidate.smt.mlir"
