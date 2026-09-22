@@ -121,13 +121,13 @@ jobs:
           test "$(awk '/struct\\.writem.*\\[@out\\]/{n++} END{print n+0}' \
             "$WORK/candidate.flattened.product.function.mlir")" -eq 1
 
-          if ! "$BIN/llzk-opt" --verify-each --llzk-to-smt-no-cf='field=babybear' \
+          if ! "$BIN/llzk-opt" --llzk-to-smt-no-cf='field=babybear' \
             "$WORK/candidate.flattened.mlir" -o "$WORK/candidate.smt.mlir" \
             2>"$WORK/candidate.smt.stderr"; then
             cat "$WORK/candidate.smt.stderr" >&2
             exit 1
           fi
-          if ! "$BIN/llzk-opt" --verify-each --llzk-to-smt-no-cf='field=babybear' \
+          if ! "$BIN/llzk-opt" --llzk-to-smt-no-cf='field=babybear' \
             "$WORK/control.flattened.mlir" -o "$WORK/control.smt.mlir" \
             2>"$WORK/control.smt.stderr"; then
             cat "$WORK/control.smt.stderr" >&2
