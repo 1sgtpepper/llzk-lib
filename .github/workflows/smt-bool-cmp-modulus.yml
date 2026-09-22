@@ -55,19 +55,21 @@ jobs:
       - name: Build exact target
         run: nix --print-build-logs build '.#debugGCC'
 
+      - name: Install Z3 solver
+        run: |
+          if ! command -v z3 >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install --yes z3
+          fi
+          command -v z3
+          z3 --version
+
       - name: Run source-to-SMT-LIB solver comparison
         run: |
-          for attempt in 1 2 3; do
-            if nix shell nixpkgs#z3 --command bash \
-              "$RUNNER_TEMP/smt-bool-cmp-modulus/run.sh" \
-              "$GITHUB_WORKSPACE/result" \
-              "$RUNNER_TEMP/smt-bool-cmp-results"; then
-              exit 0
-            fi
-            echo "Z3 environment setup or validation failed on attempt $attempt" >&2
-            sleep 5
-          done
-          exit 1
+          Z3_BIN="$(command -v z3)" bash \
+            "$RUNNER_TEMP/smt-bool-cmp-modulus/run.sh" \
+            "$GITHUB_WORKSPACE/result" \
+            "$RUNNER_TEMP/smt-bool-cmp-results"
 
       - name: Upload lowered relations and solver output
         if: always()
