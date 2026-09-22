@@ -57,10 +57,17 @@ jobs:
 
       - name: Run source-to-SMT-LIB solver comparison
         run: |
-          nix shell nixpkgs#z3 --command bash \
-            "$RUNNER_TEMP/smt-bool-cmp-modulus/run.sh" \
-            "$GITHUB_WORKSPACE/result" \
-            "$RUNNER_TEMP/smt-bool-cmp-results"
+          for attempt in 1 2 3; do
+            if nix shell nixpkgs#z3 --command bash \
+              "$RUNNER_TEMP/smt-bool-cmp-modulus/run.sh" \
+              "$GITHUB_WORKSPACE/result" \
+              "$RUNNER_TEMP/smt-bool-cmp-results"; then
+              exit 0
+            fi
+            echo "Z3 environment setup or validation failed on attempt $attempt" >&2
+            sleep 5
+          done
+          exit 1
 
       - name: Upload lowered relations and solver output
         if: always()
