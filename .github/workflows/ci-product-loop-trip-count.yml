@@ -121,15 +121,31 @@ jobs:
           test "$(awk '/struct\\.writem.*\\[@out\\]/{n++} END{print n+0}' \
             "$WORK/candidate.flattened.product.function.mlir")" -eq 1
 
-          if ! "$BIN/llzk-opt" --llzk-to-smt-no-cf='field=babybear' \
+          if "$BIN/llzk-opt" --llzk-to-smt-no-cf='field=babybear' \
             "$WORK/candidate.flattened.mlir" -o "$WORK/candidate.smt.mlir" \
             2>"$WORK/candidate.smt.stderr"; then
+            candidate_smt_status=0
+          else
+            candidate_smt_status=$?
+          fi
+          printf 'exit=%s bytes=%s\\n' "$candidate_smt_status" \
+            "$(wc -c < "$WORK/candidate.smt.mlir" 2>/dev/null || echo 0)" \
+            > "$WORK/candidate.smt.status"
+          if [ "$candidate_smt_status" -ne 0 ]; then
             cat "$WORK/candidate.smt.stderr" >&2
             exit 1
           fi
-          if ! "$BIN/llzk-opt" --llzk-to-smt-no-cf='field=babybear' \
+          if "$BIN/llzk-opt" --llzk-to-smt-no-cf='field=babybear' \
             "$WORK/control.flattened.mlir" -o "$WORK/control.smt.mlir" \
             2>"$WORK/control.smt.stderr"; then
+            control_smt_status=0
+          else
+            control_smt_status=$?
+          fi
+          printf 'exit=%s bytes=%s\\n' "$control_smt_status" \
+            "$(wc -c < "$WORK/control.smt.mlir" 2>/dev/null || echo 0)" \
+            > "$WORK/control.smt.status"
+          if [ "$control_smt_status" -ne 0 ]; then
             cat "$WORK/control.smt.stderr" >&2
             exit 1
           fi
