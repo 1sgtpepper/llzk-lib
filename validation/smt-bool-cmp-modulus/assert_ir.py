@@ -48,9 +48,9 @@ def assert_candidate(naive_path: str, optimized_path: str) -> None:
         raise AssertionError(
             "naive lowering did not expose the expected raw sum == zero comparison"
         )
-    if has_direct_equality(optimized, optimized_sum, optimized_zero):
+    if not has_direct_equality(optimized, optimized_sum, optimized_zero):
         raise AssertionError(
-            "optimized control still compares the unreduced sum directly with zero"
+            "optimized lowering did not expose the same raw sum == zero comparison"
         )
 
 
@@ -62,8 +62,25 @@ def assert_control(control_path: str) -> None:
         raise AssertionError("control lowering did not preserve the ordinary comparison")
 
 
+def assert_explicit_mod(control_path: str) -> None:
+    control = read(control_path)
+    zero = value_for_constant(control, "0")
+    for line in control:
+        match = re.match(r"^\s*(%[A-Za-z0-9_.]+) = smt\.int\.mod ", line)
+        if match and has_direct_equality(control, match.group(1), zero):
+            return
+    raise AssertionError("explicit-mod control did not compare the canonicalized sum")
+
+
 if __name__ == "__main__":
-    if len(sys.argv) != 4:
-        raise SystemExit("usage: assert_ir.py naive.mlir optimized.mlir control.mlir")
+    if len(sys.argv) != 7:
+        raise SystemExit(
+            "usage: assert_ir.py candidate-naive.mlir candidate-optimized.mlir "
+            "control-naive.mlir control-optimized.mlir explicit-mod-naive.mlir "
+            "explicit-mod-optimized.mlir"
+        )
     assert_candidate(sys.argv[1], sys.argv[2])
     assert_control(sys.argv[3])
+    assert_control(sys.argv[4])
+    assert_explicit_mod(sys.argv[5])
+    assert_explicit_mod(sys.argv[6])

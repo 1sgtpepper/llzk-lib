@@ -1,0 +1,28 @@
+// Control: explicitly canonicalize the field sum before the same comparison.
+
+module attributes {llzk.lang} {
+  struct.def @CmpBoundaryExplicitMod {
+    function.def @product(%a: !felt.type, %b: !felt.type) -> !struct.type<@CmpBoundaryExplicitMod> attributes {function.allow_non_native_field_ops} {
+      %self = struct.new : <@CmpBoundaryExplicitMod>
+      %zero = felt.const 0
+      %one = felt.const 1
+      %prime = felt.const 2013265921
+      %p_minus_one = felt.const 2013265920
+
+      constrain.eq %a, %p_minus_one : !felt.type
+      constrain.eq %b, %one : !felt.type
+
+      %sum = felt.add %a, %b : !felt.type, !felt.type
+      %canonical_sum = felt.umod %sum, %prime : !felt.type, !felt.type
+      %is_zero = bool.cmp eq(%canonical_sum, %zero)
+      %selected = scf.if %is_zero -> !felt.type {
+        scf.yield %one : !felt.type
+      } else {
+        scf.yield %zero : !felt.type
+      }
+      constrain.eq %selected, %one : !felt.type
+
+      function.return %self : !struct.type<@CmpBoundaryExplicitMod>
+    }
+  }
+}
