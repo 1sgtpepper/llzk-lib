@@ -1,6 +1,10 @@
 /build/
 cmake-build-*/
 
+# Benchmark eval script
+/lowering_eval_out
+/circom-r1cs-results/
+
 # Nix
 /result
 /outputs

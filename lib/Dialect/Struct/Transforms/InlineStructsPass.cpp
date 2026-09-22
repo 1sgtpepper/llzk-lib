@@ -27,7 +27,7 @@
 #include "llzk/Dialect/Polymorphic/IR/Ops.h"
 #include "llzk/Dialect/Struct/IR/Ops.h"
 #include "llzk/Dialect/Struct/Transforms/TransformationPasses.h"
-#include "llzk/Transforms/LLZKConversionUtils.h"
+#include "llzk/Transforms/ConversionUtils.h"
 #include "llzk/Util/Debug.h"
 #include "llzk/Util/SymbolHelper.h"
 #include "llzk/Util/SymbolLookup.h"
@@ -266,22 +266,20 @@ class StructInliner {
         : OpInterfaceRewritePattern(originalFunc.getContext()), funcRef(originalFunc),
           oldBaseVal(nullptr), newBaseVal(newRefBase), oldToNewMembers(oldToNewMemberDef) {}
 
-    LogicalResult match(MemberRefOpInterface op) const final {
+    LogicalResult matchAndRewrite(MemberRefOpInterface op, PatternRewriter &rewriter) const final {
       assert(oldBaseVal); // ensure it's used via `cloneWithMemberRefUpdate()` only
       // Check if the MemberRef accesses a member of "self" within the `oldToNewMembers` map.
       // Per `cloneWithMemberRefUpdate()`, `oldBaseVal` is the "self" value of `funcRef` so
       // check for a match there and then check that the referenced member name is in the map.
-      return success(
-          op.getComponent() == oldBaseVal && oldToNewMembers.contains(op.getMemberName())
-      );
-    }
-
-    void rewrite(MemberRefOpInterface op, PatternRewriter &rewriter) const final {
+      if (op.getComponent() != oldBaseVal || !oldToNewMembers.contains(op.getMemberName())) {
+        return failure();
+      }
       rewriter.modifyOpInPlace(op, [this, &op]() {
         DestCloneOfSrcStructMember newF = oldToNewMembers.at(op.getMemberName());
         op.setMemberName(newF.getSymName());
         op.getComponentMutable().set(this->newBaseVal);
       });
+      return success();
     }
 
     /// Create a clone of the `FuncDefOp` and update member references according to the
@@ -378,14 +376,14 @@ class StructInliner {
       /// Combine chained MemberReadOp according to replacements in `destToSrcToClone`.
       /// See `combineReadChain()`
       auto memberReadHandler = [this](MemberReadOp readOp) {
-        // Check if the member ref op should be deleted in the end
+        // If the MemberReadOp was replaced/erased, it must not be queued for later deletion.
+        if (combineReadChain(readOp, this->data.tables, destToSrcToClone)) {
+          return WalkResult::skip();
+        }
         if (this->destToSrcToClone.contains(this->data.getDef(readOp))) {
           this->data.toDelete.memberReadOps.insert(readOp);
         }
-        // If the MemberReadOp was replaced/erased, must skip.
-        return combineReadChain(readOp, this->data.tables, destToSrcToClone)
-                   ? WalkResult::skip()
-                   : WalkResult::advance();
+        return WalkResult::advance();
       };
 
       WalkResult walkRes = destFunc.getBody().walk<WalkOrder::PreOrder>([&](Operation *op) {
@@ -837,8 +835,7 @@ static LogicalResult finalizeStruct(
     if (readOp.getComponent() == computeSelfVal) {
       return WalkResult::advance();
     }
-    LogicalResult innerRes = combineNewThenReadChain(readOp, tables, destToSrcToClone);
-    return failed(innerRes) ? WalkResult::interrupt() : WalkResult::advance();
+    return WalkResult(combineNewThenReadChain(readOp, tables, destToSrcToClone));
   });
   if (res.wasInterrupted()) {
     return failure(); // error already printed within combineNewThenReadChain()

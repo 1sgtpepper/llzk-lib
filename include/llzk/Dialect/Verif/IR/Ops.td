@@ -10,25 +10,29 @@
 #ifndef LLZK_VERIF_OPS
 #define LLZK_VERIF_OPS
 
+include "llzk/Dialect/Felt/IR/Types.td"
+include "llzk/Dialect/Function/IR/OpTraits.td"
 include "llzk/Dialect/Verif/IR/Dialect.td"
 include "llzk/Dialect/Verif/IR/OpInterfaces.td"
-include "mlir/Interfaces/CallInterfaces.td"
-include "mlir/Interfaces/FunctionInterfaces.td"
+include "llzk/Dialect/SMT/IR/SMTTypes.td"
+include "llzk/Dialect/Shared/CallLikeOpInterfaces.td"
 include "llzk/Dialect/Shared/OpTraits.td"
 include "llzk/Dialect/Shared/Types.td"
-include "llzk/Dialect/Felt/IR/Types.td"
 
 include "mlir/IR/OpAsmInterface.td"
 include "mlir/IR/OpBase.td"
 include "mlir/IR/SymbolInterfaces.td"
+include "mlir/Interfaces/CallInterfaces.td"
+include "mlir/Interfaces/FunctionInterfaces.td"
 
 class VerifDialectOp<string mnemonic, list<Trait> traits = []>
     : Op<VerifDialect, mnemonic, traits>;
 
+class SideEffectsOp<string mnemonic, list<Trait> traits = []>
+    : VerifDialectOp<mnemonic, traits> {}
+
 class ConditionOp<string mnemonic, list<Trait> traits = []>
-    : VerifDialectOp<mnemonic,
-                     traits#[ConditionOpInterface,
-                             HasAncestor<"::llzk::verif::ContractOp">]> {
+    : VerifDialectOp<mnemonic, traits#[ConditionOpInterface]> {
 
   let arguments = (ins I1:$condition);
   let results = (outs);
@@ -46,14 +50,91 @@ class ConditionOp<string mnemonic, list<Trait> traits = []>
   }];
 }
 
+class ContractConditionOp<string mnemonic, bit inlinable = false,
+                          list<Trait> traits = []>
+    : ConditionOp<mnemonic,
+                  traits#!if(inlinable,
+                             [HasAncestorOf<["::llzk::verif::ContractOp",
+                                             "::llzk::function::FuncDefOp"]>],
+                             [HasAncestor<"::llzk::verif::ContractOp">])>;
+
+//===------------------------------------------------------------------===//
+// Struct verification condition operations
+//===------------------------------------------------------------------===//
+
+def VerifAssertOp : ConditionOp<"assert", []> {
+  let summary = "An assertion in the target of a contract, derived from one of "
+                "the contract's specifications";
+  let description = summary;
+}
+
+def VerifProveOp : ConditionOp<"prove", []> {
+  let summary = "A proof obligation in the target of a contract, derived from"
+                "one of the contract's specifications";
+  let description = summary;
+}
+
+def VerifSMTProveOp : Op<VerifDialect, "smt_prove", []> {
+  let arguments = (ins BoolType:$condition);
+  let summary = "A lowered proof obligation over an SMT expression";
+  let assemblyFormat = [{ $condition attr-dict }];
+}
+
+//===------------------------------------------------------------------===//
+// Determinism operations
+//===------------------------------------------------------------------===//
+
+def ProveDetOp : VerifDialectOp<"det.prove", [Verification<>]> {
+  let summary = "proof obligation of determinism";
+  let description = [{
+    A proof obligation that the operand is deterministic, for a concrete definition
+    of determinism determined by the backend.
+
+    Returns a boolean that indicates if the operand was proven deterministic or not.
+
+    This operation has the `Verification` trait and can be used inside `function.def`
+    ops that have the `allow_verif` attribute.
+  }];
+  let arguments = (ins EmitEqType:$condition);
+  let results = (outs I1:$result);
+
+  let assemblyFormat = "$condition attr-dict `:` type($condition)";
+}
+
+def AssumeDetOp : VerifDialectOp<"det.assume", [Verification<>]> {
+  let summary = "hint of determinisms";
+  let description = [{
+    Hints to the proving backend that the operand is deterministic, for a concrete definition
+    of determinism determined by the backend.
+
+    This operation has the `Verification` trait and can be used inside `function.def`
+    ops that have the `allow_verif` attribute.
+  }];
+  let arguments = (ins EmitEqType:$hint);
+  let results = (outs);
+
+  let assemblyFormat = "$hint attr-dict `:` type($hint)";
+
+  let extraClassDefinition = [{
+    // This side effect models "program termination". Based on
+    // https://github.com/llvm/llvm-project/blob/f325e4b2d836d6e65a4d0cf3efc6b0996ccf3765/mlir/lib/Dialect/ControlFlow/IR/ControlFlowOps.cpp#L92-L97
+    static void getEffects(
+        ::mlir::SmallVectorImpl<::mlir::SideEffects::EffectInstance<::mlir::MemoryEffects::Effect>> &effects
+    ) {
+      effects.emplace_back(::mlir::MemoryEffects::Write::get());
+    }
+  }];
+}
+
 //===------------------------------------------------------------------===//
 // Precondition operations
 //===------------------------------------------------------------------===//
 
 class RequireOpBase<string mnemonic, list<Trait> traits = []>
-    : ConditionOp<mnemonic, traits#[PreconditionOpInterface]> {
+    : ContractConditionOp<"require_"#mnemonic, false,
+                          traits#[PreconditionOpInterface]> {
   let description = [{
-    Base of an operation that encodes a precondition.
+    Encodes a precondition in the `@}]#mnemonic#[{` function.
 
     Preconditions:
     - May not depend on values transitively derived from struct member reads
@@ -62,11 +143,11 @@ class RequireOpBase<string mnemonic, list<Trait> traits = []>
   }];
 }
 
-def RequireComputeOp : RequireOpBase<"require_compute"> {
+def RequireComputeOp : RequireOpBase<"compute"> {
   let summary = "witness computation precondition";
 }
 
-def RequireConstrainOp : RequireOpBase<"require_constrain"> {
+def RequireConstrainOp : RequireOpBase<"constrain"> {
   let summary = "constraint generation precondition";
 }
 
@@ -74,14 +155,33 @@ def RequireConstrainOp : RequireOpBase<"require_constrain"> {
 // Postcondition operations
 //===------------------------------------------------------------------===//
 
-class EnsureOpBase<string mnemonic, list<Trait> traits = []>
-    : ConditionOp<mnemonic, traits#[PostconditionOpInterface]>;
+//
+class EnsureOpBase<string mnemonic, bit inlinable = false,
+                   list<string> verificationExtraTraits = [],
+                   list<Trait> traits = []>
+    : ContractConditionOp<
+          "ensure_"#mnemonic, inlinable,
+          traits#[PostconditionOpInterface]#!if(
+              inlinable, [Verification<verificationExtraTraits>], [])> {
+  let description = [{
+    Encodes a postcondition in the `@}]#mnemonic#[{` function.
+  }]#!if(inlinable, [{
 
-def EnsureComputeOp : EnsureOpBase<"ensure_compute"> {
+    This operation has the `Verification` trait and can be used inside `function.def`
+    ops that have the `allow_verif_ops` attribute.
+    }],
+         "");
+}
+
+def EnsureComputeOp : EnsureOpBase<"compute"> {
   let summary = "witness computation postcondition";
 }
 
-def EnsureConstrainOp : EnsureOpBase<"ensure_constrain"> {
+def EnsureConstrainOp
+    : EnsureOpBase<
+          "constrain",
+          /*inlinable=*/true,
+          /*verificationExtraTraits=*/["::llzk::function::ConstraintGen"]> {
   let summary = "constraint generation postcondition";
 }
 
@@ -113,12 +213,13 @@ def ContractOp
     return values are appended to the end of the contract's argument list.
 
     Contracts may not directly target struct functions; they must target the structs themselves.
-    Contracts targeting the module's `llzk.main` struct may not contain direct
-    `verif.require_compute` or `verif.require_constrain` operations in their body.
+    Contracts targeting the module's `llzk.main` struct may contain `verif.require_compute`
+    or `verif.require_constrain` operations. A circuit whose main-level contract contains such
+    preconditions is valid only for inputs that satisfy them.
 
-    For templated targets (i.e., functions or structs within a `poly.template`),
-    the contract body may reference the target template's parameters and
-    expressions even if the contract is physically nested elsewhere.
+    For templated targets (i.e., functions or structs within a `poly.template`), the contract
+    body may reference the target template's parameters and expressions. If a contract is nested
+    inside a `poly.template`, then the target must be in that same template.
 
     Examples:
 
@@ -175,7 +276,7 @@ def ContractOp
           $_state.getOrAddProperties<Properties>().arg_attrs = arg_attrs;
         }
         initializeEmptyBody(
-            $_builder, $_state, ::mlir::cast<::mlir::FunctionType>(function_type.getValue())
+            $_builder, $_state, ::llvm::cast<::mlir::FunctionType>(function_type.getValue())
         );
         assert(resultTypes.size() == 0u && "mismatched number of results");
         $_state.addTypes(resultTypes);
@@ -288,7 +389,7 @@ def ContractOp
       return getFuncTarget(tables);
     }
 
-    /// Return the operation that this contract targets, or failure if it does not 
+    /// Return the operation that this contract targets, or failure if it does not
     /// target an operation that implements the `ContractTarget` op interface or is not found.
     ::mlir::FailureOr<SymbolLookupResult<::llzk::verif::ContractTargetOpInterface>> getTargetOp(::mlir::SymbolTableCollection &tables);
 
@@ -332,12 +433,11 @@ def ContractEndOp
 //===------------------------------------------------------------------===//
 
 def IncludeOp
-    : VerifDialectOp<
-          "include", [MemRefsNormalizable, AttrSizedOperandSegments,
-                      VerifySizesForMultiAffineOps<1>,
-                      DeclareOpInterfaceMethods<CallOpInterface>,
-                      DeclareOpInterfaceMethods<SymbolUserOpInterface>,
-                      HasAncestor<"::llzk::verif::ContractOp">]> {
+    : VerifDialectOp<"include", [MemRefsNormalizable, AttrSizedOperandSegments,
+                                 DeclareOpInterfaceMethods<
+                                     LLZKCallLikeOpInterface, ["getSelfValue"]>,
+                                 VerifySizesForMultiAffineOps<1>,
+                                 HasAncestor<"::llzk::verif::ContractOp">]> {
   let summary = "contract inclusion operation";
   let description = [{
     Invokes another specification contract from another contract, effectively including the
@@ -429,65 +529,12 @@ def IncludeOp
                   }]>];
 
   let extraClassDeclaration = [{
-    /// Required by CallOpInterface
-    ::mlir::Operation *resolveCallableInTable(::mlir::SymbolTableCollection *symbolTable);
-
-    /// Required by CallOpInterface
-    ::mlir::Operation *resolveCallable();
-
-    /// Return the FunctionType inferred from the arg operands of this CallOp.
-    /// This is not necessarily the same as the callee's FunctionType but should unify with it
-    /// or else IR verification will fail.
-    ::mlir::FunctionType getTypeSignature();
-
-    /// Attempt type unfication between the inferred FunctionType from this CallOp (as LHS) and
-    /// the given FunctionType (as RHS). If successful, return a UnificationMap containing the
-    /// unifications that were made. Otherwise, return failure.
-    ::mlir::FailureOr<UnificationMap> unifyTypeSignature(::mlir::FunctionType other);
-
     /// Return `true` iff the contract targets a struct type.
     bool contractTargetsStruct();
-
-    /// Return the "self" value (i.e. the first parameter) from the callee contract,
-    /// assuming the target of the contract is a struct target.
-    ::mlir::Value getSelfValue();
 
     /// Resolve and return the target Contract for this CallOp.
     ::mlir::FailureOr<::llzk::SymbolLookupResult<::llzk::verif::ContractOp>>
     getCalleeTarget(::mlir::SymbolTableCollection &tables);
-
-    /// Allocate consecutive storage of the ValueRange instances in the parameter
-    /// so it can be passed to the builders as an `ArrayRef<ValueRange>`.
-    static ::llvm::SmallVector<::mlir::ValueRange> toVectorOfValueRange(::mlir::OperandRangeRange);
-
-    /// Check type compatibility of the given template parameter value from this `CallOp` against
-    /// the declared type on the given `TemplateParamOp` (if any).
-    ::mlir::LogicalResult verifyTemplateParamCompatibility(
-      ::mlir::Attribute paramFromCallOp, ::llzk::polymorphic::TemplateParamOp targetParam
-    );
-
-    /// Check type compatibility of each template parameter value provided in this `CallOp` against
-    /// the declared type on each `TemplateParamOp` (if any).
-    ///
-    /// Pre-condition assertions:
-    ///   - `!isNullOrEmpty(getTemplateParamsAttr())`
-    ///   - `getTemplateParamsAttr().size() == llvm::range_size(targetParamDefs)`
-    ::mlir::LogicalResult verifyTemplateParamCompatibility(
-        ::llvm::iterator_range<::mlir::Region::op_iterator<::llzk::polymorphic::TemplateParamOp>> targetParamDefs
-    );
-
-    /// Verify that each template parameter value provided in this `CallOp` is consistent with
-    /// the value inferred for the target `TemplateParamOp` in the given `UnificationMap`. The
-    /// `UnificationMap` is expected to contain the unification results of this `CallOp` against
-    /// the target function type signature.
-    ///
-    /// Pre-condition assertions:
-    ///   - `!isNullOrEmpty(getTemplateParamsAttr())`
-    ///   - `getTemplateParamsAttr().size() == llvm::range_size(targetParamDefs)`
-    ::mlir::LogicalResult verifyTemplateParamsMatchInferred(
-        ::llvm::iterator_range<::mlir::Region::op_iterator<::llzk::polymorphic::TemplateParamOp>> targetParamDefs,
-        const UnificationMap &unifications
-    );
   }];
 }
 
@@ -504,12 +551,12 @@ def InvariantOp
     Defines an invariant for a loop inside the target of a contract.
 
     The targeted loop op must implement the `InvariantTargetOpInterface`.
-    This interface is already implemented by the `scf.while` and `scf.for` 
-    operations. The loop name is defined on either of those ops with a 
+    This interface is already implemented by the `scf.while` and `scf.for`
+    operations. The loop name is defined on either of those ops with a
     string attribute named `loop_label`.
 
-    The arguments of the body must match those declared by the target op. 
-    In the case of `scf.for` the control values must also be block arguments 
+    The arguments of the body must match those declared by the target op.
+    In the case of `scf.for` the control values must also be block arguments
     in the following order: lower bound, induction variable, upper bound, and stride.
 
     Example:
@@ -518,9 +565,9 @@ def InvariantOp
       struct.def @Top {
         function.def @compute() -> !struct.type<@Top> {
           %self = struct.new : !struct.type<@Top>
-          %c0 = arith.constant 0 : index 
-          %c10 = arith.constant 10 : index 
-          %c1 = arith.constant 1  : index 
+          %c0 = arith.constant 0 : index
+          %c10 = arith.constant 10 : index
+          %c1 = arith.constant 1  : index
           %0 = felt.const  5
           %1 = scf.for %iv = %c0 to %c10 step %c1 iter_args(%2 = %0) -> !felt.type {
             scf.yield %2 : !felt.type
@@ -606,7 +653,7 @@ def StepOp : VerifDialectOp<
   let summary = "step predicate operation";
   let description = [{
     Defines a predicate that must be satisfied between iterations of the loop.
-    
+
     The predicate can access the value in the previous iteration by using the `verif.old` operation.
 
     Declares the `MemoryEffectsOpInterface`, which, like the `cf.assert` (MLIR `cf` dialect)

@@ -47,6 +47,10 @@ class Lexer;
 class SourceManager;
 } // namespace clang
 
+namespace mlir::tblgen {
+class Operator;
+} // namespace mlir::tblgen
+
 // Shared command-line options used by all CAPI generators
 extern llvm::cl::OptionCategory OpGenCat;
 extern llvm::cl::opt<std::string> DialectName;
@@ -177,9 +181,12 @@ inline bool isCppLanguageConstruct(mlir::StringRef methodName) {
 
 /// @brief Check if a C++ type is APInt
 /// @param cppType The C++ type string to check
-/// @return true if the type is APInt, llvm::APInt, or ::llvm::APInt
+/// @return true if the type is an APInt or LLZK's numeric APInt storage key
 inline bool isAPIntType(mlir::StringRef cppType) {
   cppType.consume_front("::");
+  if (cppType == "llzk::APIntValue") {
+    return true;
+  }
   cppType.consume_front("llvm::") || cppType.consume_front("mlir::");
   return cppType == "APInt";
 }
@@ -272,13 +279,23 @@ struct ExtraMethod {
   std::vector<MethodParameter> parameters;
 };
 
+/// Return public operation methods explicitly requested by `DeclareOpInterfaceMethods` traits and
+/// declared by `extraClassDeclaration`.
+///
+/// Interface methods must be named in `alwaysOverriddenMethods` (the optional method list passed to
+/// `DeclareOpInterfaceMethods`). This makes C API exposure an explicit opt-in and avoids colliding
+/// with the standard op C API accessors. Static methods and methods implemented directly in an
+/// interface trait are excluded. An extra class method takes precedence over an interface method
+/// with the same name, because the C API does not support overloads.
+llvm::SmallVector<ExtraMethod> getCAPIExposedOpMethods(const mlir::tblgen::Operator &op);
+
 /// @brief Parse method declarations from an `extraClassDeclaration` using Clang's Lexer
 /// @param extraDecl The C++ code from an `extraClassDeclaration`
 /// @return Vector of parsed method signatures
 ///
 /// This function parses C++ method declarations to extract signatures that can be
 /// wrapped in C API functions. It identifies methods by looking for the pattern:
-/// [modifiers] <return_type> <identifier> '(' [params] ')' [const] ';'
+///   `[modifiers] <return_type> <identifier> '(' [params] ')' [const] ';'`
 ///
 /// Example input:
 /// @code

@@ -15,12 +15,17 @@
 #include "llzk/Dialect/Array/IR/Ops.h"
 #include "llzk/Dialect/Felt/IR/Ops.h"
 #include "llzk/Dialect/Function/IR/Ops.h"
+#include "llzk/Dialect/Global/IR/Ops.h"
+#include "llzk/Dialect/RAM/IR/Ops.h"
 #include "llzk/Transforms/LLZKTransformationPasses.h"
 #include "llzk/Util/Concepts.h"
+#include "llzk/Util/EffectHelper.h"
 #include "llzk/Util/StreamHelper.h"
 
+#include <mlir/Dialect/SCF/IR/SCF.h>
 #include <mlir/IR/BuiltinOps.h>
 
+#include <llvm/ADT/ArrayRef.h>
 #include <llvm/ADT/DenseMap.h>
 #include <llvm/ADT/DenseMapInfo.h>
 #include <llvm/ADT/SmallVector.h>
@@ -154,13 +159,10 @@ namespace {
 /// elimination until they become known and can be eliminated when redundant operations
 /// are performed.
 ///
-/// A node may have "constant identifiers" as children (member refs, constant indices)
-/// or a single non-constant child index (just an mlir::Value), as the dynamic
-/// index may or may not alias any constant identifiers. If a dynamic index is
-/// added, the user should clear the prior known children to prevent accidental aliasing.
-///
-/// Does not allow mixing of constant and non-constant child indices, as we
-/// do not know if they alias.
+/// Children may represent constant access components (member refs, constant indices)
+/// or dynamic SSA values. Dynamic children may alias constant siblings, so array
+/// writes clear all children for a dynamic index and only dynamic siblings for a
+/// constant index.
 class ReferenceNode {
 public:
   template <typename IdType> static std::shared_ptr<ReferenceNode> create(IdType id, Value v) {
@@ -175,6 +177,7 @@ public:
     ReferenceNode copy(identifier, storedValue);
     copy.updateLastWrite(lastWrite);
     if (withChildren) {
+      copy.dynamicChildCount = dynamicChildCount;
       for (const auto &[id, child] : children) {
         copy.children[id] = child->clone(withChildren);
       }
@@ -187,6 +190,9 @@ public:
   createChild(IdType id, Value storedVal, const std::shared_ptr<ReferenceNode> &valTree = nullptr) {
     std::shared_ptr<ReferenceNode> child = create(id, storedVal);
     child->setCurrentValue(storedVal, valTree);
+    if (child->identifier.isValue() && children.find(child->identifier) == children.end()) {
+      ++dynamicChildCount;
+    }
     children[child->identifier] = child;
     return child;
   }
@@ -223,27 +229,102 @@ public:
 
   void clearLastWrite() { lastWrite = nullptr; }
 
+  /// @brief Clear overwrite candidates that a live indexed read may observe.
+  ///
+  /// A dynamic index may select any non-member child, while a constant index
+  /// may also select an existing dynamic child. Aggregate reads clear the
+  /// selected subtree because a later access through the result may observe
+  /// writes below it.
+  /// @param indices Access path from this node to the observed array element or subtree.
+  void clearLastWritesObservedBy(ArrayRef<ReferenceID> indices) {
+    if (indices.empty()) {
+      clearLastWritesInSubtree();
+      return;
+    }
+    clearLastWrite();
+
+    const ReferenceID &index = indices.front();
+    ArrayRef<ReferenceID> remaining = indices.drop_front();
+    if (!index.isConst()) {
+      for (const auto &[id, child] : children) {
+        if (!id.isAttribute()) {
+          child->clearLastWritesObservedBy(remaining);
+        }
+      }
+      return;
+    }
+
+    if (auto it = children.find(index); it != children.end()) {
+      it->second->clearLastWritesObservedBy(remaining);
+    }
+    for (const auto &[id, child] : children) {
+      if (id.isValue()) {
+        child->clearLastWritesObservedBy(remaining);
+      }
+    }
+  }
+
+  /// @brief Clear overwrite candidates in this node and all descendants.
+  ///
+  /// Region boundaries use this to prevent tree-state candidates from being
+  /// treated as block-local predecessors outside the region that created them.
+  void clearLastWritesInSubtree() {
+    for (const auto &[_, child] : children) {
+      child->clearLastWritesInSubtree();
+    }
+    clearLastWrite();
+  }
+
   void setCurrentValue(Value v, const std::shared_ptr<ReferenceNode> &valTree = nullptr) {
     storedValue = v;
     if (valTree != nullptr) {
       // Overwrite our current set of children with new children, since we overwrote
       // the stored value.
       children = valTree->children;
+      dynamicChildCount = valTree->dynamicChildCount;
     }
   }
 
-  void invalidateChildren() { children.clear(); }
+  void invalidateChildren() {
+    children.clear();
+    dynamicChildCount = 0;
+  }
 
-  bool invalidateNonIntegerOffsetChildren() {
+  /// @brief Remove dynamic-index children before descending through a constant index.
+  ///
+  /// A constant-index write can alias an existing dynamic-index child, but not a
+  /// different constant-index child.
+  void invalidateDynamicChildren() {
+    if (dynamicChildCount == 0) {
+      return;
+    }
     SmallVector<ReferenceID> invalidChildren;
     for (const auto &[id, _] : children) {
-      if (!id.isAttribute() || !isa<IntegerAttr>(id.getAttribute())) {
+      if (id.isValue()) {
         invalidChildren.push_back(id);
       }
     }
     for (const ReferenceID &id : invalidChildren) {
       children.erase(id);
     }
+    dynamicChildCount = 0;
+  }
+
+  bool invalidateNonIntegerOffsetChildren() {
+    SmallVector<ReferenceID> invalidChildren;
+    size_t invalidDynamicChildCount = 0;
+    for (const auto &[id, _] : children) {
+      if (!id.isAttribute() || !isa<IntegerAttr>(id.getAttribute())) {
+        invalidChildren.push_back(id);
+        if (id.isValue()) {
+          ++invalidDynamicChildCount;
+        }
+      }
+    }
+    for (const ReferenceID &id : invalidChildren) {
+      children.erase(id);
+    }
+    dynamicChildCount -= invalidDynamicChildCount;
     return !invalidChildren.empty();
   }
 
@@ -295,6 +376,9 @@ public:
         auto &rhsChild = it->second;
         if (auto gcs = greatestCommonSubtree(lhsChild, rhsChild)) {
           res->children[id] = gcs;
+          if (id.isValue()) {
+            ++res->dynamicChildCount;
+          }
         }
       }
     }
@@ -306,23 +390,76 @@ private:
   mlir::Value storedValue;
   Operation *lastWrite;
   DenseMap<ReferenceID, std::shared_ptr<ReferenceNode>> children;
+  // Number of direct dynamic children. Keep it synchronized with every children
+  // mutation so constant-only invalidation remains independent of child fanout.
+  size_t dynamicChildCount;
 
   template <typename IdType>
   ReferenceNode(IdType id, Value initialVal)
-      : identifier(std::move(id)), storedValue(initialVal), lastWrite(nullptr), children() {}
+      : identifier(std::move(id)), storedValue(initialVal), lastWrite(nullptr), children(),
+        dynamicChildCount(0) {}
 };
 
 using ValueMap = DenseMap<mlir::Value, std::shared_ptr<ReferenceNode>>;
 
-ValueMap intersect(const ValueMap &lhs, const ValueMap &rhs) {
+/// Known values at a program point, split between tree-shaped value state and
+/// flat stateful global/RAM facts.
+struct KnownState {
+  ValueMap values;
+  DenseMap<SymbolRefAttr, Value> globals;
+  DenseMap<ReferenceID, Value> ram;
+  // Unlike `ram`, only exact translated address values justify store removal.
+  DenseMap<Value, Value> ramExact;
+};
+
+/// Writes eligible for removal only while traversing their containing block.
+/// Candidates never cross CFG or nested-region boundaries.
+struct BlockWriteCandidates {
+  DenseMap<SymbolRefAttr, Operation *> globals;
+  DenseMap<Value, Operation *> ram;
+
+  void clear() {
+    globals.clear();
+    ram.clear();
+  }
+};
+
+/// Intersects tree-shaped value facts by retaining only common subtrees.
+ValueMap intersectValueMap(const ValueMap &lhs, const ValueMap &rhs) {
   ValueMap res;
   for (const auto &[id, lhsValTree] : lhs) {
-    if (auto it = rhs.find(id); it != rhs.end()) {
-      const auto &rhsValTree = it->second;
-      res[id] = greatestCommonSubtree(lhsValTree, rhsValTree);
+    if (!lhsValTree) {
+      continue;
+    }
+    if (auto it = rhs.find(id); it != rhs.end() && it->second) {
+      // A missing common subtree is the conservative no-common-fact state.
+      if (auto common = greatestCommonSubtree(lhsValTree, it->second)) {
+        res[id] = std::move(common);
+      }
     }
   }
   return res;
+}
+
+/// Intersects flat lookup facts by retaining keys mapped to the same value.
+template <typename KeyT>
+DenseMap<KeyT, Value>
+intersectValueLookup(const DenseMap<KeyT, Value> &lhs, const DenseMap<KeyT, Value> &rhs) {
+  DenseMap<KeyT, Value> res;
+  for (const auto &[id, lhsVal] : lhs) {
+    if (auto it = rhs.find(id); it != rhs.end() && it->second == lhsVal) {
+      res[id] = lhsVal;
+    }
+  }
+  return res;
+}
+
+/// Intersects known state across predecessor blocks.
+KnownState intersect(const KnownState &lhs, const KnownState &rhs) {
+  return {
+      intersectValueMap(lhs.values, rhs.values), intersectValueLookup(lhs.globals, rhs.globals),
+      intersectValueLookup(lhs.ram, rhs.ram), intersectValueLookup(lhs.ramExact, rhs.ramExact)
+  };
 }
 
 /// @brief Deep copy the ValueMap for when exclusive branches/regions need state
@@ -335,6 +472,12 @@ ValueMap cloneValueMap(const ValueMap &orig) {
   return res;
 }
 
+/// Deep copy the KnownState for exclusive branches/regions so tree updates do
+/// not mutate the incoming state.
+KnownState cloneKnownState(const KnownState &orig) {
+  return {cloneValueMap(orig.values), orig.globals, orig.ram, orig.ramExact};
+}
+
 class PassImpl : public llzk::impl::RedundantReadAndWriteEliminationPassBase<PassImpl> {
   using Base = RedundantReadAndWriteEliminationPassBase<PassImpl>;
   using Base::Base;
@@ -345,7 +488,7 @@ class PassImpl : public llzk::impl::RedundantReadAndWriteEliminationPassBase<Pas
   /// as setting them up as passes over FuncDefOp doesn't properly search all FuncDefOp
   /// and ultimately the pass does not run.
   void runOnOperation() override {
-    getOperation().walk([&](FuncDefOp fn) { runOnFunc(fn); });
+    getOperation().walk([this](FuncDefOp fn) { runOnFunc(fn); });
   }
 
   /// @brief Remove redundant reads and writes from the given function operation.
@@ -366,10 +509,10 @@ class PassImpl : public llzk::impl::RedundantReadAndWriteEliminationPassBase<Pas
     // write a value that is already written.
     SmallVector<Operation *> redundantWrites;
 
-    ValueMap initState;
+    KnownState initState;
     // Initialize the state to the function arguments.
     for (auto arg : fn.getArguments()) {
-      initState[arg] = ReferenceNode::create(arg, arg);
+      initState.values[arg] = ReferenceNode::create(arg, arg);
     }
     // Functions only have a single region
     (void)runOnRegion(
@@ -400,38 +543,62 @@ class PassImpl : public llzk::impl::RedundantReadAndWriteEliminationPassBase<Pas
     }
   }
 
-  ValueMap runOnRegion(
-      Region &r, ValueMap &&initState, DenseMap<Value, Value> &replacementMap,
+  KnownState runOnRegion(
+      Region &r, KnownState &&initState, DenseMap<Value, Value> &replacementMap,
       SmallVector<Value> &readVals, SmallVector<Operation *> &redundantWrites
   ) {
     // maps block -> state at the end of the block
-    DenseMap<Block *, ValueMap> endStates;
+    DenseMap<Block *, KnownState> endStates;
     // The first block has no predecessors, so nullptr contains the init state
     endStates[nullptr] = initState;
     auto getBlockState = [&endStates](Block *blockPtr) {
       auto it = endStates.find(blockPtr);
       ensure(it != endStates.end(), "unknown end state means we have an unsupported backedge");
-      return cloneValueMap(it->second);
+      return cloneKnownState(it->second);
+    };
+    auto hasBlockState = [&endStates](Block *blockPtr) {
+      return endStates.find(blockPtr) != endStates.end();
     };
     std::deque<Block *> frontier;
-    frontier.push_back(&r.front());
-    DenseSet<Block *> visited;
+    DenseSet<Block *> queued;
+    DenseSet<Block *> processed;
+    auto enqueue = [&](Block *blockPtr) {
+      if (processed.find(blockPtr) == processed.end() && queued.insert(blockPtr).second) {
+        frontier.push_back(blockPtr);
+      }
+    };
+    enqueue(&r.front());
 
-    SmallVector<std::reference_wrapper<const ValueMap>> terminalStates;
+    SmallVector<KnownState> terminalStates;
+    size_t deferralsWithoutProgress = 0;
 
     while (!frontier.empty()) {
       Block *currentBlock = frontier.front();
       frontier.pop_front();
-      visited.insert(currentBlock);
+      queued.erase(currentBlock);
 
       // get predecessors
-      ValueMap currentState;
+      KnownState currentState;
       auto it = currentBlock->pred_begin();
       auto itEnd = currentBlock->pred_end();
       if (it == itEnd) {
         // get the state for the entry block.
         currentState = getBlockState(nullptr);
       } else {
+        bool ready = true;
+        for (auto predIt = it; predIt != itEnd; predIt++) {
+          ready &= hasBlockState(*predIt);
+        }
+        if (!ready) {
+          deferralsWithoutProgress++;
+          ensure(
+              deferralsWithoutProgress <= frontier.size(),
+              "unknown end state means we have an unsupported backedge"
+          );
+          enqueue(currentBlock);
+          continue;
+        }
+
         currentState = getBlockState(*it);
         // If we have multiple predecessors, we take a pessimistic view and
         // set the state as only the intersection of all predecessor states
@@ -442,6 +609,7 @@ class PassImpl : public llzk::impl::RedundantReadAndWriteEliminationPassBase<Pas
       }
 
       // Run this block, consuming currentState and producing the endState
+      deferralsWithoutProgress = 0;
       auto endState = runOnBlock(
           *currentBlock, std::move(currentState), replacementMap, readVals, redundantWrites
       );
@@ -449,53 +617,100 @@ class PassImpl : public llzk::impl::RedundantReadAndWriteEliminationPassBase<Pas
       // Update the end states.
       // Since we only support the scf dialect, we should never have any
       // backedges, so we should never already have state for this block.
-      ensure(endStates.find(currentBlock) == endStates.end(), "backedge");
+      ensure(processed.find(currentBlock) == processed.end(), "backedge");
       endStates[currentBlock] = std::move(endState);
+      processed.insert(currentBlock);
 
       // add successors to frontier
       if (currentBlock->hasNoSuccessors()) {
-        terminalStates.push_back(endStates[currentBlock]);
+        terminalStates.push_back(cloneKnownState(endStates[currentBlock]));
       } else {
         for (Block *succ : currentBlock->getSuccessors()) {
-          if (visited.find(succ) == visited.end()) {
-            frontier.push_back(succ);
-          }
+          enqueue(succ);
         }
       }
     }
 
     // The final state is the intersection of all possible terminal states.
     ensure(!terminalStates.empty(), "computed no states");
-    auto finalState = terminalStates.front().get();
+    auto finalState = terminalStates.front();
     for (const auto *it = terminalStates.begin() + 1; it != terminalStates.end(); it++) {
-      finalState = intersect(finalState, it->get());
+      finalState = intersect(finalState, *it);
     }
     return finalState;
   }
 
-  ValueMap runOnBlock(
-      Block &b, ValueMap &&state, DenseMap<Value, Value> &replacementMap,
+  KnownState runOnBlock(
+      Block &b, KnownState &&state, DenseMap<Value, Value> &replacementMap,
       SmallVector<Value> &readVals, SmallVector<Operation *> &redundantWrites
   ) {
+    BlockWriteCandidates writeCandidates;
+    auto clearTreeWriteCandidates = [](KnownState &knownState) {
+      for (auto &[_, valueTree] : knownState.values) {
+        if (valueTree) {
+          valueTree->clearLastWritesInSubtree();
+        }
+      }
+    };
+
     for (Operation &op : b) {
-      runOperation(&op, state, replacementMap, readVals, redundantWrites);
       // Some operations have regions (e.g., scf.if). These regions must be
       // traversed and the resulting state(s) are intersected for the final
       // state of this operation.
       if (!op.getRegions().empty()) {
-        SmallVector<ValueMap> regionStates;
+        KnownState parentState = cloneKnownState(state);
+        // Repeating regions (scf.for, scf.while) execute their body
+        // more than once.  Pre-loop global/RAM facts must not be used
+        // to declare a read inside the body redundant — the body may
+        // observe writes from a previous iteration.
+        KnownState regionEntryState = cloneKnownState(state);
+        // Tree-shaped reference last-write pointers are block-local deletion
+        // candidates. Do not let an exclusive region inherit a candidate from
+        // its parent, where one arm could otherwise queue it for function-wide
+        // erasure.
+        clearTreeWriteCandidates(regionEntryState);
+        if (isa<scf::ForOp, scf::WhileOp>(op)) {
+          regionEntryState.globals.clear();
+          regionEntryState.ram.clear();
+          regionEntryState.ramExact.clear();
+        }
+        SmallVector<KnownState> regionStates;
         for (Region &region : op.getRegions()) {
-          auto regionState =
-              runOnRegion(region, cloneValueMap(state), replacementMap, readVals, redundantWrites);
+          if (region.empty()) {
+            continue;
+          }
+          auto regionState = runOnRegion(
+              region, cloneKnownState(regionEntryState), replacementMap, readVals, redundantWrites
+          );
           regionStates.push_back(regionState);
         }
+        if (regionStates.empty()) {
+          // Region-bearing ops with no bodies still need their own effects handled.
+          runOperation(&op, state, replacementMap, readVals, redundantWrites, writeCandidates);
+          writeCandidates.clear();
+          continue;
+        }
 
-        ValueMap finalState = regionStates.front();
+        KnownState finalState = regionStates.front();
         for (const auto *it = regionStates.begin() + 1; it != regionStates.end(); it++) {
           finalState = intersect(finalState, *it);
         }
+        // A nested region may be conditional, zero-iteration, or otherwise not
+        // execute exactly once. Keep prior struct/array behavior, but only
+        // propagate global/RAM facts that remain true both before and after the
+        // region traversal.
+        finalState.globals = intersectValueLookup(parentState.globals, finalState.globals);
+        finalState.ram = intersectValueLookup(parentState.ram, finalState.ram);
+        finalState.ramExact = intersectValueLookup(parentState.ramExact, finalState.ramExact);
+        // Likewise, do not export a tree-shaped reference candidate from one
+        // region through the join. A later write must not treat an
+        // exclusive-arm write as a block-local predecessor.
+        clearTreeWriteCandidates(finalState);
         state = std::move(finalState);
+        writeCandidates.clear();
+        continue;
       }
+      runOperation(&op, state, replacementMap, readVals, redundantWrites, writeCandidates);
     }
     return std::move(state);
   }
@@ -508,8 +723,9 @@ class PassImpl : public llzk::impl::RedundantReadAndWriteEliminationPassBase<Pas
   /// @param readVals A mutable list of all read values
   /// @param redundantWrites A mutable list of all writes that are considered redundant
   void runOperation(
-      Operation *op, ValueMap &state, DenseMap<Value, Value> &replacementMap,
-      SmallVector<Value> &readVals, SmallVector<Operation *> &redundantWrites
+      Operation *op, KnownState &state, DenseMap<Value, Value> &replacementMap,
+      SmallVector<Value> &readVals, SmallVector<Operation *> &redundantWrites,
+      BlockWriteCandidates &writeCandidates
   ) {
     // Uses the replacement map to look up values to simplify later replacement.
     // This avoids having a daisy chain of "replace B with A", "replace C with B",
@@ -523,20 +739,41 @@ class PassImpl : public llzk::impl::RedundantReadAndWriteEliminationPassBase<Pas
 
     // Lookup the value tree in the current state or return nullptr.
     auto tryGetValTree = [&state](Value v) -> std::shared_ptr<ReferenceNode> {
-      if (auto it = state.find(v); it != state.end()) {
+      if (auto it = state.values.find(v); it != state.values.end()) {
         return it->second;
       }
       return nullptr;
     };
 
+    auto doStatefulRead =
+        [&]<typename KeyT>(Value resVal, DenseMap<KeyT, Value> &knownValues, const KeyT &key) {
+      readVals.push_back(resVal);
+      if (auto it = knownValues.find(key); it != knownValues.end()) {
+        replacementMap[resVal] = it->second;
+        return true;
+      } else {
+        knownValues[key] = resVal;
+        state.values[resVal] = ReferenceNode::create(resVal, resVal);
+        return false;
+      }
+    };
+
     // An omitted table offset denotes the current row.
     const IntegerAttr zeroTableOffset = IntegerAttr::get(IndexType::get(op->getContext()), 0);
     auto getMemberNode = [&](Value component, FlatSymbolRefAttr member) {
-      return state.at(translate(component))->getOrCreateChild(member);
+      std::shared_ptr<ReferenceNode> componentNode = tryGetValTree(translate(component));
+      if (componentNode == nullptr) {
+        return std::shared_ptr<ReferenceNode>();
+      }
+      return componentNode->getOrCreateChild(member);
     };
+
     auto getMemberAccessNode = [&](MemberReadOp readm) {
       std::shared_ptr<ReferenceNode> access =
           getMemberNode(readm.getComponent(), readm.getMemberNameAttr());
+      if (access == nullptr) {
+        return access;
+      }
       access = access->getOrCreateChild(readm.getTableOffset().value_or(zeroTableOffset));
       if (!readm.getMapOperands().empty()) {
         access = access->getOrCreateChild(readm.getMapOpGroupSizesAttr());
@@ -553,14 +790,25 @@ class PassImpl : public llzk::impl::RedundantReadAndWriteEliminationPassBase<Pas
     // Read a value from an array. This works on both readarr operations (which
     // return a scalar value) and extractarr operations (which return a subarray).
     auto doArrayReadLike = [&]<HasInterface<ArrayAccessOpInterface> OpClass>(OpClass readarr) {
-      std::shared_ptr<ReferenceNode> currValTree = state.at(translate(readarr.getArrRef()));
+      Value resVal = readarr.getResult();
+      std::shared_ptr<ReferenceNode> currValTree = tryGetValTree(translate(readarr.getArrRef()));
+      if (currValTree == nullptr) {
+        state.values[resVal] = ReferenceNode::create(resVal, resVal);
+        readVals.push_back(resVal);
+        return;
+      }
 
+      std::shared_ptr<ReferenceNode> rootValTree = currValTree;
+      SmallVector<ReferenceID> indices;
+      bool hasDynamicIndex = false;
       for (Value origIdx : readarr.getIndices()) {
         Value idxVal = translate(origIdx);
+        ReferenceID indexId(idxVal);
+        hasDynamicIndex |= !indexId.isConst();
+        indices.push_back(indexId);
         currValTree = currValTree->getOrCreateChild(idxVal);
       }
 
-      Value resVal = readarr.getResult();
       if (!currValTree->hasStoredValue()) {
         currValTree->setCurrentValue(resVal);
       }
@@ -572,7 +820,10 @@ class PassImpl : public llzk::impl::RedundantReadAndWriteEliminationPassBase<Pas
         );
         replacementMap[resVal] = currValTree->getStoredValue();
       } else {
-        state[resVal] = currValTree;
+        if (hasDynamicIndex) {
+          rootValTree->clearLastWritesObservedBy(indices);
+        }
+        state.values[resVal] = currValTree;
         LLVM_DEBUG(
             llvm::dbgs() << readarr.getOperationName() << ": " << resVal << " => " << *currValTree
                          << '\n'
@@ -582,21 +833,24 @@ class PassImpl : public llzk::impl::RedundantReadAndWriteEliminationPassBase<Pas
       readVals.push_back(resVal);
     };
 
-    // Write a scalar value (for writearr) or a subarray value (for insertarr)
-    // to an array. The unique part of this operation relative to others is that
-    // we may receive a variable index (i.e., not a constant). In this case, we
-    // invalidate adjacent subtree state because the variable index may alias
-    // another element.
+    // Handle array.write (scalar) and array.insert (subarray) with one or more
+    // indices. Dynamic indices may alias any sibling; constant indices only
+    // invalidate dynamic-index siblings.
     auto doArrayWriteLike = [&]<HasInterface<ArrayAccessOpInterface> OpClass>(OpClass writearr) {
-      std::shared_ptr<ReferenceNode> currValTree = state.at(translate(writearr.getArrRef()));
+      std::shared_ptr<ReferenceNode> currValTree = tryGetValTree(translate(writearr.getArrRef()));
+      if (currValTree == nullptr) {
+        return;
+      }
       Value newVal = translate(writearr.getRvalue());
       std::shared_ptr<ReferenceNode> valTree = tryGetValTree(newVal);
 
       for (Value origIdx : writearr.getIndices()) {
         Value idxVal = translate(origIdx);
-        // This write will invalidate all children, since it may reference
-        // any number of them.
-        if (ReferenceID(idxVal).isValue()) {
+        // A dynamic index may alias any sibling. A constant index only aliases
+        // a dynamic sibling, so preserve unrelated constant-index facts.
+        if (ReferenceID(idxVal).isConst()) {
+          currValTree->invalidateDynamicChildren();
+        } else {
           LLVM_DEBUG(llvm::dbgs() << writearr.getOperationName() << ": invalidate alias\n");
           currValTree->invalidateChildren();
         }
@@ -621,17 +875,70 @@ class PassImpl : public llzk::impl::RedundantReadAndWriteEliminationPassBase<Pas
       }
     };
 
+    // global ops
+    if (auto readGlobal = dyn_cast<global::GlobalReadOp>(op)) {
+      const auto name = readGlobal.getNameRef();
+      if (!doStatefulRead(readGlobal.getVal(), state.globals, name)) {
+        writeCandidates.globals.erase(name);
+      }
+    } else if (auto writeGlobal = dyn_cast<global::GlobalWriteOp>(op)) {
+      const auto name = writeGlobal.getNameRef();
+      Value value = translate(writeGlobal.getVal());
+      if (auto known = state.globals.find(name);
+          known != state.globals.end() && known->second == value) {
+        redundantWrites.push_back(writeGlobal.getOperation());
+      } else {
+        if (auto previous = writeCandidates.globals.find(name);
+            previous != writeCandidates.globals.end()) {
+          redundantWrites.push_back(previous->second);
+        }
+        state.globals[name] = value;
+        writeCandidates.globals[name] = writeGlobal.getOperation();
+      }
+    }
+    // RAM ops
+    else if (auto load = dyn_cast<ram::LoadOp>(op)) {
+      Value address = translate(load.getAddr());
+      if (!doStatefulRead(load.getVal(), state.ram, ReferenceID(address))) {
+        writeCandidates.ram.clear();
+      }
+      state.ramExact[address] = translate(load.getVal());
+    } else if (auto store = dyn_cast<ram::StoreOp>(op)) {
+      Value address = translate(store.getAddr());
+      Value value = translate(store.getVal());
+      if (auto known = state.ramExact.find(address);
+          known != state.ramExact.end() && known->second == value) {
+        redundantWrites.push_back(store.getOperation());
+      } else {
+        if (auto previous = writeCandidates.ram.find(address);
+            previous != writeCandidates.ram.end()) {
+          redundantWrites.push_back(previous->second);
+        }
+        writeCandidates.ram[address] = store.getOperation();
+        state.ram.clear();
+        state.ramExact.clear();
+        state.ram[ReferenceID(address)] = value;
+        state.ramExact[address] = value;
+      }
+    }
     // struct ops
-    if (auto newStruct = dyn_cast<CreateStructOp>(op)) {
+    else if (auto newStruct = dyn_cast<CreateStructOp>(op)) {
       // For new values, the "stored value" of the reference is the creation site.
       auto structVal = ReferenceNode::create(newStruct, newStruct);
-      state[newStruct] = structVal;
-      LLVM_DEBUG(llvm::dbgs() << newStruct.getOperationName() << ": " << *state[newStruct] << '\n');
+      state.values[newStruct] = structVal;
+      LLVM_DEBUG(
+          llvm::dbgs() << newStruct.getOperationName() << ": " << *state.values[newStruct] << '\n'
+      );
       // adding this to readVals
       readVals.push_back(newStruct);
     } else if (auto readm = dyn_cast<MemberReadOp>(op)) {
       std::shared_ptr<ReferenceNode> access = getMemberAccessNode(readm);
       Value resVal = readm.getVal();
+      if (access == nullptr) {
+        state.values[resVal] = ReferenceNode::create(resVal, resVal);
+        readVals.push_back(resVal);
+        return;
+      }
       if (!access->hasStoredValue()) {
         access->setCurrentValue(resVal);
       }
@@ -642,13 +949,16 @@ class PassImpl : public llzk::impl::RedundantReadAndWriteEliminationPassBase<Pas
         );
         replacementMap[resVal] = access->getStoredValue();
       } else {
-        state[resVal] = access;
+        state.values[resVal] = access;
         LLVM_DEBUG(llvm::dbgs() << readm.getOperationName() << ": " << *access << '\n');
       }
       readVals.push_back(resVal);
     } else if (auto writem = dyn_cast<MemberWriteOp>(op)) {
       std::shared_ptr<ReferenceNode> member =
           getMemberNode(writem.getComponent(), writem.getMemberNameAttr());
+      if (member == nullptr) {
+        return;
+      }
       // Symbolic and affine offsets may resolve to the current row. Constant
       // nonzero offsets stay distinct from a current-row member write.
       bool invalidatedMayAliasRead = member->invalidateNonIntegerOffsetChildren();
@@ -683,7 +993,7 @@ class PassImpl : public llzk::impl::RedundantReadAndWriteEliminationPassBase<Pas
     // array ops
     else if (auto newArray = dyn_cast<CreateArrayOp>(op)) {
       auto arrayVal = ReferenceNode::create(newArray, newArray);
-      state[newArray] = arrayVal;
+      state.values[newArray] = arrayVal;
 
       // If we're given a constructor, we can instantiate elements using
       // constant indices.
@@ -710,6 +1020,15 @@ class PassImpl : public llzk::impl::RedundantReadAndWriteEliminationPassBase<Pas
     } else if (auto insertarr = dyn_cast<InsertArrayOp>(op)) {
       // Logic is essentially the same as writearr
       doArrayWriteLike(insertarr);
+    } else if (hasUnknownOrNonReadEffect(op)) {
+      state.globals.clear();
+      state.ram.clear();
+      state.ramExact.clear();
+      writeCandidates.clear();
+    } else if (hasReadEffect(op)) {
+      // A read does not invalidate known values, but it can observe a pending
+      // write and therefore prevents removing that write as overwritten.
+      writeCandidates.clear();
     }
   }
 };

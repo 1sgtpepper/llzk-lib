@@ -1,20 +1,29 @@
-//===-- LLZKLoweringUtils.cpp -----------------------------------*- C++ -*-===//
+//===-- LoweringUtils.cpp ---------------------------------------*- C++ -*-===//
 //
-// Shared utility function implementations for LLZK lowering passes.
+// Part of the LLZK Project, under the Apache License v2.0.
+// See LICENSE.txt for license information.
+// Copyright 2026 Project LLZK
+// SPDX-License-Identifier: Apache-2.0
 //
 //===----------------------------------------------------------------------===//
-
-#include "llzk/Transforms/LLZKLoweringUtils.h"
+///
+/// \file
+/// Shared utility function implementations for LLZK lowering passes.
+///
+//===----------------------------------------------------------------------===//
 
 #include "llzk/Dialect/LLZK/IR/Ops.h"
+#include "llzk/Transforms/LoweringUtils.h"
 
 #include <mlir/IR/Block.h>
 #include <mlir/IR/Builders.h>
 #include <mlir/IR/BuiltinOps.h>
 #include <mlir/IR/IRMapping.h>
 #include <mlir/IR/Operation.h>
+#include <mlir/IR/SymbolTable.h>
 #include <mlir/Support/LogicalResult.h>
 
+#include <llvm/ADT/STLExtras.h>
 #include <llvm/ADT/SmallVector.h>
 #include <llvm/Support/raw_ostream.h>
 
@@ -66,12 +75,73 @@ Value rebuildExprInCompute(
   if (auto readOp = val.getDefiningOp<MemberReadOp>()) {
     IRMapping mapper;
     for (Value operand : readOp->getOperands()) {
-      mapper.map(operand, mapValueIntoCompute(operand, computeFunc, builder, memo));
+      Value rebuiltOperand = mapValueIntoCompute(operand, computeFunc, builder, memo);
+      if (!rebuiltOperand) {
+        return nullptr;
+      }
+      mapper.map(operand, rebuiltOperand);
     }
 
     Operation *rebuiltOp = builder.clone(*readOp.getOperation(), mapper);
     assert(rebuiltOp->getNumResults() == 1 && "member reads have exactly one result");
     return memo[val] = rebuiltOp->getResult(0);
+  }
+
+  if (auto callOp = val.getDefiningOp<CallOp>()) {
+    if (!callOp.getMapOperands().empty()) {
+      callOp
+          .emitError(
+              "cannot rebuild affine-instantiated function.call in compute-side auxiliary "
+              "expression"
+          )
+          .report();
+      return nullptr;
+    }
+
+    SymbolTableCollection tables;
+    FailureOr<SymbolLookupResult<FuncDefOp>> target = callOp.getCalleeTarget(tables);
+    if (failed(target)) {
+      return nullptr;
+    }
+    FuncDefOp targetFunc = target->get();
+    bool invalidTarget =
+        (targetFunc.hasAllowConstraintAttr() && !computeFunc.hasAllowConstraintAttr()) ||
+        (targetFunc.hasAllowWitnessAttr() && !computeFunc.hasAllowWitnessAttr()) ||
+        (targetFunc.hasAllowNonNativeFieldOpsAttr() &&
+         !computeFunc.hasAllowNonNativeFieldOpsAttr());
+    if (invalidTarget) {
+      callOp
+          .emitError(
+              "cannot rebuild function.call in compute-side auxiliary expression: callee "
+              "requires attributes not present on the compute function"
+          )
+          .report();
+      return nullptr;
+    }
+
+    SmallVector<Value> rebuiltArgs;
+    rebuiltArgs.reserve(callOp.getArgOperands().size());
+    for (Value arg : callOp.getArgOperands()) {
+      Value rebuiltArg = rebuildExprInCompute(arg, computeFunc, builder, memo);
+      if (!rebuiltArg) {
+        return nullptr;
+      }
+      rebuiltArgs.push_back(rebuiltArg);
+    }
+
+    ArrayRef<Attribute> templateParams;
+    if (ArrayAttr params = callOp.getTemplateParamsAttr()) {
+      templateParams = params.getValue();
+    }
+
+    CallOp rebuilt = builder.create<CallOp>(
+        callOp.getLoc(), callOp.getResultTypes(), callOp.getCalleeAttr(), rebuiltArgs,
+        templateParams
+    );
+    for (auto [oldResult, newResult] : llvm::zip(callOp.getResults(), rebuilt.getResults())) {
+      memo[oldResult] = newResult;
+    }
+    return memo[val];
   }
 
   if (val.getType().isIndex()) {
@@ -82,7 +152,11 @@ Value rebuildExprInCompute(
 
     IRMapping mapper;
     for (Value operand : defOp->getOperands()) {
-      mapper.map(operand, mapValueIntoCompute(operand, computeFunc, builder, memo));
+      Value rebuiltOperand = mapValueIntoCompute(operand, computeFunc, builder, memo);
+      if (!rebuiltOperand) {
+        return nullptr;
+      }
+      mapper.map(operand, rebuiltOperand);
     }
 
     Operation *rebuiltOp = builder.clone(*defOp, mapper);
@@ -97,29 +171,44 @@ Value rebuildExprInCompute(
   if (auto add = val.getDefiningOp<AddFeltOp>()) {
     Value lhs = rebuildExprInCompute(add.getLhs(), computeFunc, builder, memo);
     Value rhs = rebuildExprInCompute(add.getRhs(), computeFunc, builder, memo);
+    if (!lhs || !rhs) {
+      return nullptr;
+    }
     return memo[val] = builder.create<AddFeltOp>(add.getLoc(), add.getType(), lhs, rhs);
   }
 
   if (auto sub = val.getDefiningOp<SubFeltOp>()) {
     Value lhs = rebuildExprInCompute(sub.getLhs(), computeFunc, builder, memo);
     Value rhs = rebuildExprInCompute(sub.getRhs(), computeFunc, builder, memo);
+    if (!lhs || !rhs) {
+      return nullptr;
+    }
     return memo[val] = builder.create<SubFeltOp>(sub.getLoc(), sub.getType(), lhs, rhs);
   }
 
   if (auto mul = val.getDefiningOp<MulFeltOp>()) {
     Value lhs = rebuildExprInCompute(mul.getLhs(), computeFunc, builder, memo);
     Value rhs = rebuildExprInCompute(mul.getRhs(), computeFunc, builder, memo);
+    if (!lhs || !rhs) {
+      return nullptr;
+    }
     return memo[val] = builder.create<MulFeltOp>(mul.getLoc(), mul.getType(), lhs, rhs);
   }
 
   if (auto neg = val.getDefiningOp<NegFeltOp>()) {
     Value operand = rebuildExprInCompute(neg.getOperand(), computeFunc, builder, memo);
+    if (!operand) {
+      return nullptr;
+    }
     return memo[val] = builder.create<NegFeltOp>(neg.getLoc(), neg.getType(), operand);
   }
 
   if (auto div = val.getDefiningOp<DivFeltOp>()) {
     Value lhs = rebuildExprInCompute(div.getLhs(), computeFunc, builder, memo);
     Value rhs = rebuildExprInCompute(div.getRhs(), computeFunc, builder, memo);
+    if (!lhs || !rhs) {
+      return nullptr;
+    }
     return memo[val] = builder.create<DivFeltOp>(div.getLoc(), div.getType(), lhs, rhs);
   }
 
@@ -127,59 +216,52 @@ Value rebuildExprInCompute(
     return memo[val] = builder.create<FeltConstantOp>(c.getLoc(), c.getValueAttr());
   }
 
-  llvm::errs() << "Unhandled op in rebuildExprInCompute: " << val << '\n';
-  llvm_unreachable("Unsupported op kind");
+  if (Operation *op = val.getDefiningOp()) {
+    op->emitError("cannot rebuild unsupported operation in compute-side auxiliary expression")
+        .report();
+  }
+  return nullptr;
 }
 
 LogicalResult checkForAuxMemberConflicts(StructDefOp structDef, StringRef prefix) {
-  bool conflictFound = false;
-
-  structDef.walk([&conflictFound, &prefix](MemberDefOp memberDefOp) {
+  auto res = structDef.walk([&prefix](MemberDefOp memberDefOp) -> WalkResult {
     if (memberDefOp.getName().starts_with(prefix)) {
-      (memberDefOp.emitError() << "Member name '" << memberDefOp.getName()
-                               << "' conflicts with reserved prefix '" << prefix << '\'')
-          .report();
-      conflictFound = true;
+      return memberDefOp.emitOpError().append(
+          "name conflicts with reserved prefix '", prefix, '\''
+      );
     }
+    return WalkResult::advance();
   });
-
-  return failure(conflictFound);
+  return failure(res.wasInterrupted());
 }
 
 LogicalResult checkFuncBodyIsStraightLine(FuncDefOp func, StringRef passName) {
-  StringRef funcName = "function";
-  if (func.isStructCompute()) {
-    funcName = "compute";
-  } else if (func.isStructConstrain()) {
-    funcName = "constrain";
-  }
-
-  auto emitStraightLineError = [passName, funcName](Operation *op) {
-    op->emitError() << passName << " expects a straight-line " << funcName
-                    << " body; run `llzk-flatten` or another control-flow lowering pass first";
+  auto emitStraightLineError = [&func, &passName](Operation *op) -> LogicalResult {
+    StringRef funcName;
+    if (func.isStructCompute()) {
+      funcName = "compute";
+    } else if (func.isStructConstrain()) {
+      funcName = "constrain";
+    } else {
+      funcName = "function";
+    }
+    return op->emitError()
+           << passName << " expects a straight-line " << funcName
+           << " body; run `llzk-flatten` or another control-flow lowering pass first";
   };
 
   Region &body = func.getBody();
   if (!body.hasOneBlock()) {
-    emitStraightLineError(func.getOperation());
-    return failure();
+    return emitStraightLineError(func.getOperation());
   }
 
-  Operation *unsupportedControlFlowOp = nullptr;
-  body.walk([&](Operation *op) {
+  auto res = body.walk([&emitStraightLineError](Operation *op) -> WalkResult {
     if (op->getNumRegions() != 0 || op->getNumSuccessors() != 0) {
-      unsupportedControlFlowOp = op;
-      return WalkResult::interrupt();
+      return emitStraightLineError(op);
     }
     return WalkResult::advance();
   });
-
-  if (!unsupportedControlFlowOp) {
-    return success();
-  }
-
-  emitStraightLineError(unsupportedControlFlowOp);
-  return failure();
+  return failure(res.wasInterrupted());
 }
 
 void replaceSubsequentUsesWith(Value oldVal, Value newVal, Operation *afterOp) {

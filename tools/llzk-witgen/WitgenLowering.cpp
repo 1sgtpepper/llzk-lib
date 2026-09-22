@@ -30,6 +30,7 @@
 #include "llzk/Util/DynamicAPIntHelper.h"
 #include "llzk/Util/Field.h"
 #include "llzk/Util/SymbolHelper.h"
+#include "llzk/Util/Walk.h"
 
 #include <mlir/Conversion/AffineToStandard/AffineToStandard.h>
 #include <mlir/Dialect/Arith/IR/Arith.h>
@@ -126,7 +127,7 @@ static FailureOr<Type> lowerScalarType(MLIRContext *context, Type type, const Fi
 /// Return true iff the type lowers as a scalar SSA value.
 static bool isScalarType(Type type) {
   return isa<felt::FeltType, IndexType>(type) ||
-         (isa<IntegerType>(type) && mlir::cast<IntegerType>(type).getWidth() == 1);
+         (isa<IntegerType>(type) && llvm::cast<IntegerType>(type).getWidth() == 1);
 }
 
 /// Flatten one LLZK type into its ordered lowered leaf types.
@@ -381,7 +382,7 @@ static FailureOr<Value> createZeroMemRef(OpBuilder &builder, Location loc, MemRe
     zero = builder.create<arith::ConstantIndexOp>(loc, 0);
   } else {
     zero = builder.create<arith::ConstantOp>(
-        loc, IntegerAttr::get(mlir::cast<IntegerType>(elementType), 0)
+        loc, IntegerAttr::get(llvm::cast<IntegerType>(elementType), 0)
     );
   }
   auto strides = mlir::computeStrides(memrefType.getShape());
@@ -430,7 +431,7 @@ static FailureOr<Value> createRandomMemRef(
       );
       continue;
     }
-    auto intType = mlir::cast<IntegerType>(elementType);
+    auto intType = llvm::cast<IntegerType>(elementType);
     if (intType.getWidth() == 1) {
       builder.create<memref::StoreOp>(
           loc,
@@ -486,7 +487,7 @@ static FailureOr<LoweredValue> createDefaultValue(
         );
         continue;
       }
-      auto intType = mlir::cast<IntegerType>(leafType);
+      auto intType = llvm::cast<IntegerType>(leafType);
       if (intType.getWidth() == 1) {
         lowered.leaves.push_back(builder.create<arith::ConstantOp>(
             loc, IntegerAttr::get(intType, APInt(1, randomBoolValue(rng)))
@@ -512,7 +513,7 @@ static FailureOr<LoweredValue> createDefaultValue(
       continue;
     }
     lowered.leaves.push_back(builder.create<arith::ConstantOp>(
-        loc, IntegerAttr::get(mlir::cast<IntegerType>(leafType), 0)
+        loc, IntegerAttr::get(llvm::cast<IntegerType>(leafType), 0)
     ));
   }
   return lowered;
@@ -522,7 +523,7 @@ static FailureOr<LoweredValue> createDefaultValue(
 static Value normalizeWideValue(
     OpBuilder &builder, Location loc, Value wideValue, unsigned dstWidth, const Field &field
 ) {
-  auto wideType = mlir::cast<IntegerType>(wideValue.getType());
+  auto wideType = llvm::cast<IntegerType>(wideValue.getType());
   Value modulus = builder.create<arith::ConstantOp>(
       loc, field.getPrimeAttr(builder.getContext(), wideType.getWidth())
   );
@@ -536,7 +537,7 @@ static Value normalizeWideValue(
 static Value normalizeSignedWideValue(
     OpBuilder &builder, Location loc, Value wideValue, unsigned dstWidth, const Field &field
 ) {
-  auto wideType = mlir::cast<IntegerType>(wideValue.getType());
+  auto wideType = llvm::cast<IntegerType>(wideValue.getType());
   Value modulus = builder.create<arith::ConstantOp>(
       loc, field.getPrimeAttr(builder.getContext(), wideType.getWidth())
   );
@@ -570,7 +571,7 @@ lowerFeltToSignedWide(OpBuilder &builder, Location loc, Value operand, const Fie
 
 /// Emit a runtime assertion that a felt divisor is non-zero.
 static void assertNonZeroFelt(OpBuilder &builder, Location loc, Value operand, StringRef message) {
-  auto operandType = mlir::cast<IntegerType>(operand.getType());
+  auto operandType = llvm::cast<IntegerType>(operand.getType());
   Value zero = builder.create<arith::ConstantOp>(loc, IntegerAttr::get(operandType, 0));
   Value isNonZero = builder.create<arith::CmpIOp>(loc, arith::CmpIPredicate::ne, operand, zero);
   builder.create<cf::AssertOp>(loc, isNonZero, message);
@@ -774,7 +775,7 @@ static Value lowerFeltNot(OpBuilder &builder, Location loc, Value operand, const
 
 /// Load one scalar leaf from aggregate storage.
 static Value loadStorageScalar(OpBuilder &builder, Location loc, Value storageLeaf) {
-  auto memrefType = mlir::cast<MemRefType>(storageLeaf.getType());
+  auto memrefType = llvm::cast<MemRefType>(storageLeaf.getType());
   SmallVector<Value> indices;
   indices.reserve(memrefType.getRank());
   for (int64_t dim = 0; dim < memrefType.getRank(); ++dim) {
@@ -785,7 +786,7 @@ static Value loadStorageScalar(OpBuilder &builder, Location loc, Value storageLe
 
 /// Store one scalar value into aggregate storage.
 static void storeStorageScalar(OpBuilder &builder, Location loc, Value scalar, Value storageLeaf) {
-  auto memrefType = mlir::cast<MemRefType>(storageLeaf.getType());
+  auto memrefType = llvm::cast<MemRefType>(storageLeaf.getType());
   SmallVector<Value> indices;
   indices.reserve(memrefType.getRank());
   for (int64_t dim = 0; dim < memrefType.getRank(); ++dim) {
@@ -869,7 +870,7 @@ static LogicalResult writeNamedAggregateValue(
 /// Create a static subview representing one aggregate array element leaf.
 static FailureOr<Value>
 createElementSubview(OpBuilder &builder, Location loc, Value source, ValueRange outerIndices) {
-  auto sourceType = mlir::cast<MemRefType>(source.getType());
+  auto sourceType = llvm::cast<MemRefType>(source.getType());
   SmallVector<OpFoldResult> mixedOffsets;
   SmallVector<OpFoldResult> mixedSizes;
   SmallVector<OpFoldResult> mixedStrides;
@@ -910,7 +911,7 @@ createElementSubview(OpBuilder &builder, Location loc, Value source, ValueRange 
       return failure();
     }
     if (auto attr = llvm::dyn_cast<Attribute>(mixedSizes[*dimIndex])) {
-      desiredShape.push_back(mlir::cast<IntegerAttr>(attr).getInt());
+      desiredShape.push_back(llvm::cast<IntegerAttr>(attr).getInt());
     } else {
       desiredShape.push_back(ShapedType::kDynamic);
     }
@@ -918,7 +919,7 @@ createElementSubview(OpBuilder &builder, Location loc, Value source, ValueRange 
   if (desiredShape.empty()) {
     desiredShape.push_back(1);
   }
-  auto resultType = mlir::cast<MemRefType>(memref::SubViewOp::inferRankReducedResultType(
+  auto resultType = llvm::cast<MemRefType>(memref::SubViewOp::inferRankReducedResultType(
       desiredShape, sourceType, mixedOffsets, mixedSizes, mixedStrides
   ));
   auto op = builder.create<memref::SubViewOp>(
@@ -1498,7 +1499,7 @@ private:
       if (isa<IndexType>((*operand).getType())) {
         lowered = builder.create<arith::IndexCastUIOp>(loc, dstType, *operand);
       } else {
-        auto intType = mlir::cast<IntegerType>((*operand).getType());
+        auto intType = llvm::cast<IntegerType>((*operand).getType());
         if (intType.getWidth() < dstType.getWidth()) {
           lowered = builder.create<arith::ExtUIOp>(loc, dstType, *operand);
         } else if (intType.getWidth() > dstType.getWidth()) {
@@ -1663,7 +1664,7 @@ private:
         return failure();
       }
       auto lowered = readArrayElement(
-          builder, loc, mlir::cast<array::ArrayType>(readArrayOp.getArrRef().getType()),
+          builder, loc, llvm::cast<array::ArrayType>(readArrayOp.getArrRef().getType()),
           *arrayValue, indices
       );
       if (failed(lowered)) {
@@ -1685,7 +1686,7 @@ private:
         return failure();
       }
       return writeArrayElement(
-          builder, loc, mlir::cast<array::ArrayType>(writeArrayOp.getArrRef().getType()),
+          builder, loc, llvm::cast<array::ArrayType>(writeArrayOp.getArrRef().getType()),
           valueMap[writeArrayOp.getArrRef()], indices, *elementValue
       );
     }
@@ -2082,15 +2083,10 @@ public:
     }
 
     SymbolTableCollection tables;
-    SmallVector<function::FuncDefOp> funcs;
-    moduleOp.walk([&](function::FuncDefOp funcOp) {
-      if (funcOp.nameIsConstrain()) {
-        return;
-      }
-      funcs.push_back(funcOp);
-    });
-
     BodyLowerer lowerer(moduleOp, tables, field->get(), options);
+    auto funcs = walkCollect<function::FuncDefOp>(moduleOp, [](auto funcOp) {
+      return !funcOp.nameIsConstrain();
+    });
     for (function::FuncDefOp funcOp : funcs) {
       if (failed(lowerer.lowerFunction(funcOp))) {
         signalPassFailure();
@@ -2108,8 +2104,8 @@ class CreateWitgenEntryPass : public PassWrapper<CreateWitgenEntryPass, Operatio
 public:
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(CreateWitgenEntryPass)
 
-  /// Build the pass for either public-only or full-witness emission.
-  explicit CreateWitgenEntryPass(bool fullWitness = false) : emitFullWitness(fullWitness) {}
+  /// Build the pass for the requested witness-output scope.
+  explicit CreateWitgenEntryPass(OutputScope newOutputScope) : outputScope(newOutputScope) {}
 
   /// Run the pass over one module.
   StringRef getArgument() const final { return "llzk-create-witgen-entry"; }
@@ -2145,10 +2141,8 @@ public:
       return;
     }
 
-    auto outputs = collectOutputBindings(
-        mainDef->get(), tables, computeFunc.getOperation(),
-        emitFullWitness ? OutputScope::FullWitness : OutputScope::Public
-    );
+    auto outputs =
+        collectOutputBindings(mainDef->get(), tables, computeFunc.getOperation(), outputScope);
     if (failed(outputs)) {
       signalPassFailure();
       return;
@@ -2330,7 +2324,7 @@ public:
   }
 
 private:
-  bool emitFullWitness;
+  OutputScope outputScope;
 };
 
 } // namespace
@@ -2351,8 +2345,8 @@ std::unique_ptr<Pass> createLowerComputeToCorePass(const WitgenOptions &options)
   return std::make_unique<LowerComputeToCorePass>(options);
 }
 
-std::unique_ptr<Pass> createCreateWitgenEntryPass(bool emitFullWitness) {
-  return std::make_unique<CreateWitgenEntryPass>(emitFullWitness);
+std::unique_ptr<Pass> createCreateWitgenEntryPass(OutputScope outputScope) {
+  return std::make_unique<CreateWitgenEntryPass>(outputScope);
 }
 
 } // namespace llzk::witgen

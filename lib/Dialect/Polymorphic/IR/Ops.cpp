@@ -41,6 +41,37 @@ FailureOr<TemplateOp> verifyInTemplate(Operation *op) {
                            << "' ancestor";
 }
 
+/// Verify the optional transform-carried name pattern against current parameters.
+///
+/// The pattern is generic discardable metadata, so this owner boundary is the one place that
+/// prevents malformed cardinality or element types from reaching refinement passes.
+LogicalResult TemplateOp::verify() {
+  Attribute rawPattern = (*this)->getDiscardableAttr(TEMPLATE_NAME_PATTERN_ATTR);
+  if (!rawPattern) {
+    return success();
+  }
+
+  auto pattern = llvm::dyn_cast<ArrayAttr>(rawPattern);
+  if (!pattern) {
+    return emitOpError() << "expected '" << TEMPLATE_NAME_PATTERN_ATTR << "' to be an ArrayAttr";
+  }
+
+  size_t parameterCount = numConstOps<TemplateParamOp>();
+  size_t expectedChunkCount = parameterCount + 1;
+  if (pattern.size() != expectedChunkCount) {
+    return emitOpError() << "expected '" << TEMPLATE_NAME_PATTERN_ATTR << "' to contain "
+                         << expectedChunkCount << " literal chunk(s) for " << parameterCount
+                         << " template parameter(s), but found " << pattern.size();
+  }
+  for (size_t index = 0; index < pattern.size(); ++index) {
+    if (!llvm::isa<StringAttr>(pattern[index])) {
+      return emitOpError() << "expected '" << TEMPLATE_NAME_PATTERN_ATTR << "' element " << index
+                           << " to be a StringAttr";
+    }
+  }
+  return success();
+}
+
 //===------------------------------------------------------------------===//
 // TemplateParamOp
 //===------------------------------------------------------------------===//
@@ -118,21 +149,36 @@ LogicalResult TemplateExprOp::verifyRegions() {
            << YieldOp::getOperationName() << '\'';
   }
   // Check or ops with side-effects that are not allowed within `poly.expr`.
-  Operation *illegalOp = nullptr;
-  auto walkRes = block.walk([&illegalOp](Operation *p) {
-    // Note: If side-effect traits are added to ops in the future, this check should
-    // be updated to check for those traits instead of specific op types.
-    if (llvm::isa<global::GlobalRefOpInterface, function::CallOp>(p)) {
-      illegalOp = p;
+  std::optional<InFlightDiagnostic> illegalOpDiagnostic;
+  auto walkRes = block.walk([&illegalOpDiagnostic](Operation *p) {
+    auto emitIllegalOpError = [&illegalOpDiagnostic, p](const Twine &description) {
+      illegalOpDiagnostic.emplace(
+          p->emitOpError() << description << " is not allowed within a `"
+                           << TemplateExprOp::getOperationName() << "` initializer"
+      );
+    };
+    // Note: If memory-effect traits are added to call ops in the future,
+    // this check should be updated to check for those traits as well.
+    if (llvm::isa<function::CallOp>(p)) {
+      emitIllegalOpError(Twine("'") + p->getName().getStringRef() + "' op");
+      return WalkResult::interrupt();
+    }
+    if (llvm::isa<global::GlobalRefOpInterface>(p) && !isMemoryEffectFree(p)) {
+      if (llvm::isa<global::GlobalReadOp>(p)) {
+        emitIllegalOpError(
+            Twine("'") + global::GlobalReadOp::getOperationName() + "' op without `const`"
+        );
+      } else {
+        emitIllegalOpError(Twine("'") + p->getName().getStringRef() + "' op");
+      }
       return WalkResult::interrupt();
     }
     return WalkResult::advance();
   });
   if (walkRes.wasInterrupted()) {
-    assert(illegalOp); // was set in the walk above
-    return illegalOp->emitOpError().append(
-        "is not allowed within a `", TemplateExprOp::getOperationName(), "` initializer"
-    );
+    assert(illegalOpDiagnostic); // set in the walk above
+    illegalOpDiagnostic->report();
+    return failure();
   }
   return success();
 }
@@ -164,15 +210,20 @@ LogicalResult ConstReadOp::verifySymbolUses(SymbolTableCollection &tables) {
   }
   // Ensure the named constant is a parameter of the parent struct
   FlatSymbolRefAttr name = this->getConstNameAttr();
-  auto constParam = getParentRes->getConstNamed<TemplateSymbolBindingOpInterface>(name);
-  if (!constParam) {
+  auto bindingOp = getParentRes->getConstNamed<TemplateSymbolBindingOpInterface>(name);
+  if (!bindingOp) {
     return this->emitOpError()
         .append("references unknown symbol \"", name, '"')
         .attachNote(getParentRes->getLoc())
         .append("must reference a param or expr of this template");
   }
   // Ensure the type of the constant read matches the type of the referenced parameter (if any).
-  if (std::optional<Type> paramType = constParam.getTypeOpt()) {
+  if (std::optional<Type> paramType = bindingOp.getTypeOpt()) {
+    if (llvm::isa<TypeVarType>(*paramType)) {
+      return this->emitOpError().append(
+          "cannot target \"", name, "\" because it is a type variable"
+      );
+    }
     if (this->getType() != *paramType) {
       return this->emitOpError().append(
           "type ", this->getType(), " does not match constant param type ", *paramType
@@ -206,6 +257,25 @@ LogicalResult ApplyMapOp::verify() {
   }
 
   return success();
+}
+
+OpFoldResult ApplyMapOp::fold(FoldAdaptor adaptor) {
+  SmallVector<Attribute> operands;
+  operands.reserve(adaptor.getMapOperands().size());
+  for (Attribute attr : adaptor.getMapOperands()) {
+    if (!attr) {
+      return {};
+    }
+    operands.push_back(attr);
+  }
+
+  SmallVector<Attribute> result;
+  bool hasPoison = false;
+  auto folded = getMap().constantFold(operands, result, &hasPoison);
+  if (failed(folded) || hasPoison || result.size() != 1) {
+    return {};
+  }
+  return result.front();
 }
 
 //===------------------------------------------------------------------===//

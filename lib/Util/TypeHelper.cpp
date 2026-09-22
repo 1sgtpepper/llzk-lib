@@ -22,6 +22,7 @@
 #include "llzk/Util/Debug.h"
 #include "llzk/Util/StreamHelper.h"
 #include "llzk/Util/SymbolHelper.h"
+#include "llzk/Util/Walk.h"
 
 #include <llvm/ADT/STLExtras.h>
 #include <llvm/ADT/SmallVector.h>
@@ -64,9 +65,12 @@ template <typename Derived, typename ResultType> struct LLZKTypeSwitch {
         .template Case<ArrayType>([this](auto t) {
       return static_cast<Derived *>(this)->caseArray(t);
     })
-        .template Case<PodType>([this](auto t) { return static_cast<Derived *>(this)->casePod(t); })
         .template Case<StructType>([this](auto t) {
       return static_cast<Derived *>(this)->caseStruct(t);
+    }).template Case<PodType>([this](auto t) {
+      return static_cast<Derived *>(this)->casePod(t);
+    }).template Case<NoneType>([this](auto t) {
+      return static_cast<Derived *>(this)->caseNone(t);
     }).Default([this](Type t) {
       if (t.isSignlessInteger(1)) {
         return static_cast<Derived *>(this)->caseBool(cast<IntegerType>(t));
@@ -98,14 +102,12 @@ void BuildShortTypeString::appendSymRef(SymbolRefAttr sa) {
 }
 
 BuildShortTypeString &BuildShortTypeString::append(Type type) {
-  size_t position = ret.size();
-  (void)position; // tell compiler it's intentionally unused in builds without assertions
-
   struct Impl : LLZKTypeSwitch<Impl, void> {
     BuildShortTypeString &outer;
     Impl(BuildShortTypeString &outerRef) : outer(outerRef) {}
 
     void caseInvalid(Type) { outer.ss << "!INVALID"; }
+    void caseNone(NoneType) { outer.ss << 'n'; }
     void caseBool(IntegerType) { outer.ss << 'b'; }
     void caseIndex(IndexType) { outer.ss << 'i'; }
     void caseFelt(FeltType) { outer.ss << 'f'; }
@@ -140,29 +142,27 @@ BuildShortTypeString &BuildShortTypeString::append(Type type) {
     }
   };
   Impl(*this).match(type);
-
-  assert(
-      ret.find(PLACEHOLDER, position) == std::string::npos &&
-      "formatting a Type should not produce the 'PLACEHOLDER' char"
-  );
   return *this;
 }
 
 BuildShortTypeString &BuildShortTypeString::append(Attribute a) {
-  // Special case for inserting the `PLACEHOLDER`
-  if (a == nullptr) {
-    ss << PLACEHOLDER;
-    return *this;
-  }
-
-  size_t position = ret.size();
-  (void)position; // tell compiler it's intentionally unused in builds without assertions
+  assert(a && "BuildShortTypeString requires non-null attributes");
 
   // Adapted from AsmPrinter::Impl::printAttributeImpl()
   if (auto ia = llvm::dyn_cast<IntegerAttr>(a)) {
     Type ty = ia.getType();
     bool isUnsigned = ty.isUnsignedInteger() || ty.isSignlessInteger(1);
     ia.getValue().print(ss, !isUnsigned);
+  } else if (auto fa = llvm::dyn_cast<FeltConstAttr>(a)) {
+    ss << "f<";
+    fa.getValue().print(ss, false);
+    if (StringAttr fieldName = fa.getFieldName()) {
+      // The byte length prevents field delimiters from colliding with adjacent parameters. For
+      // example, `a>_f<36:b` followed by 37 and `a` followed by `b>_f<37` would otherwise render
+      // the same concatenated short string.
+      ss << ':' << fieldName.getValue().size() << ':' << fieldName.getValue();
+    }
+    ss << '>';
   } else if (auto sra = llvm::dyn_cast<SymbolRefAttr>(a)) {
     appendSymRef(sra);
   } else if (auto ta = llvm::dyn_cast<TypeAttr>(a)) {
@@ -180,46 +180,12 @@ BuildShortTypeString &BuildShortTypeString::append(Attribute a) {
     // All valid/legal cases must be covered above
     assertValidAttrForParamOfType(a);
   }
-  assert(
-      ret.find(PLACEHOLDER, position) == std::string::npos &&
-      "formatting a non-null Attribute should not produce the 'PLACEHOLDER' char"
-  );
   return *this;
 }
 
 BuildShortTypeString &BuildShortTypeString::append(ArrayRef<Attribute> attrs) {
   llvm::interleave(attrs, ss, [this](Attribute a) { append(a); }, "_");
   return *this;
-}
-
-std::string BuildShortTypeString::from(const std::string &base, ArrayRef<Attribute> attrs) {
-  BuildShortTypeString bldr;
-
-  bldr.ret.reserve(base.size() + attrs.size()); // reserve minimum space required
-
-  // First handle replacements of PLACEHOLDER
-  const auto *END = attrs.end();
-  const auto *IT = attrs.begin();
-  {
-    size_t start = 0;
-    for (size_t pos; (pos = base.find(PLACEHOLDER, start)) != std::string::npos; start = pos + 1) {
-      // Append original up to the PLACEHOLDER
-      bldr.ret.append(base, start, pos - start);
-      // Append the formatted Attribute
-      assert(IT != END && "must have an Attribute for every 'PLACEHOLDER' char");
-      bldr.append(*IT++);
-    }
-    // Append remaining suffix of the original
-    bldr.ret.append(base, start, base.size() - start);
-  }
-
-  // Append any remaining Attributes
-  if (IT != END) {
-    bldr.ss << '_';
-    bldr.append(ArrayRef(IT, END));
-  }
-
-  return bldr.ret;
 }
 
 namespace {
@@ -320,6 +286,7 @@ class AllowedTypes {
   bool no_int : 1 = false;
   bool no_struct_params : 1 = false;
   bool must_be_column : 1 = false;
+  bool type_var_free : 1 = false;
 
   ColumnCheckData columnCheck;
 
@@ -376,6 +343,12 @@ public:
     return *this;
   }
 
+  constexpr AllowedTypes &typeVarFree() {
+    no_var = true;
+    type_var_free = true;
+    return *this;
+  }
+
   constexpr AllowedTypes &onlyInt() {
     no_int = false;
     return noFelt().noString().noStruct().noArray().noPod().noVar();
@@ -406,7 +379,7 @@ public:
       if (!ArrayDimensionTypes::matches(a)) {
         ArrayDimensionTypes::reportInvalid(emitError, a, "Array dimension");
         success = false;
-      } else if (no_var && !llvm::isa_and_present<IntegerAttr>(a)) {
+      } else if (no_var && !type_var_free && !llvm::isa_and_present<IntegerAttr>(a)) {
         TypeList<IntegerAttr>::reportInvalid(emitError, a, "Concrete array dimension");
         success = false;
       } else if (failed(verifyAffineMapAttrType(emitError, a))) {
@@ -419,8 +392,9 @@ public:
   }
 
   bool isValidArrayElemTypeImpl(Type type) {
-    // ArrayType element can be any valid type sans ArrayType itself.
-    return !llvm::isa<ArrayType>(type) && isValidTypeImpl(type);
+    // ArrayType element can be any valid type sans ArrayType itself. Additionally, `NoneType`
+    // is permitted for shape-only arrays that carry no element payload.
+    return llvm::isa<NoneType>(type) || (!llvm::isa<ArrayType>(type) && isValidTypeImpl(type));
   }
 
   bool isValidArrayTypeImpl(
@@ -470,6 +444,11 @@ public:
       if (!StructParamTypes::matches(p)) {
         StructParamTypes::reportInvalid(emitError, p, "Struct parameter");
         success = false;
+      } else if (IntegerAttr i = llvm::dyn_cast<IntegerAttr>(p); i && isDynamic(i)) {
+        if (emitError) {
+          emitError().append("wildcard '?' is not allowed as struct type parameter").report();
+        }
+        success = false;
       } else if (TypeAttr tyAttr = llvm::dyn_cast<TypeAttr>(p)) {
         if (!isValidTypeImpl(tyAttr.getValue())) {
           if (emitError) {
@@ -477,7 +456,12 @@ public:
           }
           success = false;
         }
-      } else if (no_var && !llvm::isa<IntegerAttr, FeltConstAttr>(p)) {
+      } else if (type_var_free && llvm::isa<SymbolRefAttr>(p)) {
+        TypeList<IntegerAttr, FeltConstAttr, TypeAttr, AffineMapAttr>::reportInvalid(
+            emitError, p, "Type-variable-free struct parameter"
+        );
+        success = false;
+      } else if (no_var && !type_var_free && !llvm::isa<IntegerAttr, FeltConstAttr>(p)) {
         TypeList<IntegerAttr>::reportInvalid(emitError, p, "Concrete struct parameter");
         success = false;
       } else if (failed(verifyAffineMapAttrType(emitError, p))) {
@@ -521,6 +505,7 @@ bool AllowedTypes::isValidTypeImpl(Type type) {
       }
       return !outer.no_struct && outer.areValidStructTypeParams(t.getParams());
     }
+    bool caseNone(NoneType) { return false; }
     bool caseInvalid(Type) { return false; }
   };
   return Impl(*this).match(type);
@@ -553,25 +538,46 @@ bool isConcreteType(Type type, bool allowStructParams) {
   return AllowedTypes().noVar().noStructParams(!allowStructParams).isValidTypeImpl(type);
 }
 
-bool hasAffineMapAttr(Type type) {
-  bool encountered = false;
-  type.walk([&](AffineMapAttr) {
-    encountered = true;
-    return WalkResult::interrupt();
-  });
-  return encountered;
+bool isTypeVarFreeType(Type type) { return AllowedTypes().typeVarFree().isValidTypeImpl(type); }
+
+AttrConcreteness classifyAttrConcreteness(Attribute attr, bool allowStructParams) {
+  if (auto tyAttr = llvm::dyn_cast<TypeAttr>(attr)) {
+    return isConcreteType(tyAttr.getValue(), allowStructParams) ? AttrConcreteness::Concrete
+                                                                : AttrConcreteness::NonConcrete;
+  }
+  if (auto intAttr = llvm::dyn_cast<IntegerAttr>(attr)) {
+    return isDynamic(intAttr) ? AttrConcreteness::Wildcard : AttrConcreteness::Concrete;
+  }
+  return llvm::isa<FeltConstAttr>(attr) ? AttrConcreteness::Concrete
+                                        : AttrConcreteness::NonConcrete;
 }
+
+bool hasAffineMapAttr(Type type) { return walkContains<AffineMapAttr>(type); }
 
 bool isDynamic(IntegerAttr intAttr) { return ShapedType::isDynamic(fromAPInt(intAttr.getValue())); }
 
+ArrayType flattenArrayElementType(ArrayType outerArrTy, Type elementType) {
+  SmallVector<Attribute> mergedDims(outerArrTy.getDimensionSizes());
+  while (ArrayType nestedArrTy = llvm::dyn_cast<ArrayType>(elementType)) {
+    llvm::append_range(mergedDims, nestedArrTy.getDimensionSizes());
+    elementType = nestedArrTy.getElementType();
+  }
+  return ArrayType::get(elementType, mergedDims);
+}
+
 uint64_t computeEmitEqCardinality(Type type) {
   struct Impl : LLZKTypeSwitch<Impl, uint64_t> {
+    uint64_t caseNone(NoneType) { return 0; }
     uint64_t caseBool(IntegerType) { return 1; }
     uint64_t caseIndex(IndexType) { return 1; }
     uint64_t caseFelt(FeltType) { return 1; }
     uint64_t caseArray(ArrayType t) {
+      uint64_t elementCardinality = computeEmitEqCardinality(t.getElementType());
+      if (elementCardinality == 0) {
+        return 0;
+      }
       int64_t n = t.getNumElements();
-      return llzk::checkedCast<uint64_t>(n) * computeEmitEqCardinality(t.getElementType());
+      return llzk::checkedCast<uint64_t>(n) * elementCardinality;
     }
     uint64_t caseStruct(StructType) { llvm_unreachable("not a valid EmitEq type"); }
     uint64_t casePod(PodType t) {
@@ -605,16 +611,22 @@ struct UnifierImpl {
   ArrayRef<StringRef> rhsRevPrefix;
   UnificationMap *unifications;
   AffineInstantiations *affineToIntTracker;
+  bool *staticLhsWithWildcardRhsTracker;
   // This optional function can be used to provide an exception to the standard unification
   // rules and return a true/success result when it otherwise may not.
   llvm::function_ref<bool(Type oldTy, Type newTy)> overrideSuccess;
 
   UnifierImpl(UnificationMap *unificationMap, ArrayRef<StringRef> rhsReversePrefix = {})
       : rhsRevPrefix(rhsReversePrefix), unifications(unificationMap), affineToIntTracker(nullptr),
-        overrideSuccess(nullptr) {}
+        staticLhsWithWildcardRhsTracker(nullptr), overrideSuccess(nullptr) {}
 
   UnifierImpl &trackAffineToInt(AffineInstantiations *tracker) {
     this->affineToIntTracker = tracker;
+    return *this;
+  }
+
+  UnifierImpl &trackStaticLhsWithWildcardRhs(bool *tracker) {
+    this->staticLhsWithWildcardRhsTracker = tracker;
     return *this;
   }
 
@@ -829,16 +841,6 @@ private:
         }
       }
     }
-    // If either side is a SymbolRefAttr, assume they unify because either flattening or a pass with
-    // a more involved value analysis is required to check if they are actually the same value.
-    if (SymbolRefAttr lhsSymRef = llvm::dyn_cast<SymbolRefAttr>(lhsAttr)) {
-      track(Side::LHS, lhsSymRef, rhsAttr);
-      return true;
-    }
-    if (SymbolRefAttr rhsSymRef = llvm::dyn_cast<SymbolRefAttr>(rhsAttr)) {
-      track(Side::RHS, rhsSymRef, lhsAttr);
-      return true;
-    }
     // If either side is ShapedType::kDynamic then, similarly to Symbols, assume they unify.
     // NOTE: Dynamic array dimensions (i.e. '?') are allowed in LLZK but should generally be
     // restricted to scenarios where it can be replaced with a concrete value during the flattening
@@ -863,9 +865,22 @@ private:
       }
       if (IntegerAttr rhsIntAttr = dyn_cast_if_dynamic(rhsAttr)) {
         if (is_const_like(lhsAttr)) {
+          if (staticLhsWithWildcardRhsTracker) {
+            *staticLhsWithWildcardRhsTracker = true;
+          }
           return true;
         }
       }
+    }
+    // If either side is a SymbolRefAttr, assume they unify because either flattening or a pass with
+    // a more involved value analysis is required to check if they are actually the same value.
+    if (SymbolRefAttr lhsSymRef = llvm::dyn_cast<SymbolRefAttr>(lhsAttr)) {
+      track(Side::LHS, lhsSymRef, rhsAttr);
+      return true;
+    }
+    if (SymbolRefAttr rhsSymRef = llvm::dyn_cast<SymbolRefAttr>(rhsAttr)) {
+      track(Side::RHS, rhsSymRef, lhsAttr);
+      return true;
     }
     // If both are type refs, check for unification of the types.
     if (TypeAttr lhsTy = llvm::dyn_cast<TypeAttr>(lhsAttr)) {
@@ -932,19 +947,26 @@ bool isMoreConcreteUnification(
 ) {
   UnificationMap unifications;
   AffineInstantiations affineInstantiations;
+  bool staticLhsBecomesWildcardRhs = false;
   // Run type unification with the addition that affine map can become integer in the new type.
   if (!UnifierImpl(&unifications)
            .trackAffineToInt(&affineInstantiations)
+           .trackStaticLhsWithWildcardRhs(&staticLhsBecomesWildcardRhs)
            .withOverrides(knownOldToNew)
            .typesUnify(oldTy, newTy)) {
     return false;
   }
 
-  // If either map contains RHS-keyed mappings then the old type is "more concrete" than the new.
-  // In the UnificationMap, a RHS key would indicate that the new type contains a SymbolRef (i.e.
-  // the "least concrete" attribute kind) where the old type contained any other attribute. In the
-  // AffineInstantiations map, a RHS key would indicate that the new type contains an AffineMapAttr
-  // where the old type contains an IntegerAttr.
+  // If a statically-known LHS value becomes a wildcard in the RHS, it is not more concrete.
+  if (staticLhsBecomesWildcardRhs) {
+    return false;
+  }
+
+  // If either map contains RHS-keyed mappings then the old type is more concrete than the new. In
+  // the UnificationMap, a RHS key would indicate that the new type contains a SymbolRef (i.e. the
+  // second-least concrete attribute kind, only to wildcard which was checked above) where the old
+  // type contained some other attribute. In the AffineInstantiations map, a RHS key would indicate
+  // that the new type contains an AffineMapAttr where the old type contains an IntegerAttr.
   auto entryIsRHS = [](const auto &entry) { return entry.first.second == Side::RHS; };
   return !llvm::any_of(unifications, entryIsRHS) && !llvm::any_of(affineInstantiations, entryIsRHS);
 }
@@ -958,9 +980,20 @@ FailureOr<IntegerAttr> forceIntType(IntegerAttr attr, EmitErrorFn emitError) {
   APInt value = attr.getValue();
   auto compare = value.getBitWidth() <=> IndexType::kInternalStorageBitWidth;
   if (compare < 0) {
-    value = value.zext(IndexType::kInternalStorageBitWidth);
+    value = attr.getType().isSignedInteger() ? value.sext(IndexType::kInternalStorageBitWidth)
+                                             : value.zext(IndexType::kInternalStorageBitWidth);
   } else if (compare > 0) {
-    return emitError().append("value is too large for `index` type: ", debug::toStringOne(value));
+    // The source integer type may be wider than index storage even when its value is
+    // representable. Signed values need a signed representability check: getActiveBits()
+    // treats their two's-complement representation as unsigned, rejecting negative values
+    // and accepting some out-of-range positive values after truncation.
+    bool isRepresentable = attr.getType().isSignedInteger()
+                               ? value.isSignedIntN(IndexType::kInternalStorageBitWidth)
+                               : value.isIntN(IndexType::kInternalStorageBitWidth);
+    if (!isRepresentable) {
+      return emitError().append("value is too large for `index` type: ", debug::toStringOne(value));
+    }
+    value = value.trunc(IndexType::kInternalStorageBitWidth);
   }
   return IntegerAttr::get(IndexType::get(attr.getContext()), value);
 }

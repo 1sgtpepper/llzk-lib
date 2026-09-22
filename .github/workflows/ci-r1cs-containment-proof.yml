@@ -1,0 +1,168 @@
+name: R1CS containment omission proof
+
+on:
+  push:
+    branches:
+      - repro/r1cs-containment-proof-main
+      - repro/r1cs-containment-proof-release
+
+permissions:
+  contents: read
+
+jobs:
+  prove:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - uses: cachix/install-nix-action@d1ca217b388ee87b2507a9a93bf01368bde7cec2
+        with:
+          install_url: https://releases.nixos.org/nix/nix-2.23.3/install
+          github_access_token: "${{ secrets.GITHUB_TOKEN }}"
+
+      - name: Set Git credentials
+        run: |
+          git config --global 'url.https://api@github.com/'.insteadOf 'https://github.com/'
+          git config --global 'url.https://ssh@github.com/'.insteadOf 'ssh://git@github.com/'
+          git config --global 'url.https://git@github.com/'.insteadOf 'git@github.com:'
+
+      - uses: cachix/cachix-action@v17
+        with:
+          name: veridise-public
+          authToken: '${{ secrets.CACHIX_PUBLIC_TOKEN }}'
+
+      - name: Build exact source and prove the emitted relation
+        env:
+          WORK: ${{ runner.temp }}/llzk-r1cs-containment
+        run: |
+          set -euo pipefail
+          case "$GITHUB_REF_NAME" in
+            repro/r1cs-containment-proof-main)
+              SOURCE_COMMIT=d1198631dbe9906cb149d1ddcd0dd1ca071dae6b
+              ;;
+            repro/r1cs-containment-proof-release)
+              SOURCE_COMMIT=b1b8d52ca4e6114cdd9a80417f96342a9f9e8b6c
+              ;;
+            *)
+              echo "unexpected proof branch: $GITHUB_REF_NAME" >&2
+              exit 1
+              ;;
+          esac
+
+          SOURCE="$RUNNER_TEMP/llzk-source"
+          mkdir -p "$SOURCE" "$WORK"
+          git rev-parse "$SOURCE_COMMIT^{commit}"
+          git archive "$SOURCE_COMMIT" | tar -x -C "$SOURCE"
+          cd "$SOURCE"
+          nix --print-build-logs build '.#debugGCC'
+          BIN="$SOURCE/result/bin"
+
+          awk -v outdir="$WORK" '
+            /^\/\/--- candidate\.llzk$/ { out = outdir "/candidate.llzk"; next }
+            /^\/\/--- control\.llzk$/ { out = outdir "/control.llzk"; next }
+            out != "" { print > out }
+          ' "$GITHUB_WORKSPACE/test/Transforms/R1CSLowering/containment_relation_drop.llzk"
+
+          printf '[2]\n' > "$WORK/input.json"
+          printf '%s\n' \
+            'allowed values: {0, 1}' \
+            'chosen input: x = 2' \
+            'source containment: 2 in {0, 1} -> false' \
+            'source equality: out = x -> true' \
+            'emitted R1CS: only out = x -> true' \
+            > "$WORK/source-oracle.txt"
+
+          if diff -u "$WORK/control.llzk" "$WORK/candidate.llzk" > "$WORK/source.diff"; then
+            echo 'candidate and control unexpectedly have identical source' >&2
+            exit 1
+          else
+            test "$?" -eq 1
+          fi
+          grep -F 'constrain.in' "$WORK/candidate.llzk"
+
+          "$BIN/llzk-opt" --verify-each -llzk-full-poly-lowering \
+            "$WORK/candidate.llzk" -o "$WORK/candidate.poly.mlir"
+          "$BIN/llzk-opt" --verify-each -llzk-full-poly-lowering \
+            "$WORK/control.llzk" -o "$WORK/control.poly.mlir"
+          grep -F 'constrain.in' "$WORK/candidate.poly.mlir"
+
+          "$BIN/llzk-opt" --verify-each -llzk-full-r1cs-lowering \
+            "$WORK/candidate.llzk" -o "$WORK/candidate.r1cs.mlir"
+          "$BIN/llzk-opt" --verify-each -llzk-full-r1cs-lowering \
+            "$WORK/control.llzk" -o "$WORK/control.r1cs.mlir"
+          test "$(grep -c 'r1cs.constrain' "$WORK/candidate.r1cs.mlir")" -eq 1
+          test "$(grep -c 'r1cs.constrain' "$WORK/control.r1cs.mlir")" -eq 1
+          grep -F 'r1cs.constrain' "$WORK/candidate.r1cs.mlir"
+
+          "$BIN/llzk-witgen" "$WORK/candidate.llzk" \
+            --inputs "$WORK/input.json" --output-scope=full-witness \
+            --output-wtns "$WORK/candidate.wtns" > "$WORK/candidate.witness.json"
+          grep -F '"arg0": "2"' "$WORK/candidate.witness.json"
+          grep -F '"out": "2"' "$WORK/candidate.witness.json"
+
+          PRIME=21888242871839275222246405745257275088548364400416034343698204186575808495617
+          "$BIN/llzk-translate" --r1cs-to-binary --r1cs-prime="$PRIME" \
+            "$WORK/candidate.r1cs.mlir" -o "$WORK/candidate.r1cs"
+          "$BIN/llzk-translate" --r1cs-to-binary --r1cs-prime="$PRIME" \
+            "$WORK/control.r1cs.mlir" -o "$WORK/control.r1cs"
+          cmp -s "$WORK/candidate.r1cs" "$WORK/control.r1cs"
+          sha256sum "$WORK/candidate.r1cs" "$WORK/control.r1cs" \
+            "$WORK/candidate.wtns" > "$WORK/artifact.sha256"
+
+      - name: Install downstream prover
+        env:
+          WORK: ${{ runner.temp }}/llzk-r1cs-containment
+        run: npm install --prefix "$WORK/npm" --no-save snarkjs@0.7.5
+
+      - name: Generate and verify Groth16 proof
+        env:
+          WORK: ${{ runner.temp }}/llzk-r1cs-containment
+        run: |
+          set -euo pipefail
+          SNARKJS="$WORK/npm/node_modules/.bin/snarkjs"
+          "$SNARKJS" r1cs info "$WORK/candidate.r1cs"
+          "$SNARKJS" powersoftau new bn128 8 "$WORK/pot_0000.ptau" -v
+          "$SNARKJS" powersoftau contribute "$WORK/pot_0000.ptau" \
+            "$WORK/pot_0001.ptau" --name='CI contribution' -e='llzk-containment-proof'
+          "$SNARKJS" powersoftau prepare phase2 "$WORK/pot_0001.ptau" \
+            "$WORK/pot_final.ptau" -v
+          "$SNARKJS" groth16 setup "$WORK/candidate.r1cs" "$WORK/pot_final.ptau" \
+            "$WORK/circuit_0000.zkey"
+          "$SNARKJS" zkey contribute "$WORK/circuit_0000.zkey" \
+            "$WORK/circuit_final.zkey" --name='CI contribution' -e='llzk-containment-zkey'
+          "$SNARKJS" zkey export verificationkey "$WORK/circuit_final.zkey" \
+            "$WORK/verification_key.json"
+          "$SNARKJS" groth16 prove "$WORK/circuit_final.zkey" \
+            "$WORK/candidate.wtns" "$WORK/proof.json" "$WORK/public.json"
+          "$SNARKJS" groth16 verify "$WORK/verification_key.json" \
+            "$WORK/public.json" "$WORK/proof.json"
+          test -s "$WORK/proof.json"
+          test -s "$WORK/public.json"
+
+      - name: Upload proof artifacts
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: r1cs-containment-proof-${{ github.run_id }}
+          path: |
+            ${{ runner.temp }}/llzk-r1cs-containment/candidate.llzk
+            ${{ runner.temp }}/llzk-r1cs-containment/control.llzk
+            ${{ runner.temp }}/llzk-r1cs-containment/source.diff
+            ${{ runner.temp }}/llzk-r1cs-containment/source-oracle.txt
+            ${{ runner.temp }}/llzk-r1cs-containment/candidate.poly.mlir
+            ${{ runner.temp }}/llzk-r1cs-containment/control.poly.mlir
+            ${{ runner.temp }}/llzk-r1cs-containment/candidate.r1cs.mlir
+            ${{ runner.temp }}/llzk-r1cs-containment/control.r1cs.mlir
+            ${{ runner.temp }}/llzk-r1cs-containment/candidate.r1cs
+            ${{ runner.temp }}/llzk-r1cs-containment/control.r1cs
+            ${{ runner.temp }}/llzk-r1cs-containment/input.json
+            ${{ runner.temp }}/llzk-r1cs-containment/candidate.wtns
+            ${{ runner.temp }}/llzk-r1cs-containment/candidate.witness.json
+            ${{ runner.temp }}/llzk-r1cs-containment/artifact.sha256
+            ${{ runner.temp }}/llzk-r1cs-containment/proof.json
+            ${{ runner.temp }}/llzk-r1cs-containment/public.json
+            ${{ runner.temp }}/llzk-r1cs-containment/verification_key.json

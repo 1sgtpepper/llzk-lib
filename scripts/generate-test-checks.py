@@ -19,6 +19,9 @@ within the file. By default this script will also try to insert string
 substitution blocks for all SSA value names. If --source file is specified, the
 script will attempt to insert the generated CHECKs to the source file by looking
 for line positions matched by --source_delim_regex.
+Generated attribute-definition checks stay in the source segment that contains
+their definitions, preserving their order when the source is split into
+multiple segments.
 
 The script is designed to make adding checks to a test case fast, it is *not*
 designed to be authoritative about what constitutes a good test!
@@ -50,8 +53,12 @@ SSA_RE = re.compile(SSA_RE_STR)
 SSA_RESULTS_STR = r'\s*(%' + SSA_RE_STR + r')(:[0-9]+)*(\s*,\s*(%' + SSA_RE_STR + r'))*\s*='
 SSA_RESULTS_RE = re.compile(SSA_RESULTS_STR)
 
-# Regex matching attributes
-ATTR_RE_STR = r'(#[a-zA-Z._-][a-zA-Z0-9._-]*)'
+# Regex matching complete attribute-like tokens without consuming inline bodies.
+# Only exact tokens registered by an attribute definition are substituted.
+ATTR_RE_STR = (
+    r'(#[a-zA-Z._-][a-zA-Z0-9._-]*)'
+    r'(?![a-zA-Z0-9._$-]|<)'
+)
 ATTR_RE = re.compile(ATTR_RE_STR)
 
 # Regex matching the left-hand side of an attribute definition
@@ -145,11 +152,9 @@ class AttributeNamer:
         self.used_attribute_names.add(attribute_name)
         return attribute_name
 
-    # Get the saved substitution name for the given attribute name. If no name
-    # has been generated for the given attribute yet, the source attribute name
-    # itself is returned.
+    # Get the saved substitution name for the given attribute name, if any.
     def get_name(self, source_attribute_name):
-        return self.map[source_attribute_name] if source_attribute_name in self.map else '?'
+        return self.map.get(source_attribute_name)
 
 # Return the number of SSA results in a line of type
 #   %0, %1, ... = ...
@@ -208,12 +213,13 @@ def process_source_lines(source_lines, note, args):
         source_segments[-1].append(line + "\n")
     return source_segments
 
-def process_attribute_definition(line, attribute_namer, output):
+# Keep the definition check in the output segment containing its source definition.
+def process_attribute_definition(line, attribute_namer, output_segment):
     m = ATTR_DEF_RE.match(line)
     if m:
         attribute_name = attribute_namer.generate_name(m.group(1))
         line = '// CHECK: #[[' + attribute_name + ':[0-9a-zA-Z_\\.]+]] =' + line[len(m.group(0)):] + '\n'
-        output.write(line)
+        output_segment.append(line)
     return bool(m)
 
 def process_attribute_references(line, attribute_namer):
@@ -223,7 +229,12 @@ def process_attribute_references(line, attribute_namer):
     for component in components:
         m = ATTR_RE.match(component)
         if m:
-            output_line += '#[[' + attribute_namer.get_name(m.group(1)) + ']]'
+            # Preserve inline and unknown tokens; substitute only registered aliases.
+            attribute_name = attribute_namer.get_name(m.group(1))
+            if attribute_name is None:
+                output_line += m.group(1)
+            else:
+                output_line += '#[[' + attribute_name + ']]'
             output_line += component[len(m.group()):]
         else:
             output_line += component
@@ -260,9 +271,8 @@ def main():
     parser.add_argument(
         "--source",
         type=str,
-        help="Print each CHECK chunk before each delimeter line in the source"
-        "file, respectively. The delimeter lines are identified by "
-        "--source_delim_regex.",
+        help="Print each CHECK chunk before the corresponding delimiter in the source "
+        "file. Delimiters are identified by --source_delim_regex.",
     )
     parser.add_argument("--source_delim_regex", type=str, default="func @")
     parser.add_argument(
@@ -325,7 +335,7 @@ def main():
             continue
 
         # Check if this is an attribute definition and process it
-        if process_attribute_definition(input_line, attribute_namer, output):
+        if process_attribute_definition(input_line, attribute_namer, output_segments[-1]):
             continue
 
         # Lines with blocks begin with a ^. These lines have a trailing comment

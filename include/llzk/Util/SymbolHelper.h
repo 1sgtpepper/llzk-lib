@@ -10,9 +10,12 @@
 #pragma once
 
 #include "llzk/Util/SymbolLookup.h"
+#include "llzk/Util/TypeHelper.h"
 
 #include <mlir/Interfaces/CallInterfaces.h>
 
+#include <cassert>
+#include <optional>
 #include <ranges>
 
 namespace llzk {
@@ -28,7 +31,11 @@ class FuncDefOp;
 } // namespace function
 namespace polymorphic {
 class TemplateOp;
+class TemplateParamOp;
 } // namespace polymorphic
+
+/// Remove nested builtin modules whose body is empty, preserving the root module.
+void eraseEmptyNestedModules(mlir::ModuleOp rootModule);
 
 llvm::SmallVector<mlir::StringRef> getNames(mlir::SymbolRefAttr ref);
 llvm::SmallVector<mlir::FlatSymbolRefAttr> getPieces(mlir::SymbolRefAttr ref);
@@ -99,6 +106,19 @@ mlir::FailureOr<mlir::SymbolRefAttr>
 getPathFromRoot(component::MemberDefOp &to, mlir::ModuleOp *foundRoot = nullptr);
 mlir::FailureOr<mlir::SymbolRefAttr>
 getPathFromRoot(function::FuncDefOp &to, mlir::ModuleOp *foundRoot = nullptr);
+
+/// Return the full name for this symbol from the root module, including any surrounding symbol
+/// table names. If `requireParent` is false and the symbol is not nested in any operation, return
+/// its flat symbol name directly.
+inline mlir::SymbolRefAttr
+getFullyQualifiedName(mlir::SymbolOpInterface symbol, bool requireParent = true) {
+  if (!requireParent && symbol.getOperation()->getParentOp() == nullptr) {
+    return mlir::SymbolRefAttr::get(symbol.getOperation());
+  }
+  mlir::FailureOr<mlir::SymbolRefAttr> res = getPathFromRoot(symbol);
+  assert(mlir::succeeded(res));
+  return res.value();
+}
 
 /// @brief With include statements, there may be root modules nested within
 /// other root modules. This function resolves the topmost root module.
@@ -195,17 +215,53 @@ inline mlir::FailureOr<SymbolLookupResult<T>> resolveCallable(mlir::CallOpInterf
 mlir::FailureOr<polymorphic::TemplateOp>
 getConstResolutionTemplate(mlir::SymbolTableCollection &tables, mlir::Operation *origin);
 
+/// Ensure that a SymbolRef template argument resolves to a binding in the enclosing template or
+/// to a constant global.
+mlir::LogicalResult verifyTemplateParamSymbol(
+    mlir::SymbolTableCollection &tables, mlir::SymbolRefAttr symbol, mlir::Operation *origin
+);
+
+/// Verify one explicit template argument against its declared parameter restriction.
+/// Symbol references are resolved in the context of `origin`; diagnostics are emitted on it.
+mlir::LogicalResult verifyTemplateParamValueCompatibility(
+    mlir::Operation *origin, mlir::Attribute value, polymorphic::TemplateParamOp targetParam
+);
+
+/// Verify each explicit template argument against the corresponding declared parameter restriction.
+/// The argument list and parameter declarations must be non-empty and have equal length.
+mlir::LogicalResult verifyTemplateParamValuesCompatibility(
+    mlir::Operation *origin, mlir::ArrayAttr explicitParams,
+    llvm::iterator_range<mlir::Region::op_iterator<polymorphic::TemplateParamOp>> targetParamDefs
+);
+
+/// Verify that each template parameter value provided in the `origin` op is consistent with
+/// the value inferred for the target `TemplateParamOp` in the given `UnificationMap`. The
+/// `UnificationMap` is expected to contain the unification results of this op against the
+/// target function type signature.
+///
+/// Pre-condition assertions:
+///   - `!isNullOrEmpty(getTemplateParamsAttr())`
+///   - `getTemplateParamsAttr().size() == llvm::range_size(targetParamDefs)`
+mlir::LogicalResult verifyTemplateParamsMatchInferred(
+    mlir::Operation *origin, mlir::ArrayAttr explicitParams,
+    llvm::iterator_range<mlir::Region::op_iterator<polymorphic::TemplateParamOp>> targetParamDefs,
+    const UnificationMap &unifications
+);
+
 /// Ensure that the given symbol (that is used as a parameter of the given type) can be resolved.
+/// If `requiredParamType` is provided, any resolved template symbol must have exactly that type.
 mlir::LogicalResult verifyParamOfType(
     mlir::SymbolTableCollection &tables, mlir::SymbolRefAttr param, mlir::Type structOrArrayType,
-    mlir::Operation *origin
+    mlir::Operation *origin, std::optional<mlir::Type> requiredParamType = std::nullopt
 );
 
 /// Ensure that any symbols that appear within the given attributes (that are parameters of the
-/// given type) can be resolved.
+/// given type) can be resolved. If `requiredParamType` is provided, any resolved template symbols
+/// must have exactly that type.
 mlir::LogicalResult verifyParamsOfType(
     mlir::SymbolTableCollection &tables, mlir::ArrayRef<mlir::Attribute> tyParams,
-    mlir::Type structOrArrayType, mlir::Operation *origin
+    mlir::Type structOrArrayType, mlir::Operation *origin,
+    std::optional<mlir::Type> requiredParamType = std::nullopt
 );
 
 /// Ensure that all symbols used within the type can be resolved.

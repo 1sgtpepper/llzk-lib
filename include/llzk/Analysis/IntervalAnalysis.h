@@ -21,6 +21,7 @@
 #include "llzk/Dialect/Felt/IR/Ops.h"
 #include "llzk/Dialect/Function/IR/Ops.h"
 #include "llzk/Dialect/Global/IR/Ops.h"
+#include "llzk/Dialect/POD/IR/Ops.h"
 #include "llzk/Dialect/Polymorphic/IR/Ops.h"
 #include "llzk/Util/Compare.h"
 #include "llzk/Util/Field.h"
@@ -429,7 +430,8 @@ private:
   getGeneralizedDecompInterval(mlir::Operation *baseOp, mlir::Value lhs, mlir::Value rhs);
 
   bool isReadOp(mlir::Operation *op) const {
-    return llvm::isa<component::MemberReadOp, polymorphic::ConstReadOp, array::ReadArrayOp>(op);
+    return llvm::isa<
+        component::MemberReadOp, polymorphic::ConstReadOp, array::ReadArrayOp, pod::ReadPodOp>(op);
   }
 
   bool isDefinitionOp(mlir::Operation *op) const {
@@ -524,6 +526,7 @@ public:
   /// @param am A module-level analysis manager. This analysis manager needs to originate
   /// from a module-level analysis (i.e., for the `mod` module) so that analyses
   /// for other constraints can be queried via the getChildAnalysis method.
+  /// @param ctx
   /// @return
   static mlir::FailureOr<StructIntervals> compute(
       mlir::ModuleOp mod, component::StructDefOp s, mlir::DataFlowSolver &solver,

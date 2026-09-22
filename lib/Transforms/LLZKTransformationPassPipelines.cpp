@@ -47,15 +47,25 @@ void buildFullStructInliningPipelineImpl(
   if (flattening.cleanupMode == polymorphic::FlatteningCleanupMode::Unspecified) {
     flattening.cleanupMode = polymorphic::FlatteningCleanupMode::MainAsRoot;
   }
+
+  // Circom-style loops are commonly emitted as scf.while operations whose bounds are
+  // field constants converted to index values. Normalize the loops and fold those
+  // conversions before flattening so the unroller can determine their trip counts.
+  pm.addPass(createWhileToForPass());
+  pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(polymorphic::createFlatteningPass(flattening));
 
-  // Run array-to-scalar first because it can split arrays within a pod
-  // but pod-to-scalar cannot split pods within an array.
-  if (arrayToScalar) {
-    pm.addPass(array::createArrayToScalarPass());
-  }
+  // Unrolling substitutes constant induction variables into array accesses. Materialize
+  // those constant indices before array-to-scalar requires them to be attributes.
+  pm.addPass(mlir::createCanonicalizerPass());
+
+  // Run pod-to-scalar first because it is able to split `pod.type` used as array element type
+  // (into parallel arrays) so it should be able to fully remove all `pod.type` usages.
   if (podToScalar) {
     pm.addPass(pod::createPodToScalarPass());
+  }
+  if (arrayToScalar) {
+    pm.addPass(array::createArrayToScalarPass());
   }
   // Canonicalize to remove known-condition `scf.if` regions so struct inlining
   // can link "@compute" calls to struct members.
@@ -96,10 +106,20 @@ void buildRemoveUnnecessaryOpsAndDefsPipeline(mlir::OpPassManager &pm) {
 
 void buildProductProgramPipeline(OpPassManager &pm) {
   pm.addPass(createComputeConstrainToProductPass());
-  pm.addPass(createFuseProductLoopsPass());
+  pm.addPass(createFuseProductControlFlowPass());
 }
 
 void buildFullStructInliningPipeline(OpPassManager &pm, const FullStructInliningConfig &cfg) {
+  buildFullStructInliningPipelineImpl(
+      pm, cfg.flattening, cfg.arrayToScalar, cfg.podToScalar,
+      component::createInlineStructsPass(cfg.inlining)
+  );
+}
+
+void buildFullInliningPipeline(OpPassManager &pm, const FullStructInliningConfig &cfg) {
+  // Inline free-function bodies before struct cleanup so their struct uses
+  // participate in flattening and keep the referenced definitions alive.
+  pm.addPass(createInlineFreeFunctionsPass());
   buildFullStructInliningPipelineImpl(
       pm, cfg.flattening, cfg.arrayToScalar, cfg.podToScalar,
       component::createInlineStructsPass(cfg.inlining)
@@ -146,6 +166,22 @@ void registerTransformationPassPipelines() {
       "leave behind parameterized templates that later cause `llzk-inline-structs` to crash.",
       [](OpPassManager &pm, const FullStructInliningOptions &opts) {
     auto flattening = opts.flattening.getValue().createOptions();
+    buildFullStructInliningPipelineImpl(
+        pm, flattening->createPassOptions(), opts.arrayToScalar, opts.podToScalar,
+        createConfiguredPass(opts.inlining)
+    );
+  }
+  );
+
+  PassPipelineRegistration<FullStructInliningOptions>(
+      "llzk-full-inlining",
+      "Run free function inlining, flattening, and struct inlining. This is the "
+      "recommended pipeline before any downstream pass that does not understand `function.call`.",
+      [](OpPassManager &pm, const FullStructInliningOptions &opts) {
+    auto flattening = opts.flattening.getValue().createOptions();
+    // Inline free-function bodies before struct cleanup so their struct uses
+    // participate in flattening and keep the referenced definitions alive.
+    pm.addPass(createInlineFreeFunctionsPass());
     buildFullStructInliningPipelineImpl(
         pm, flattening->createPassOptions(), opts.arrayToScalar, opts.podToScalar,
         createConfiguredPass(opts.inlining)

@@ -26,6 +26,7 @@ include "llzk/Dialect/Verif/IR/OpInterfaces.td"
 include "mlir/IR/OpAsmInterface.td"
 include "mlir/IR/RegionKindInterface.td"
 include "mlir/IR/SymbolInterfaces.td"
+include "mlir/Interfaces/SideEffectInterfaces.td"
 
 class StructDialectOp<string mnemonic, list<Trait> traits = []>
     : Op<StructDialect, mnemonic, traits>;
@@ -247,7 +248,10 @@ def LLZK_MemberDefOp
   let assemblyFormat = [{ $sym_name `:` $type attr-dict }];
 
   let extraClassDeclaration = [{
+    /// Returns whether this member is a public output.
     inline bool hasPublicAttr() { return getOperation()->hasAttr(llzk::PublicAttr::name); }
+
+    /// Adds or removes the unit `llzk.pub` attribute according to `newValue`.
     void setPublicAttr(bool newValue = true);
   }];
 
@@ -274,7 +278,8 @@ class MemberRefOpBase<string mnemonic, list<Trait> traits = []>
 }
 
 def LLZK_MemberReadOp
-    : MemberRefOpBase<"readm", [VerifySizesForMultiAffineOps<1>]> {
+    : MemberRefOpBase<"readm", [VerifySizesForMultiAffineOps<1>,
+                                MemoryEffects<[MemRead]>]> {
   let summary = "read value of a struct member";
   let description = [{
     This operation reads the value of a named member in a struct/component.
@@ -343,7 +348,8 @@ def LLZK_MemberReadOp
   let hasVerifier = 1;
 }
 
-def LLZK_MemberWriteOp : MemberRefOpBase<"writem", [WitnessGen]> {
+def LLZK_MemberWriteOp
+    : MemberRefOpBase<"writem", [WitnessGen, MemoryEffects<[MemWrite]>]> {
   let summary = "write value to a struct member";
   let description = [{
     This operation writes a value to a named member in a struct/component.

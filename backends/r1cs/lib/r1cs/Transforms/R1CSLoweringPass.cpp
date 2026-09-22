@@ -21,8 +21,11 @@
 #include "llzk/Dialect/Constrain/IR/Ops.h"
 #include "llzk/Dialect/Felt/IR/Ops.h"
 #include "llzk/Dialect/Function/IR/Ops.h"
-#include "llzk/Transforms/LLZKLoweringUtils.h"
+#include "llzk/Transforms/LoweringUtils.h"
+#include "llzk/Util/Constants.h"
 #include "llzk/Util/DynamicAPIntHelper.h"
+#include "llzk/Util/SymbolHelper.h"
+#include "llzk/Util/Walk.h"
 
 #include <mlir/IR/BuiltinOps.h>
 
@@ -63,11 +66,9 @@ struct LinearCombination {
     if (coeff == 0) {
       return;
     }
-
-    if (!terms.contains(v)) {
-      terms[v] = coeff;
-    } else {
-      terms[v] += coeff;
+    auto [it, inserted] = terms.try_emplace(v, coeff);
+    if (!inserted) {
+      it->second += coeff;
     }
   }
 
@@ -105,13 +106,12 @@ struct LinearCombination {
     LinearCombination result(*this);
 
     for (const auto &kv : other.terms) {
-      if (!result.terms.contains(kv.first)) {
-        result.terms[kv.first] = kv.second;
-      } else {
-        result.terms[kv.first] = result.terms[kv.first] + kv.second;
+      auto [it, inserted] = result.terms.try_emplace(kv.first, kv.second);
+      if (!inserted) {
+        it->second += kv.second;
       }
     }
-    result.constant = result.constant + other.constant;
+    result.constant += other.constant;
     return result;
   }
 
@@ -229,8 +229,7 @@ class PassImpl : public r1cs::impl::R1CSLoweringPassBase<PassImpl> {
   //
   // Resulting expression is R1CS-compatible (i.e., one multiplication per constraint)
   // and can be directly used in EmitEqualityOp or as operands of other expressions.
-
-  void getPostOrder(Value root, SmallVectorImpl<Value> &postOrder) {
+  static void getPostOrder(Value root, SmallVectorImpl<Value> &postOrder) {
     SmallVector<Value, 16> worklist;
     DenseSet<Value> visited;
 
@@ -239,14 +238,16 @@ class PassImpl : public r1cs::impl::R1CSLoweringPassBase<PassImpl> {
     while (!worklist.empty()) {
       Value val = worklist.back();
 
-      if (visited.contains(val)) {
+      if (!visited.insert(val).second) {
         worklist.pop_back();
         postOrder.push_back(val);
         continue;
       }
 
-      visited.insert(val);
       if (Operation *op = val.getDefiningOp()) {
+        if (llvm::isa<MemberReadOp>(op)) {
+          continue;
+        }
         for (Value operand : op->getOperands()) {
           worklist.push_back(operand);
         }
@@ -286,6 +287,11 @@ class PassImpl : public r1cs::impl::R1CSLoweringPassBase<PassImpl> {
     if (auto it = rewrites.find(root); it != rewrites.end()) {
       return it->second;
     }
+
+    // Use an insertion guard to restore the builder's insertion point after this function.
+    // This avoids invalid references that could occur in the caller after executing this
+    // function since `handleAddOrSub` sets the insertion point to an op that it may erase.
+    OpBuilder::InsertionGuard guard(builder);
 
     SmallVector<Value, 16> postOrder;
     getPostOrder(root, postOrder);
@@ -411,13 +417,9 @@ class PassImpl : public r1cs::impl::R1CSLoweringPassBase<PassImpl> {
     return rewrites[root];
   }
 
-  R1CSConstraint lowerPolyToR1CS(Value poly) {
-    // Worklist-based post-order traversal
-    SmallVector<Value, 16> worklist = {poly};
+  static R1CSConstraint lowerPolyToR1CS(Value poly) {
     DenseMap<Value, R1CSConstraint> constraintMap;
-    DenseSet<Value> visited;
     SmallVector<Value, 16> postorder;
-
     getPostOrder(poly, postorder);
 
     // Bottom-up construction of R1CSConstraints
@@ -457,7 +459,7 @@ class PassImpl : public r1cs::impl::R1CSLoweringPassBase<PassImpl> {
     return constraintMap[poly];
   }
 
-  R1CSConstraint
+  static R1CSConstraint
   lowerEquationToR1CS(Value p, Value q, const DenseMap<Value, unsigned> &degreeMemo) {
     R1CSConstraint pconst = lowerPolyToR1CS(p);
     R1CSConstraint qconst = lowerPolyToR1CS(q);
@@ -479,22 +481,41 @@ class PassImpl : public r1cs::impl::R1CSLoweringPassBase<PassImpl> {
     return qconst.add(pconst.negated());
   }
 
-  Value emitLinearCombination(
+  FailureOr<Value> emitLinearCombination(
       const LinearCombination &lc, IRMapping &valueMap, DenseMap<StringRef, Value> &memberMap,
-      OpBuilder &builder, Location loc
+      Value selfVal, OpBuilder &builder, Location loc
   ) {
     Value result = nullptr;
 
-    auto getMapping = [&valueMap, &memberMap, this](const Value &v) {
+    auto getMapping = [&valueMap, &memberMap, selfVal, this](const Value &v) -> FailureOr<Value> {
       if (!valueMap.contains(v)) {
         Operation *op = v.getDefiningOp();
         if (auto read = dyn_cast<MemberReadOp>(op)) {
+          if (read.getComponent() != selfVal) {
+            signalPassFailure();
+            return read.emitError(
+                "R1CS lowering only supports member reads rooted at the current constrain "
+                "self value"
+            );
+          }
+          // Table offsets and map operands select a different row.  Those
+          // accesses must not be lowered to the current-row R1CS signal.
+          if (read.getTableOffset() || !read.getMapOperands().empty()) {
+            signalPassFailure();
+            return read.emitError(
+                "R1CS lowering does not support member reads with table offsets "
+                "or map operands"
+            );
+          }
           auto memberVal = memberMap.find(read.getMemberName());
-          assert(memberVal != memberMap.end() && "Member read not associated with a value");
+          if (memberVal == memberMap.end()) {
+            signalPassFailure();
+            return read.emitError("member read is not associated with an R1CS signal");
+          }
           return memberVal->second;
         }
-        op->emitError("Value not mapped in R1CS lowering").report();
         signalPassFailure();
+        return op->emitError("Value not mapped in R1CS lowering");
       }
       return valueMap.lookup(v);
     };
@@ -509,10 +530,13 @@ class PassImpl : public r1cs::impl::R1CSLoweringPassBase<PassImpl> {
     }
 
     for (const auto &[val, coeff] : lc.terms) {
-      Value mapped = getMapping(val);
+      FailureOr<Value> mapped = getMapping(val);
+      if (failed(mapped)) {
+        return failure();
+      }
       // %tmp = r1cs.to_linear %mapped
       // most of these will be removed with CSE passes
-      Value lin = builder.create<r1cs::ToLinearOp>(loc, linearTy, mapped);
+      Value lin = builder.create<r1cs::ToLinearOp>(loc, linearTy, *mapped);
       // %scaled = r1cs.mul_const %lin, coeff
       Value scaled = coeff == 1 ? lin
                                 : builder.create<r1cs::MulConstOp>(
@@ -539,61 +563,59 @@ class PassImpl : public r1cs::impl::R1CSLoweringPassBase<PassImpl> {
     return result;
   }
 
-  void buildAndEmitR1CS(
+  LogicalResult buildAndEmitR1CS(
       ModuleOp &moduleOp, StructDefOp &structDef, FuncDefOp &constrainFunc,
       DenseMap<Value, unsigned> &degreeMemo
   ) {
-    SmallVector<R1CSConstraint, 16> constraints;
-    constrainFunc.walk([&](EmitEqualityOp eqOp) {
-      OpBuilder builder(eqOp);
-      R1CSConstraint eq = lowerEquationToR1CS(eqOp.getLhs(), eqOp.getRhs(), degreeMemo);
-      constraints.push_back(eq);
-    });
-    moduleOp->setAttr(LANG_ATTR_NAME, StringAttr::get(moduleOp.getContext(), "r1cs"));
-    Block &entryBlock = constrainFunc.getBody().front();
-    IRMapping valueMap;
-    Location loc = structDef.getLoc();
-    OpBuilder topBuilder(moduleOp.getBodyRegion());
-
     // Validate struct members are felt and prepare signal types for circuit result types
     bool hasPublicSignals = false;
     for (auto member : structDef.getMemberDefs()) {
       if (!llvm::isa<FeltType>(member.getType())) {
-        member.emitError("Only felt members are supported as output signals").report();
         signalPassFailure();
-        return;
+        return member.emitError("Only felt members are supported as output signals");
       }
       if (member.isPublic()) {
         hasPublicSignals = true;
       }
     }
-
     if (!hasPublicSignals) {
-      structDef.emitError("Struct should have at least one public output").report();
+      structDef.emitWarning("Struct should have at least one public output").report();
     }
-    llvm::SmallVector<mlir::NamedAttribute> argAttrPairs;
 
-    for (auto [i, arg] : llvm::enumerate(llvm::drop_begin(entryBlock.getArguments(), 1))) {
+    Region &constrainFuncBody = constrainFunc.getBody();
+
+    SmallVector<R1CSConstraint> constraints =
+        walkCollectMapped<EmitEqualityOp>(constrainFuncBody, [&degreeMemo](auto eqOp) {
+      return lowerEquationToR1CS(eqOp.getLhs(), eqOp.getRhs(), degreeMemo);
+    });
+
+    OpBuilder topBuilder(moduleOp.getBodyRegion());
+    moduleOp->setAttr(LANG_ATTR_NAME, topBuilder.getStringAttr("r1cs"));
+
+    IRMapping valueMap;
+    Location loc = structDef.getLoc();
+    llvm::SmallVector<mlir::NamedAttribute> argAttrPairs;
+    auto inputArgs = llvm::enumerate(llvm::drop_begin(constrainFuncBody.front().getArguments()));
+    for (auto [i, arg] : inputArgs) {
       if (constrainFunc.hasArgPublicAttr(i + 1)) {
         auto key = topBuilder.getStringAttr(std::to_string(i));
         auto value = r1cs::PublicAttr::get(moduleOp.getContext());
         argAttrPairs.emplace_back(key, value);
       }
     }
-    auto dictAttr = topBuilder.getDictionaryAttr(argAttrPairs);
-    auto circuit =
-        topBuilder.create<r1cs::CircuitDefOp>(loc, structDef.getSymName().str(), dictAttr);
+    auto circuit = topBuilder.create<r1cs::CircuitDefOp>(
+        loc, structDef.getSymName().str(), topBuilder.getDictionaryAttr(argAttrPairs)
+    );
 
     Block *circuitBlock = circuit.addEntryBlock();
 
     OpBuilder bodyBuilder = OpBuilder::atBlockEnd(circuitBlock);
 
     // Step 3: Validate that all parameters to the constrain function are felt types
-    for (auto [i, arg] : llvm::enumerate(llvm::drop_begin(entryBlock.getArguments(), 1))) {
+    for (auto [i, arg] : inputArgs) {
       if (!llvm::isa<FeltType>(arg.getType())) {
-        constrainFunc.emitOpError("All input arguments must be of felt type").report();
         signalPassFailure();
-        return;
+        return constrainFunc.emitOpError("All input arguments must be of felt type");
       }
       auto blockArg = circuitBlock->addArgument(bodyBuilder.getType<r1cs::SignalType>(), loc);
       valueMap.map(arg, blockArg);
@@ -602,7 +624,9 @@ class PassImpl : public r1cs::impl::R1CSLoweringPassBase<PassImpl> {
     // Step 4: For every struct member we a) create a signaldefop and b) add that signal to our
     // outputs
     DenseMap<StringRef, Value> memberSignalMap;
-    uint32_t signalDefCntr = 0;
+    // Label 0 belongs to the implicit constant-one wire in the binary R1CS
+    // format. Keep source signal labels compatible with binary export.
+    uint32_t signalDefCntr = 1;
     for (auto member : structDef.getMemberDefs()) {
       r1cs::PublicAttr pubAttr;
       if (member.hasPublicAttr()) {
@@ -615,14 +639,28 @@ class PassImpl : public r1cs::impl::R1CSLoweringPassBase<PassImpl> {
       signalDefCntr++;
       memberSignalMap.insert({member.getName(), defOp.getOut()});
     }
-    DenseMap<std::tuple<Value, Value, StringRef>, Value> binaryOpCache;
+
     // Step 5: Emit the R1CS constraints
+    Value selfVal = constrainFunc.getSelfValueFromConstrain();
     for (const R1CSConstraint &constraint : constraints) {
-      Value aVal = emitLinearCombination(constraint.a, valueMap, memberSignalMap, bodyBuilder, loc);
-      Value bVal = emitLinearCombination(constraint.b, valueMap, memberSignalMap, bodyBuilder, loc);
-      Value cVal = emitLinearCombination(constraint.c, valueMap, memberSignalMap, bodyBuilder, loc);
-      bodyBuilder.create<r1cs::ConstrainOp>(loc, aVal, bVal, cVal);
+      FailureOr<Value> aVal =
+          emitLinearCombination(constraint.a, valueMap, memberSignalMap, selfVal, bodyBuilder, loc);
+      if (failed(aVal)) {
+        return failure();
+      }
+      FailureOr<Value> bVal =
+          emitLinearCombination(constraint.b, valueMap, memberSignalMap, selfVal, bodyBuilder, loc);
+      if (failed(bVal)) {
+        return failure();
+      }
+      FailureOr<Value> cVal =
+          emitLinearCombination(constraint.c, valueMap, memberSignalMap, selfVal, bodyBuilder, loc);
+      if (failed(cVal)) {
+        return failure();
+      }
+      bodyBuilder.create<r1cs::ConstrainOp>(loc, *aVal, *bVal, *cVal);
     }
+    return success();
   }
 
   void getDependentDialects(mlir::DialectRegistry &registry) const override {
@@ -671,7 +709,6 @@ class PassImpl : public r1cs::impl::R1CSLoweringPassBase<PassImpl> {
 
         // If both sides are degree 2, isolate one side
         if (degLhs == 2 && degRhs == 2) {
-          builder.setInsertionPoint(eqOp);
           std::string auxName = R1CS_AUXILIARY_MEMBER_PREFIX + std::to_string(auxCounter++);
           MemberDefOp auxMember = addAuxMember(structDef, auxName, lhs.getType());
           Value aux = builder.create<MemberReadOp>(
@@ -696,14 +733,25 @@ class PassImpl : public r1cs::impl::R1CSLoweringPassBase<PassImpl> {
 
       for (const auto &assign : auxAssignments) {
         Value expr = rebuildExprInCompute(assign.computedValue, computeFunc, builder, rebuildMemo);
+        if (!expr) {
+          signalPassFailure();
+          return;
+        }
         builder.create<MemberWriteOp>(
             assign.computedValue.getLoc(), selfVal, builder.getStringAttr(assign.auxMemberName),
             expr
         );
       }
-      buildAndEmitR1CS(moduleOp, structDef, constrainFunc, degreeMemo);
+      if (failed(buildAndEmitR1CS(moduleOp, structDef, constrainFunc, degreeMemo))) {
+        signalPassFailure();
+        return;
+      }
       structDef.erase();
     });
+
+    // Avoid collisions between newly-created circuit symbols and namespace modules
+    // that became empty when their structs were lowered.
+    eraseEmptyNestedModules(moduleOp);
 
     // Remove `llzk.main` attribute because all structs were replaced with `r1cs.circuit` ops.
     moduleOp->removeAttr(MAIN_ATTR_NAME);

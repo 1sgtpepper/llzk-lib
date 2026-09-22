@@ -17,6 +17,8 @@
 
 #pragma once
 
+#include "llzk/Util/Walk.h"
+
 #include <mlir/Analysis/DataLayoutAnalysis.h>
 #include <mlir/Dialect/SCF/IR/SCF.h>
 #include <mlir/IR/Builders.h>
@@ -59,8 +61,9 @@ struct SpecializedSROA : mlir::PassWrapper<SpecializedSROA<AllocOpTy>, mlir::Ope
 
       mlir::OpBuilder builder(&region.front(), region.front().begin());
 
-      mlir::SmallVector<mlir::DestructurableAllocationOpInterface> allocators;
-      region.walk([&](AllocOpTy allocator) { allocators.emplace_back(allocator); });
+      auto allocators = walkCollectMapped<AllocOpTy>(region, [](auto allocator) {
+        return mlir::DestructurableAllocationOpInterface(allocator);
+      });
 
       if (mlir::succeeded(mlir::tryToDestructureMemorySlots(allocators, builder, dataLayout))) {
         changed = true;
@@ -108,12 +111,12 @@ struct SpecializedMem2Reg
 
       mlir::OpBuilder builder(&region.front(), region.front().begin());
 
-      mlir::SmallVector<mlir::PromotableAllocationOpInterface> allocators;
-      region.walk([&](AllocOpTy allocator) { allocators.emplace_back(allocator); });
+      auto allocators = walkCollectMapped<AllocOpTy>(region, [](auto allocator) {
+        return mlir::PromotableAllocationOpInterface(allocator);
+      });
 
-      if (mlir::succeeded(
-              mlir::tryToPromoteMemorySlots(allocators, builder, dataLayout, dominance)
-          )) {
+      auto promoteRes = mlir::tryToPromoteMemorySlots(allocators, builder, dataLayout, dominance);
+      if (mlir::succeeded(promoteRes)) {
         changed = true;
       }
     }
@@ -144,8 +147,10 @@ public:
   llvm::StringRef getDescription() const override { return "Remove dead values"; }
 
   void runOnOperation() final {
+    mlir::Operation *scopeOp = this->getOperation();
+
     // Pre-pass: add a trivial block to empty `else` regions so upstream pass code can handle them.
-    getOperation()->walk([](mlir::scf::IfOp ifOp) {
+    scopeOp->walk([](mlir::scf::IfOp ifOp) {
       if (ifOp.getElseRegion().empty()) {
         mlir::Block &elseBlock = ifOp.getElseRegion().emplaceBlock();
         mlir::OpBuilder builder(ifOp.getContext());
@@ -154,14 +159,14 @@ public:
       }
     });
 
-    mlir::OpPassManager pm(getOperation()->getName().getStringRef());
+    mlir::OpPassManager pm(scopeOp->getName().getStringRef());
     pm.addPass(mlir::createRemoveDeadValuesPass());
-    if (mlir::failed(runPipeline(pm, getOperation()))) {
+    if (mlir::failed(runPipeline(pm, scopeOp))) {
       signalPassFailure();
     }
 
     // Post-pass: remove trivial `else` blocks that are left behind.
-    getOperation()->walk([](mlir::scf::IfOp ifOp) {
+    scopeOp->walk([](mlir::scf::IfOp ifOp) {
       if (ifOp.getResults().empty()) {
         mlir::Region &elseRegion = ifOp.getElseRegion();
         if (!llvm::hasSingleElement(elseRegion)) {

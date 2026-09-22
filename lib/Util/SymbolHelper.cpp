@@ -15,14 +15,19 @@
 #include "llzk/Util/SymbolHelper.h"
 
 #include "llzk/Dialect/Array/IR/Ops.h"
+#include "llzk/Dialect/Felt/IR/Attrs.h"
+#include "llzk/Dialect/Felt/IR/Types.h"
 #include "llzk/Dialect/Function/IR/Ops.h"
 #include "llzk/Dialect/Global/IR/Ops.h"
+#include "llzk/Dialect/Polymorphic/IR/Ops.h"
 #include "llzk/Dialect/Polymorphic/IR/Types.h"
 #include "llzk/Dialect/Verif/IR/Ops.h"
 #include "llzk/Util/SymbolLookup.h"
 #include "llzk/Util/SymbolTableLLZK.h"
+#include "llzk/Util/TypeHelper.h"
 
 #include <mlir/IR/BuiltinOps.h>
+#include <mlir/IR/BuiltinTypes.h>
 #include <mlir/IR/Operation.h>
 
 #include <llvm/ADT/TypeSwitch.h>
@@ -36,9 +41,28 @@ namespace llzk {
 
 using namespace array;
 using namespace component;
+using namespace felt;
 using namespace function;
 using namespace global;
 using namespace polymorphic;
+
+void eraseEmptyNestedModules(ModuleOp rootModule) {
+  SmallVector<ModuleOp> emptyModules;
+  rootModule.walk<WalkOrder::PostOrder>([&](ModuleOp module) {
+    if (module == rootModule) {
+      return;
+    }
+    Region &region = module.getBodyRegion();
+    if (region.empty() || region.front().empty()) { // ModuleOp has the SingleBlock trait.
+      emptyModules.push_back(module);
+    }
+  });
+
+  for (ModuleOp module : emptyModules) {
+    LLVM_DEBUG(llvm::dbgs() << "Removing empty module " << module.getName() << '\n');
+    module.erase();
+  }
+}
 
 namespace {
 
@@ -209,6 +233,28 @@ public:
   }
 };
 
+LogicalResult verifyTemplateSymbolType(
+    TemplateSymbolBindingOpInterface binding, SymbolRefAttr param, Type parameterizedType,
+    Operation *origin, std::optional<Type> requiredParamType
+) {
+  if (requiredParamType) {
+    std::optional<Type> actualType = binding.getTypeOpt();
+    if (!actualType) {
+      return origin->emitError().append(
+          "ref \"", param, "\" in type ", parameterizedType, " refers to a '", binding->getName(),
+          "' that must have type ", *requiredParamType
+      );
+    }
+    if (*actualType != *requiredParamType) {
+      return origin->emitError().append(
+          "ref \"", param, "\" in type ", parameterizedType, " refers to a '", binding->getName(),
+          "' with type ", *actualType, " but expected ", *requiredParamType
+      );
+    }
+  }
+  return success();
+}
+
 } // namespace
 
 llvm::SmallVector<StringRef> getNames(SymbolRefAttr ref) {
@@ -364,8 +410,170 @@ FailureOr<TemplateOp> getConstResolutionTemplate(SymbolTableCollection &tables, 
   return getParentOfType<TemplateOp>(origin);
 }
 
+LogicalResult
+verifyTemplateParamSymbol(SymbolTableCollection &tables, SymbolRefAttr symbol, Operation *origin) {
+  if (symbol.getNestedReferences().empty()) {
+    FailureOr<TemplateOp> parent = getConstResolutionTemplate(tables, origin);
+    if (failed(parent)) {
+      return failure();
+    }
+    if (*parent &&
+        parent->getConstNamed<TemplateSymbolBindingOpInterface>(symbol.getRootReference())) {
+      return success();
+    }
+  }
+
+  auto lookupRes = lookupTopLevelSymbol(tables, symbol, origin);
+  if (failed(lookupRes)) {
+    return failure();
+  }
+  auto global = llvm::dyn_cast<GlobalDefOp>(lookupRes->get());
+  if (!global) {
+    return origin->emitOpError() << "template argument '" << symbol << "' refers to a '"
+                                 << lookupRes->get()->getName() << "' which is not allowed";
+  }
+  if (!global.isConstant()) {
+    return origin->emitOpError() << "template argument '" << symbol
+                                 << "' refers to a global that is not marked as 'const'";
+  }
+  return success();
+}
+
+LogicalResult verifyTemplateParamValueCompatibility(
+    Operation *origin, Attribute value, TemplateParamOp targetParam
+) {
+  std::optional<Type> declaredType = targetParam.getTypeOpt();
+
+  if (auto intAttr = llvm::dyn_cast<IntegerAttr>(value); intAttr && isDynamic(intAttr)) {
+    if (!declaredType || !llvm::isa<TypeVarType>(*declaredType)) {
+      auto diag = origin->emitOpError().append(
+          "wildcard `?` can only be used for template parameters with `!poly.tvar` "
+          "type restriction, but parameter \"@",
+          targetParam.getName(), "\" has "
+      );
+      if (declaredType) {
+        diag.append("type restriction ", *declaredType);
+      } else {
+        diag.append("no type restriction");
+      }
+      return diag;
+    }
+    return success();
+  }
+
+  if (auto symbol = llvm::dyn_cast<SymbolRefAttr>(value)) {
+    SymbolTableCollection tables;
+    if (failed(verifyTemplateParamSymbol(tables, symbol, origin))) {
+      return failure();
+    }
+    if (!declaredType) {
+      return success();
+    }
+    bool resolvedLocal = false;
+    bool compatible = false;
+    if (symbol.getNestedReferences().empty()) {
+      FailureOr<TemplateOp> parentTemplate = getConstResolutionTemplate(tables, origin);
+      if (failed(parentTemplate)) {
+        return failure();
+      }
+      if (*parentTemplate) {
+        auto binding = parentTemplate->getConstNamed<TemplateSymbolBindingOpInterface>(
+            symbol.getRootReference()
+        );
+        if (binding) {
+          resolvedLocal = true;
+          compatible = !binding.getTypeOpt() || typesUnify(*binding.getTypeOpt(), *declaredType);
+        }
+      }
+    }
+    // `verifyTemplateParamSymbol` establishes that this is a constant global, but the global's
+    // type is not otherwise constrained when the parameter is absent from the callee signature.
+    // Resolve it here to enforce the explicit template parameter restriction.
+    if (!resolvedLocal) {
+      FailureOr<SymbolLookupResultUntyped> lookupRes = lookupTopLevelSymbol(tables, symbol, origin);
+      if (failed(lookupRes)) {
+        return failure();
+      }
+      auto global = llvm::cast<GlobalDefOp>(lookupRes->get());
+      assert(global.isConstant() && "already verified by verifyTemplateParamSymbol");
+      compatible = typesUnify(global.getType(), *declaredType);
+    }
+    if (!compatible) {
+      return origin->emitOpError().append(
+          "instantiation value '", value, "' is not compatible with parameter \"@",
+          targetParam.getName(), "\" type restriction ", *declaredType
+      );
+    }
+    return success();
+  }
+
+  if (!declaredType) {
+    return success();
+  }
+  bool compatible = false;
+  if (llvm::isa<TypeVarType>(*declaredType)) {
+    compatible = llvm::isa<TypeAttr>(value);
+  } else if (llvm::isa<FeltType>(*declaredType)) {
+    compatible = llvm::isa<FeltConstAttr, IntegerAttr>(value) &&
+                 isValidConstReadType(llvm::cast<TypedAttr>(value).getType());
+  } else if (llvm::isa<IndexType, IntegerType>(*declaredType)) {
+    compatible = llvm::isa<IntegerAttr>(value) &&
+                 isValidConstReadType(llvm::cast<TypedAttr>(value).getType());
+  } else {
+    llvm_unreachable("inconsistent with `isValidConstReadType()`");
+  }
+  if (!compatible) {
+    return origin->emitOpError().append(
+        "instantiation value '", value, "' is not compatible with parameter \"@",
+        targetParam.getName(), "\" type restriction ", *declaredType
+    );
+  }
+  return success();
+}
+
+LogicalResult verifyTemplateParamValuesCompatibility(
+    Operation *origin, ArrayAttr explicitParams,
+    llvm::iterator_range<Region::op_iterator<TemplateParamOp>> targetParamDefs
+) {
+  assert(!isNullOrEmpty(explicitParams) && "pre-condition");
+  assert(explicitParams.size() == llvm::range_size(targetParamDefs) && "pre-condition");
+  for (auto [targetParam, value] : llvm::zip_equal(targetParamDefs, explicitParams.getValue())) {
+    if (failed(verifyTemplateParamValueCompatibility(origin, value, targetParam))) {
+      return failure();
+    }
+  }
+  return success();
+}
+
+LogicalResult verifyTemplateParamsMatchInferred(
+    Operation *origin, ArrayAttr explicitParams,
+    llvm::iterator_range<Region::op_iterator<TemplateParamOp>> targetParamDefs,
+    const UnificationMap &unifications
+) {
+  assert(!isNullOrEmpty(explicitParams) && "pre-condition");
+  assert((explicitParams.size() == llvm::range_size(targetParamDefs)) && "pre-condition");
+
+  for (auto [paramOp, attr] : llvm::zip_equal(targetParamDefs, explicitParams.getValue())) {
+    // Skip wildcards (`?` / kDynamic) - their value will be resolved by a later inference pass.
+    if (auto intAttr = llvm::dyn_cast<IntegerAttr>(attr)) {
+      if (isDynamic(intAttr)) {
+        continue;
+      }
+    }
+    auto it = unifications.find({FlatSymbolRefAttr::get(paramOp.getNameAttr()), Side::RHS});
+    if (it != unifications.end() && !typeParamsUnify({attr}, {it->second})) {
+      return origin->emitOpError().append(
+          "template instantiation value '", attr, "' for parameter \"@", paramOp.getName(),
+          "\" conflicts with value '", it->second, "' inferred from function type signature"
+      );
+    }
+  }
+  return success();
+}
+
 LogicalResult verifyParamOfType(
-    SymbolTableCollection &tables, SymbolRefAttr param, Type parameterizedType, Operation *origin
+    SymbolTableCollection &tables, SymbolRefAttr param, Type parameterizedType, Operation *origin,
+    std::optional<Type> requiredParamType
 ) {
   // Most often, StructType and ArrayType SymbolRefAttr parameters will be defined as parameters of
   // the template that the current Operation is nested within. These are always flat references
@@ -376,9 +584,11 @@ LogicalResult verifyParamOfType(
       return failure(); // getConstResolutionTemplate() failure cases emit a sufficient error
                         // message
     }
-    if (*parent &&
-        parent->hasConstNamed<TemplateSymbolBindingOpInterface>(param.getRootReference())) {
-      return success();
+    if (*parent) {
+      if (auto b =
+              parent->getConstNamed<TemplateSymbolBindingOpInterface>(param.getRootReference())) {
+        return verifyTemplateSymbolType(b, param, parameterizedType, origin, requiredParamType);
+      }
     }
   }
   // Otherwise, see if the symbol can be found via lookup from the `origin` Operation.
@@ -386,18 +596,22 @@ LogicalResult verifyParamOfType(
   if (failed(lookupRes)) {
     return failure(); // lookupTopLevelSymbol() already emits a sufficient error message
   }
-  Operation *foundOp = lookupRes->get();
-  if (!llvm::isa<GlobalDefOp>(foundOp)) {
+  auto global = llvm::dyn_cast<GlobalDefOp>(lookupRes->get());
+  if (!global) {
     return origin->emitError() << "ref \"" << param << "\" in type " << parameterizedType
-                               << " refers to a '" << foundOp->getName()
+                               << " refers to a '" << lookupRes->get()->getName()
                                << "' which is not allowed";
+  }
+  if (!global.isConstant()) {
+    return origin->emitError() << "ref \"" << param << "\" in type " << parameterizedType
+                               << " refers to a global that is not marked as 'const'";
   }
   return success();
 }
 
 LogicalResult verifyParamsOfType(
     SymbolTableCollection &tables, ArrayRef<Attribute> tyParams, Type parameterizedType,
-    Operation *origin
+    Operation *origin, std::optional<Type> requiredParamType
 ) {
   // Rather than immediately returning on failure, we check all params and aggregate to provide as
   // many errors are possible in a single verifier run.
@@ -409,7 +623,8 @@ LogicalResult verifyParamsOfType(
     LLVM_DEBUG({ llvm::dbgs() << "[verifyParamOfType]   checking attribute " << attr << '\n'; });
     assertValidAttrForParamOfType(attr);
     if (SymbolRefAttr symRefParam = llvm::dyn_cast<SymbolRefAttr>(attr)) {
-      if (failed(verifyParamOfType(tables, symRefParam, parameterizedType, origin))) {
+      auto r = verifyParamOfType(tables, symRefParam, parameterizedType, origin, requiredParamType);
+      if (failed(r)) {
         LLVM_DEBUG({
           llvm::dbgs() << "[verifyParamOfType]     failed to verify symbol attribute\n";
         });
@@ -458,12 +673,27 @@ LogicalResult verifyTypeResolution(SymbolTableCollection &tables, Operation *ori
   if (StructType sTy = llvm::dyn_cast<StructType>(ty)) {
     return verifyStructTypeResolution(tables, sTy, origin);
   } else if (ArrayType aTy = llvm::dyn_cast<ArrayType>(ty)) {
-    if (failed(verifyParamsOfType(tables, aTy.getDimensionSizes(), aTy, origin))) {
+    auto r = verifyParamsOfType(
+        tables, aTy.getDimensionSizes(), aTy, origin, IndexType::get(aTy.getContext())
+    );
+    if (failed(r)) {
       return failure();
     }
     return verifyTypeResolution(tables, origin, aTy.getElementType());
   } else if (TypeVarType vTy = llvm::dyn_cast<TypeVarType>(ty)) {
-    return verifyParamOfType(tables, vTy.getNameRef(), vTy, origin);
+    // Unlike other type parameters, a type variable may only name a parameter
+    // of the enclosing template; it cannot resolve to a global.
+    FailureOr<TemplateOp> parent = getConstResolutionTemplate(tables, origin);
+    if (failed(parent)) {
+      return failure();
+    }
+    TemplateOp templateOp = *parent;
+    if (templateOp && templateOp.getConstNamed<TemplateParamOp>(vTy.getNameRef())) {
+      return success();
+    }
+    return origin->emitError() << "type variable " << vTy
+                               << " must reference a parameter of its enclosing " << '\''
+                               << TemplateOp::getOperationName() << '\'';
   } else {
     return success();
   }

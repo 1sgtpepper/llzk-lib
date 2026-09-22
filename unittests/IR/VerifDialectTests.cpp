@@ -36,9 +36,7 @@ protected:
   }
 
   template <typename OpTy> SmallVector<OpTy> findOps(ModuleOp module) {
-    SmallVector<OpTy> found;
-    module.walk([&](OpTy op) { found.push_back(op); });
-    return found;
+    return walkCollect<OpTy>(module);
   }
 };
 
@@ -217,34 +215,6 @@ module attributes {llzk.lang} {
   ASSERT_EQ(includes.size(), 1u);
   ASSERT_TRUE(succeeded(mlir::verify(parsed.get())));
   ASSERT_TRUE(verify(includes.front(), true));
-}
-
-TEST_F(VerifDialectTests, ContractInsideTemplateCanTargetNonTemplatedFunction) {
-  constexpr StringLiteral source = R"mlir(
-module attributes {llzk.lang} {
-  function.def @outer(%x: index) {
-    function.return
-  }
-
-  poly.template @T {
-    poly.param @N : index
-
-    verif.contract @TemplateWrapper for @outer (%x: index) {
-      %n = poly.read_const @N : index
-      %zero = arith.constant 0 : index
-      %ok = arith.cmpi eq, %n, %zero : index
-      verif.ensure_compute %ok
-    }
-  }
-}
-)mlir";
-
-  auto parsed = parseModule(source);
-  auto contracts = findOps<ContractOp>(*parsed);
-
-  ASSERT_EQ(contracts.size(), 1u);
-  ASSERT_TRUE(succeeded(mlir::verify(parsed.get())));
-  EXPECT_TRUE(verify(contracts.front(), true));
 }
 
 TEST_F(VerifDialectTests, ContractOutsideTemplateCanReadTargetFunctionTemplateConstants) {

@@ -15,8 +15,6 @@
 
 #include "llzk/Dialect/Function/IR/Ops.h"
 
-#include "llzk/Dialect/Felt/IR/Attrs.h"
-#include "llzk/Dialect/Felt/IR/Types.h"
 #include "llzk/Dialect/Function/IR/Dialect.h"
 #include "llzk/Dialect/LLZK/IR/AttributeHelper.h"
 #include "llzk/Dialect/LLZK/IR/Versioning.h"
@@ -26,6 +24,7 @@
 #include "llzk/Util/AffineHelper.h"
 #include "llzk/Util/BuilderHelper.h"
 #include "llzk/Util/Compare.h"
+#include "llzk/Util/ErrorHelper.h"
 #include "llzk/Util/SymbolHelper.h"
 #include "llzk/Util/SymbolLookup.h"
 #include "llzk/Util/SymbolTableLLZK.h"
@@ -43,7 +42,6 @@
 #include "llzk/Dialect/Function/IR/Ops.cpp.inc"
 
 using namespace mlir;
-using namespace llzk::felt;
 using namespace llzk::component;
 using namespace llzk::polymorphic;
 
@@ -118,6 +116,19 @@ static LogicalResult verifyArgOrResNameAttrs(
     }
   }
   return success();
+}
+
+static std::optional<StringAttr>
+getFunctionNameAttrAtIndex(ArrayAttr attrs, unsigned index, StringRef attrName) {
+  if (!attrs || index >= attrs.size()) {
+    return std::nullopt;
+  }
+  if (auto dictAttr = llvm::dyn_cast<DictionaryAttr>(attrs[index])) {
+    if (auto nameAttr = llvm::dyn_cast_if_present<StringAttr>(dictAttr.get(attrName))) {
+      return nameAttr;
+    }
+  }
+  return std::nullopt;
 }
 } // namespace
 
@@ -282,6 +293,14 @@ void FuncDefOp::setAllowNonNativeFieldOpsAttr(bool newValue) {
   }
 }
 
+void FuncDefOp::setAllowVerifOpsAttr(bool newValue) {
+  if (newValue) {
+    getOperation()->setAttr(AllowVerifOpsAttr::name, UnitAttr::get(getContext()));
+  } else {
+    getOperation()->removeAttr(AllowVerifOpsAttr::name);
+  }
+}
+
 bool FuncDefOp::hasArgPublicAttr(unsigned index) {
   if (index < this->getNumArguments()) {
     DictionaryAttr res = function_interface_impl::getArgAttrDict(*this, index);
@@ -295,13 +314,7 @@ bool FuncDefOp::hasArgPublicAttr(unsigned index) {
 bool FuncDefOp::hasArgName(unsigned index) { return static_cast<bool>(getArgNameAttr(index)); }
 
 std::optional<StringAttr> FuncDefOp::getArgNameAttr(unsigned index) {
-  if (index >= getNumArguments()) {
-    return std::nullopt;
-  }
-  if (StringAttr attr = getArgAttrOfType<StringAttr>(index, ARG_NAME_ATTR_NAME)) {
-    return attr;
-  }
-  return std::nullopt;
+  return getFunctionNameAttrAtIndex(getAllArgAttrs(), index, ARG_NAME_ATTR_NAME);
 }
 
 void FuncDefOp::setArgNameAttr(unsigned index, const StringAttr &attr) {
@@ -311,6 +324,21 @@ void FuncDefOp::setArgNameAttr(unsigned index, const StringAttr &attr) {
 
 void FuncDefOp::setArgName(unsigned index, StringRef name) {
   setArgNameAttr(index, StringAttr::get(getContext(), name));
+}
+
+bool FuncDefOp::hasResName(unsigned index) { return static_cast<bool>(getResNameAttr(index)); }
+
+std::optional<StringAttr> FuncDefOp::getResNameAttr(unsigned index) {
+  return getFunctionNameAttrAtIndex(getAllResultAttrs(), index, RES_NAME_ATTR_NAME);
+}
+
+void FuncDefOp::setResNameAttr(unsigned index, const StringAttr &attr) {
+  assert(index < getNumResults() && "result index out of range");
+  setResultAttr(index, RES_NAME_ATTR_NAME, attr);
+}
+
+void FuncDefOp::setResName(unsigned index, StringRef name) {
+  setResNameAttr(index, StringAttr::get(getContext(), name));
 }
 
 LogicalResult FuncDefOp::verify() {
@@ -445,32 +473,38 @@ LogicalResult FuncDefOp::verifySymbolUses(SymbolTableCollection &tables) {
 }
 
 SymbolRefAttr FuncDefOp::getFullyQualifiedName(bool requireParent) {
-  // If the parent is not present and not required, just return the symbol name
-  if (!requireParent && getOperation()->getParentOp() == nullptr) {
-    return SymbolRefAttr::get(getOperation());
-  }
-  auto res = getPathFromRoot(*this);
-  assert(succeeded(res));
-  return res.value();
+  return llzk::getFullyQualifiedName(*this, requireParent);
 }
 
-Value FuncDefOp::getSelfValueFromCompute() {
-  assert(nameIsCompute()); // skip inStruct check to allow dangling functions
+namespace {
+
+static Value getSelfValueFromWitnessGen(FuncDefOp funcDefOp, Twine name) {
   // Get the single block of the function body
-  Region &body = getBody();
-  assert(!body.empty() && "compute() function body is empty");
-  Block &block = body.back();
+  Region &body = funcDefOp.getBody();
+  ensure(!body.empty(), name + "() function body must not be empty");
 
   // The terminator should be the return op
-  Operation *terminator = block.getTerminator();
-  assert(terminator && "compute() function has no terminator");
+  Operation *terminator = body.back().getTerminator();
+  ensure(terminator, name + "() function must have a terminator op");
   auto retOp = llvm::dyn_cast<ReturnOp>(terminator);
   if (!retOp) {
     llvm::errs() << "Expected '" << ReturnOp::getOperationName() << "' but found '"
                  << terminator->getName() << "'\n";
-    llvm_unreachable("compute() function must end with ReturnOp");
+    ensure(false, name + "() function must end with ReturnOp");
   }
   return retOp.getOperands().front();
+}
+
+} // namespace
+
+Value FuncDefOp::getSelfValueFromCompute() {
+  assert(nameIsCompute()); // skip inStruct check to allow dangling functions
+  return getSelfValueFromWitnessGen(*this, "compute");
+}
+
+Value FuncDefOp::getSelfValueFromProduct() {
+  assert(nameIsProduct()); // skip inStruct check to allow dangling functions
+  return getSelfValueFromWitnessGen(*this, "product");
 }
 
 Value FuncDefOp::getSelfValueFromConstrain() {
@@ -500,7 +534,7 @@ LogicalResult ReturnOp::verify() {
   for (unsigned i = 0, e = results.size(); i != e; ++i) {
     if (!typesUnify(getOperand(i).getType(), results[i])) {
       return emitError() << "type of return operand " << i << " (" << getOperand(i).getType()
-                         << ") doesn't match function result type (" << results[i] << ")"
+                         << ") doesn't match function result type (" << results[i] << ')'
                          << " in function @" << function.getName();
     }
   }
@@ -598,99 +632,6 @@ void CallOp::build(
   );
   props.setCallee(callee);
   addTemplateParams<CallOp>(odsBuilder, props, templateParams);
-}
-
-LogicalResult
-CallOp::verifyTemplateParamCompatibility(Attribute paramFromCallOp, TemplateParamOp targetParam) {
-  // A wildcard `?` (represented as kDynamic) defers inference to a later pass.
-  // It is only valid for parameters with a `!poly.tvar` type restriction.
-  if (auto intAttr = llvm::dyn_cast<IntegerAttr>(paramFromCallOp)) {
-    if (isDynamic(intAttr)) {
-      std::optional<Type> declaredType = targetParam.getTypeOpt();
-      if (!declaredType || !llvm::isa<TypeVarType>(*declaredType)) {
-        auto diag = this->emitOpError().append(
-            "wildcard `?` can only be used for template parameters with `!poly.tvar` "
-            "type restriction, but parameter \"@",
-            targetParam.getName(), "\" has "
-        );
-        if (declaredType) {
-          diag.append("type restriction ", *declaredType);
-        } else {
-          diag.append("no type restriction");
-        }
-        return diag;
-      }
-      return success();
-    }
-  }
-  if (std::optional<Type> declaredType = targetParam.getTypeOpt()) {
-    // Note: `declaredType` is restricted by `isValidConstReadType()`
-    bool compatible = false;
-    if (llvm::isa<TypeVarType>(*declaredType)) {
-      compatible = llvm::isa<TypeAttr>(paramFromCallOp);
-    } else if (llvm::isa<FeltType>(*declaredType)) {
-      compatible = llvm::isa<FeltConstAttr, IntegerAttr>(paramFromCallOp) &&
-                   isValidConstReadType(llvm::cast<TypedAttr>(paramFromCallOp).getType());
-    } else if (llvm::isa<IndexType, IntegerType>(*declaredType)) {
-      // Note: Just like struct type instantiation, there is no restriction on passing a
-      // larger value to an `i1`. The flattening pass will treat 0 as false and any other
-      // value as true (but give a warning if it's not 1).
-      compatible = llvm::isa<IntegerAttr>(paramFromCallOp) &&
-                   isValidConstReadType(llvm::cast<TypedAttr>(paramFromCallOp).getType());
-    } else {
-      llvm_unreachable("inconsistent with `isValidConstReadType()`");
-    }
-    if (!compatible) {
-      // Tested in call_with_template_params_fail.llzk
-      return this->emitOpError().append(
-          "instantiation value '", paramFromCallOp, "' is not compatible with parameter \"@",
-          targetParam.getName(), "\" type restriction ", *declaredType
-      );
-    }
-  }
-  return success();
-}
-
-LogicalResult CallOp::verifyTemplateParamCompatibility(
-    llvm::iterator_range<Region::op_iterator<TemplateParamOp>> targetParamDefs
-) {
-  ArrayAttr callParams = this->getTemplateParamsAttr();
-  assert(!isNullOrEmpty(callParams) && "pre-condition");
-  assert((callParams.size() == llvm::range_size(targetParamDefs)) && "pre-condition");
-
-  for (auto [paramOp, attr] : llvm::zip_equal(targetParamDefs, callParams.getValue())) {
-    if (failed(verifyTemplateParamCompatibility(attr, paramOp))) {
-      return failure();
-    }
-  }
-  return success();
-}
-
-LogicalResult CallOp::verifyTemplateParamsMatchInferred(
-    llvm::iterator_range<Region::op_iterator<TemplateParamOp>> targetParamDefs,
-    const UnificationMap &unifications
-) {
-  ArrayAttr callParams = this->getTemplateParamsAttr();
-  assert(!isNullOrEmpty(callParams) && "pre-condition");
-  assert((callParams.size() == llvm::range_size(targetParamDefs)) && "pre-condition");
-
-  for (auto [paramOp, attr] : llvm::zip_equal(targetParamDefs, callParams.getValue())) {
-    // Skip wildcards (`?` / kDynamic) - their value will be resolved by a later inference pass.
-    if (auto intAttr = llvm::dyn_cast<IntegerAttr>(attr)) {
-      if (isDynamic(intAttr)) {
-        continue;
-      }
-    }
-    auto it = unifications.find({FlatSymbolRefAttr::get(paramOp.getNameAttr()), Side::RHS});
-    if (it != unifications.end() && !typeParamsUnify({attr}, {it->second})) {
-      // Tested in call_with_template_params_fail.llzk
-      return this->emitOpError().append(
-          "template instantiation value '", attr, "' for parameter \"@", paramOp.getName(),
-          "\" conflicts with value '", it->second, "' inferred from function type signature"
-      );
-    }
-  }
-  return success();
 }
 
 namespace {
@@ -853,7 +794,7 @@ struct KnownTargetVerifier : public CallOpVerifier {
       }
 
       // Check type compatibility of each provided value with the declared parameter type (if any).
-      if (failed(callOp->verifyTemplateParamCompatibility(realParams))) {
+      if (failed(callOp->verifyTemplateParamValuesCompatibility(realParams))) {
         return failure();
       }
 
@@ -1104,19 +1045,6 @@ LogicalResult CallOp::verifySymbolUses(SymbolTableCollection &tables) {
   return KnownTargetVerifier(this, std::move(*tgtOpt)).verify();
 }
 
-FunctionType CallOp::getTypeSignature() {
-  return FunctionType::get(getContext(), getArgOperands().getTypes(), getResultTypes());
-}
-
-FailureOr<UnificationMap> CallOp::unifyTypeSignature(FunctionType other) {
-  UnificationMap unifications;
-  if (functionTypesUnify(getTypeSignature(), other, {}, &unifications)) {
-    return unifications;
-  } else {
-    return failure();
-  }
-}
-
 namespace {
 
 bool calleeIsStructFunctionImpl(
@@ -1159,9 +1087,26 @@ Value CallOp::getSelfValueFromCompute() {
   return getResults().front();
 }
 
+Value CallOp::getSelfValueFromProduct() {
+  assert(calleeIsStructProduct());
+  return getResults().front();
+}
+
 Value CallOp::getSelfValueFromConstrain() {
   assert(calleeIsStructConstrain());
   return getArgOperands().front();
+}
+
+Value CallOp::getSelfValue() {
+  if (calleeIsStructConstrain()) {
+    return getSelfValueFromConstrain();
+  } else if (calleeIsStructCompute()) {
+    return getSelfValueFromCompute();
+  } else if (calleeIsStructProduct()) {
+    return getSelfValueFromProduct();
+  } else {
+    return nullptr;
+  }
 }
 
 FailureOr<SymbolLookupResult<FuncDefOp>> CallOp::getCalleeTarget(SymbolTableCollection &tables) {
@@ -1187,15 +1132,6 @@ CallInterfaceCallable CallOp::getCallableForCallee() { return getCalleeAttr(); }
 /// Set the callee for this operation.
 void CallOp::setCalleeFromCallable(CallInterfaceCallable callee) {
   setCalleeAttr(llvm::cast<SymbolRefAttr>(callee));
-}
-
-SmallVector<ValueRange> CallOp::toVectorOfValueRange(OperandRangeRange input) {
-  llvm::SmallVector<ValueRange, 4> output;
-  output.reserve(input.size());
-  for (OperandRange r : input) {
-    output.push_back(r);
-  }
-  return output;
 }
 
 Operation *CallOp::resolveCallableInTable(SymbolTableCollection *symbolTable) {

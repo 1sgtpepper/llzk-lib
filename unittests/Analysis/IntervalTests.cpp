@@ -14,7 +14,6 @@
 #include "llzk/Analysis/Intervals.h"
 #include "llzk/Dialect/Bool/IR/Ops.h"
 #include "llzk/Dialect/Felt/IR/Ops.h"
-#include "llzk/Dialect/Function/IR/Ops.h"
 #include "llzk/Dialect/Struct/IR/Ops.h"
 #include "llzk/Util/Debug.h"
 #include "llzk/Util/StreamHelper.h"
@@ -686,7 +685,7 @@ TEST_F(IntervalAnalysisAPITests, ComputeIntervalsTrackArrayNewStoredIntoMember) 
   ASSERT_TRUE(outMember != nullptr);
 
   SourceRef outRef(
-      mlir::cast<OpResult>(computeFn.getSelfValueFromCompute()), {SourceRefIndex(outMember)}
+      llvm::cast<OpResult>(computeFn.getSelfValueFromCompute()), {SourceRefIndex(outMember)}
   );
   auto out0Ref = outRef.createChild(SourceRefIndex(0));
   auto out1Ref = outRef.createChild(SourceRefIndex(1));

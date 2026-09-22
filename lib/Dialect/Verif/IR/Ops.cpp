@@ -12,8 +12,6 @@
 #include "llzk/Analysis/AnalysisUtil.h"
 #include "llzk/Analysis/ConstraintDependencyGraph.h"
 #include "llzk/Analysis/SourceRef.h"
-#include "llzk/Dialect/Felt/IR/Attrs.h"
-#include "llzk/Dialect/Felt/IR/Types.h"
 #include "llzk/Dialect/LLZK/IR/Ops.h"
 #include "llzk/Dialect/Polymorphic/IR/Ops.h"
 #include "llzk/Dialect/Verif/Util/ForbiddenPreconditionInfluence.h"
@@ -52,7 +50,6 @@
 
 using namespace mlir;
 using namespace llzk::polymorphic;
-using namespace llzk::felt;
 using namespace llzk::component;
 using namespace llzk::function;
 
@@ -68,6 +65,10 @@ bool isValidTarget(Operation *op) {
   }
   // Only other supported target currently is a struct
   return isa<StructDefOp>(op);
+}
+
+inline bool hasConflictingUnifications(const llzk::UnificationMap &unifications) {
+  return llvm::any_of(unifications, [](const auto &entry) { return !entry.second; });
 }
 
 struct TargetTypeInfo {
@@ -115,15 +116,16 @@ FailureOr<TargetTypeInfo> getTargetTypeInfo(Operation *op) {
     };
   }
   if (auto structOp = dyn_cast<StructDefOp>(op)) {
-    if (structOp.hasComputeConstrain()) {
-      auto fnOp = structOp.getConstrainFuncOp();
+    if (FuncDefOp fnOp = structOp.getConstrainFuncOp(); fnOp && structOp.getComputeFuncOp()) {
       return TargetTypeInfo {
           .funcType = fnOp.getFunctionType(),
           .argAttrs = fnOp.getArgAttrsAttr(),
       };
     } else {
       FuncDefOp productFn = structOp.getProductFuncOp();
-      assert(productFn);
+      if (!productFn) {
+        return failure();
+      }
       // Augment the product function signature to accept the self argument.
       FunctionType fnTy = productFn.getFunctionType();
       ArrayRef<Type> curInputs = fnTy.getInputs();
@@ -156,7 +158,6 @@ FailureOr<TargetTypeInfo> getTargetTypeInfo(Operation *op) {
 }
 
 enum class ForbiddenRequireConditionKind : uint8_t {
-  MainContract,
   StructMember,
   FunctionReturn,
 };
@@ -251,10 +252,6 @@ LogicalResult emitForbiddenPrecondition(
     llvm::ArrayRef<Location> sourceLocs = {}
 ) {
   switch (kind) {
-  case ForbiddenRequireConditionKind::MainContract:
-    return preCondOp->emitOpError(
-        "cannot appear directly in a contract that targets the main entry-point struct"
-    );
   case ForbiddenRequireConditionKind::StructMember: {
     InFlightDiagnostic diag =
         preCondOp->emitOpError("condition cannot be derived from a struct member value");
@@ -390,12 +387,7 @@ void ContractOp::setArgName(unsigned index, llvm::StringRef name) {
 }
 
 SymbolRefAttr ContractOp::getFullyQualifiedName(bool requireParent) {
-  if (!requireParent && getOperation()->getParentOp() == nullptr) {
-    return SymbolRefAttr::get(getOperation());
-  }
-  auto res = getPathFromRoot(*this);
-  assert(succeeded(res));
-  return res.value();
+  return llzk::getFullyQualifiedName(*this, requireParent);
 }
 
 LogicalResult ContractOp::verifySymbolUses(SymbolTableCollection &tables) {
@@ -425,15 +417,39 @@ LogicalResult ContractOp::verifySymbolUses(SymbolTableCollection &tables) {
         .attachNote(targetOp->getLoc())
         .append("target defined here");
   }
+  if (auto contractParentTemplate = getParentOfType<TemplateOp>(*this)) {
+    auto targetParentTemplate = getParentOfType<TemplateOp>(targetOp);
+    if (targetParentTemplate != contractParentTemplate) {
+      InFlightDiagnostic diag = emitOpError().append(
+          "contract nested in template \"@", contractParentTemplate.getSymName(),
+          "\" must target a symbol in the same template"
+      );
+      if (targetParentTemplate) {
+        diag.attachNote(targetParentTemplate.getLoc()).append("target template defined here");
+      } else {
+        diag.attachNote(targetOp->getLoc()).append("target defined here");
+      }
+      return diag;
+    }
+  }
   FailureOr<TargetTypeInfo> targetInfoRes = getTargetTypeInfo(targetOp);
   if (failed(targetInfoRes)) {
+    // The struct verifier reports malformed struct bodies; avoid cascading diagnostics here.
+    // Returning failure() would actually cause the expected diagnostic from the first failure
+    // to be suppressed, so we return success() to avoid that.
+    if (isa<StructDefOp>(targetOp)) {
+      return success();
+    }
     return emitOpError()
         .append("unsupported target type \"", targetOp->getName(), "\"")
         .attachNote(targetOp->getLoc())
         .append("target defined here");
   }
   TargetTypeInfo &targetInfo = *targetInfoRes;
-  if (targetInfo.funcType != contractTy) {
+  UnificationMap unifications;
+  bool unifies =
+      functionTypesUnify(contractTy, targetInfo.funcType, targetRes->getNamespace(), &unifications);
+  if (!unifies || hasConflictingUnifications(unifications)) {
     return emitOpError()
         .append("contract type does not match target type")
         .attachNote(targetOp->getLoc())
@@ -656,19 +672,6 @@ LogicalResult ContractOp::verifyRegions() {
     return success();
   }
 
-  bool targetsMainStruct = false;
-  {
-    SymbolTableCollection tables;
-    auto structTarget = getStructTarget(tables);
-    targetsMainStruct = succeeded(structTarget) && structTarget->get().isMainComponent();
-  }
-
-  for (PreconditionOpInterface preCond : preconditionOps) {
-    if (targetsMainStruct) {
-      return emitForbiddenPrecondition(preCond, ForbiddenRequireConditionKind::MainContract);
-    }
-  }
-
   ModuleOp module = getOperation()->getParentOfType<ModuleOp>();
   if (!module) {
     return emitOpError("must have a parent module to analyze condition provenance");
@@ -746,96 +749,6 @@ void IncludeOp::build(
   );
   props.setCallee(callee);
   addTemplateParams<IncludeOp>(odsBuilder, props, templateParams);
-}
-
-LogicalResult IncludeOp::verifyTemplateParamCompatibility(
-    Attribute paramFromIncludeOp, TemplateParamOp targetParam
-) {
-  // A wildcard `?` (represented as kDynamic) defers inference to a later pass.
-  // It is only valid for parameters with a `!poly.tvar` type restriction.
-  if (auto intAttr = llvm::dyn_cast<IntegerAttr>(paramFromIncludeOp)) {
-    if (isDynamic(intAttr)) {
-      std::optional<Type> declaredType = targetParam.getTypeOpt();
-      if (!declaredType || !llvm::isa<TypeVarType>(*declaredType)) {
-        auto diag = this->emitOpError().append(
-            "wildcard `?` can only be used for template parameters with `!poly.tvar` "
-            "type restriction, but parameter \"@",
-            targetParam.getName(), "\" has "
-        );
-        if (declaredType) {
-          diag.append("type restriction ", *declaredType);
-        } else {
-          diag.append("no type restriction");
-        }
-        return diag;
-      }
-      return success();
-    }
-  }
-  if (std::optional<Type> declaredType = targetParam.getTypeOpt()) {
-    // Note: `declaredType` is restricted by `isValidConstReadType()`
-    bool compatible = false;
-    if (llvm::isa<TypeVarType>(*declaredType)) {
-      compatible = llvm::isa<TypeAttr>(paramFromIncludeOp);
-    } else if (llvm::isa<FeltType>(*declaredType)) {
-      compatible = llvm::isa<FeltConstAttr, IntegerAttr>(paramFromIncludeOp) &&
-                   isValidConstReadType(llvm::cast<TypedAttr>(paramFromIncludeOp).getType());
-    } else if (llvm::isa<IndexType, IntegerType>(*declaredType)) {
-      // Note: Just like struct type instantiation, there is no restriction on passing a
-      // larger value to an `i1`. The flattening pass will treat 0 as false and any other
-      // value as true (but give a warning if it's not 1).
-      compatible = llvm::isa<IntegerAttr>(paramFromIncludeOp) &&
-                   isValidConstReadType(llvm::cast<TypedAttr>(paramFromIncludeOp).getType());
-    } else {
-      llvm_unreachable("inconsistent with `isValidConstReadType()`");
-    }
-    if (!compatible) {
-      return this->emitOpError().append(
-          "instantiation value '", paramFromIncludeOp, "' is not compatible with parameter \"@",
-          targetParam.getName(), "\" type restriction ", *declaredType
-      );
-    }
-  }
-  return success();
-}
-
-LogicalResult IncludeOp::verifyTemplateParamCompatibility(
-    llvm::iterator_range<Region::op_iterator<TemplateParamOp>> targetParamDefs
-) {
-  ArrayAttr callParams = this->getTemplateParamsAttr();
-  assert(!isNullOrEmpty(callParams) && "pre-condition");
-  assert((callParams.size() == llvm::range_size(targetParamDefs)) && "pre-condition");
-
-  for (auto [paramOp, attr] : llvm::zip_equal(targetParamDefs, callParams.getValue())) {
-    if (failed(verifyTemplateParamCompatibility(attr, paramOp))) {
-      return failure();
-    }
-  }
-  return success();
-}
-
-LogicalResult IncludeOp::verifyTemplateParamsMatchInferred(
-    llvm::iterator_range<Region::op_iterator<TemplateParamOp>> targetParamDefs,
-    const UnificationMap &unifications
-) {
-  ArrayAttr callParams = this->getTemplateParamsAttr();
-  assert(!isNullOrEmpty(callParams) && "pre-condition");
-  assert((callParams.size() == llvm::range_size(targetParamDefs)) && "pre-condition");
-
-  for (auto [paramOp, attr] : llvm::zip_equal(targetParamDefs, callParams.getValue())) {
-    // Skip wildcards (`?` / kDynamic) - their value will be resolved by a later inference pass.
-    if (isDynamic(llvm::dyn_cast<IntegerAttr>(attr))) {
-      continue;
-    }
-    auto it = unifications.find({FlatSymbolRefAttr::get(paramOp.getNameAttr()), Side::RHS});
-    if (it != unifications.end() && !typeParamsUnify({attr}, {it->second})) {
-      return this->emitOpError().append(
-          "template instantiation value '", attr, "' for parameter \"@", paramOp.getName(),
-          "\" conflicts with value '", it->second, "' inferred from function type signature"
-      );
-    }
-  }
-  return success();
 }
 
 namespace {
@@ -932,7 +845,7 @@ struct KnownTargetVerifier : public IncludeOpVerifier {
       }
 
       // Check type compatibility of each provided value with the declared parameter type (if any).
-      if (failed(includeOp->verifyTemplateParamCompatibility(realParams))) {
+      if (failed(includeOp->verifyTemplateParamValuesCompatibility(realParams))) {
         return failure();
       }
 
@@ -1019,18 +932,6 @@ LogicalResult IncludeOp::verifySymbolUses(SymbolTableCollection &tables) {
   return KnownTargetVerifier(this, std::move(*tgtOpt)).verify();
 }
 
-FunctionType IncludeOp::getTypeSignature() {
-  return FunctionType::get(getContext(), getArgOperands().getTypes(), /*results*/ {});
-}
-
-FailureOr<UnificationMap> IncludeOp::unifyTypeSignature(FunctionType other) {
-  UnificationMap unifications;
-  if (functionTypesUnify(getTypeSignature(), other, {}, &unifications)) {
-    return unifications;
-  }
-  return failure();
-}
-
 FailureOr<SymbolLookupResult<ContractOp>>
 IncludeOp::getCalleeTarget(SymbolTableCollection &tables) {
   Operation *thisOp = this->getOperation();
@@ -1064,13 +965,6 @@ void IncludeOp::setCalleeFromCallable(CallInterfaceCallable callee) {
   setCalleeAttr(llvm::cast<SymbolRefAttr>(callee));
 }
 
-SmallVector<ValueRange> IncludeOp::toVectorOfValueRange(OperandRangeRange input) {
-  llvm::SmallVector<ValueRange, 4> output;
-  output.reserve(input.size());
-  output.insert(output.end(), input.begin(), input.end());
-  return output;
-}
-
 Operation *IncludeOp::resolveCallableInTable(SymbolTableCollection *symbolTable) {
   FailureOr<SymbolLookupResult<ContractOp>> res =
       llzk::resolveCallable<ContractOp>(*symbolTable, *this);
@@ -1101,6 +995,8 @@ void InvariantOp::build(
     OpBuilder &odsBuilder, OperationState &odsState, StringRef loop_name,
     ArrayRef<Type> loop_arg_types, ArrayRef<Location> loop_arg_locs
 ) {
+  // Suppress false positive from `clang-tidy`
+  // NOLINTNEXTLINE(clang-analyzer-core.StackAddressEscape)
   odsState.getOrAddProperties<InvariantOp::Properties>().loop_name =
       odsBuilder.getStringAttr(loop_name);
   odsState.getOrAddProperties<InvariantOp::Properties>().loop_arg_types =
@@ -1131,12 +1027,12 @@ static LogicalResult verifyArgTypes(InvariantTargetOpInterface target, Invariant
        llvm::enumerate(llvm::zip_equal(targetArgTypes, bodyArgTypes, declaredTypes))) {
     auto [targetType, bodyArgType, declaredType] = types;
 
-    if (targetType != mlir::cast<TypeAttr>(declaredType).getValue()) {
+    if (targetType != llvm::cast<TypeAttr>(declaredType).getValue()) {
       failed = true;
       op->emitOpError() << "target argument #" << n << " expected type " << targetType
                         << " but invariant declared type " << declaredType;
     }
-    if (bodyArgType != mlir::cast<TypeAttr>(declaredType).getValue()) {
+    if (bodyArgType != llvm::cast<TypeAttr>(declaredType).getValue()) {
       failed = true;
       op->emitOpError() << "invariant argument #" << n << " expected type " << targetType
                         << " but invariant declared type " << declaredType;
@@ -1166,6 +1062,8 @@ ParseResult InvariantOp::parse(OpAsmParser &parser, OperationState &result) {
   if (parser.parseSymbolName(loopNameAttr)) {
     return failure();
   }
+  // Suppress false positive from `clang-tidy`
+  // NOLINTNEXTLINE(clang-analyzer-core.StackAddressEscape)
   result.getOrAddProperties<InvariantOp::Properties>().loop_name = loopNameAttr;
 
   // Parse the function signature.
@@ -1209,7 +1107,7 @@ void InvariantOp::print(OpAsmPrinter &p) {
   // Print the name of the invariants's target.
   p << " for ";
   p.printSymbolName(getLoopName());
-  p << "(";
+  p << '(';
   llvm::interleave(getBody()->getArguments(), [&p](auto arg) {
     p.printRegionArgument(arg);
   }, [&p]() { p << ", "; });
