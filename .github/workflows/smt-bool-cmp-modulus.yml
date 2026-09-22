@@ -1,0 +1,70 @@
+name: SMT field-comparison validation
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - audit/smt-bool-cmp-modulus
+
+jobs:
+  validate:
+    name: ${{ matrix.name }}
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: upstream-main
+            ref: d1198631dbe9906cb149d1ddcd0dd1ca071dae6b
+          - name: release-v2.1.2
+            ref: b1b8d52ca4e6114cdd9a80417f96342a9f9e8b6c
+
+    steps:
+      - name: Checkout validation harness
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Preserve validation harness
+        run: cp -R validation/smt-bool-cmp-modulus "$RUNNER_TEMP/smt-bool-cmp-modulus"
+
+      - name: Checkout exact target revision
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ matrix.ref }}
+          clean: true
+          persist-credentials: false
+
+      # v37.1.0
+      - uses: cachix/install-nix-action@d1ca217b388ee87b2507a9a93bf01368bde7cec2
+        with:
+          install_url: https://releases.nixos.org/nix/nix-2.23.3/install
+          github_access_token: "${{ secrets.GITHUB_TOKEN }}"
+
+      - name: Set Git credentials
+        run: |
+          git config --global 'url.https://api@github.com/'.insteadOf 'https://github.com/'
+          git config --global 'url.https://ssh@github.com/'.insteadOf 'ssh://git@github.com/'
+          git config --global 'url.https://git@github.com/'.insteadOf 'git@github.com:'
+
+      - uses: cachix/cachix-action@v17
+        with:
+          name: veridise-public
+          authToken: '${{ secrets.CACHIX_PUBLIC_TOKEN }}'
+
+      - name: Build exact target
+        run: nix --print-build-logs build '.#debugGCC'
+
+      - name: Run source-to-SMT-LIB solver comparison
+        run: |
+          nix shell nixpkgs#z3 --command bash \
+            "$RUNNER_TEMP/smt-bool-cmp-modulus/run.sh" \
+            "$GITHUB_WORKSPACE/result" \
+            "$RUNNER_TEMP/smt-bool-cmp-results"
+
+      - name: Upload lowered relations and solver output
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: smt-bool-cmp-${{ matrix.name }}
+          path: ${{ runner.temp }}/smt-bool-cmp-results

@@ -1,0 +1,27 @@
+// Source relation: with a = p - 1 and b = 1, field addition produces 0.
+// Therefore the equality below is true and the selected value must be 1.
+
+module attributes {llzk.lang} {
+  struct.def @CmpBoundary {
+    function.def @product(%a: !felt.type, %b: !felt.type) -> !struct.type<@CmpBoundary> {
+      %self = struct.new : <@CmpBoundary>
+      %zero = felt.const 0
+      %one = felt.const 1
+      %p_minus_one = felt.const 2013265920
+
+      constrain.eq %a, %p_minus_one : !felt.type
+      constrain.eq %b, %one : !felt.type
+
+      %sum = felt.add %a, %b : !felt.type, !felt.type
+      %is_zero = bool.cmp eq(%sum, %zero)
+      %selected = scf.if %is_zero -> !felt.type {
+        scf.yield %one : !felt.type
+      } else {
+        scf.yield %zero : !felt.type
+      }
+      constrain.eq %selected, %one : !felt.type
+
+      function.return %self : !struct.type<@CmpBoundary>
+    }
+  }
+}

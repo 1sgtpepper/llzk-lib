@@ -1,0 +1,26 @@
+// Control: the same comparison/control-flow path without crossing the field modulus.
+
+module attributes {llzk.lang} {
+  struct.def @CmpBoundaryControl {
+    function.def @product(%a: !felt.type, %b: !felt.type) -> !struct.type<@CmpBoundaryControl> {
+      %self = struct.new : <@CmpBoundaryControl>
+      %zero = felt.const 0
+      %one = felt.const 1
+      %two = felt.const 2
+
+      constrain.eq %a, %one : !felt.type
+      constrain.eq %b, %one : !felt.type
+
+      %sum = felt.add %a, %b : !felt.type, !felt.type
+      %is_two = bool.cmp eq(%sum, %two)
+      %selected = scf.if %is_two -> !felt.type {
+        scf.yield %one : !felt.type
+      } else {
+        scf.yield %zero : !felt.type
+      }
+      constrain.eq %selected, %one : !felt.type
+
+      function.return %self : !struct.type<@CmpBoundaryControl>
+    }
+  }
+}
