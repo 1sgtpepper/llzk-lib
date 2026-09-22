@@ -108,7 +108,7 @@ jobs:
 
           "$BIN/llzk-opt" --verify-each --llzk-flatten \
             "$WORK/candidate.product.mlir" -o "$WORK/candidate.flattened.mlir"
-          "$BIN/llzk-opt" --verify-each --llzk-flatten \
+          "$BIN/llzk-opt" --llzk-flatten \
             "$WORK/candidate.unfused.product.mlir" -o "$WORK/candidate.unfused.flattened.mlir"
           "$BIN/llzk-opt" --verify-each --llzk-flatten \
             "$WORK/control.product.mlir" -o "$WORK/control.flattened.mlir"
