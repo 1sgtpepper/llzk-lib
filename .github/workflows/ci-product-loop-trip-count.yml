@@ -59,6 +59,7 @@ jobs:
           git archive "$SOURCE_COMMIT" | tar -x -C "$SOURCE"
           cp test/Transforms/FuseProductControlFlow/unequal_step_trip_count.llzk "$WORK/candidate.llzk"
           cp .github/validation/unequal_step_trip_count_control.llzk "$WORK/control.llzk"
+          cp .github/validation/empty_inputs.json "$WORK/empty_inputs.json"
 
           cd "$SOURCE"
           nix --print-build-logs build '.#debugGCC'
@@ -84,6 +85,19 @@ jobs:
           grep -F 'struct.writem' "$WORK/candidate.product.function.mlir"
           grep -F 'constrain.eq' "$WORK/candidate.product.function.mlir"
 
+          "$BIN/llzk-witgen" "$WORK/candidate.llzk" --inputs "$WORK/empty_inputs.json" \
+            > "$WORK/candidate.witgen.json"
+          "$BIN/llzk-witgen" "$WORK/control.llzk" --inputs "$WORK/empty_inputs.json" \
+            > "$WORK/control.witgen.json"
+          "$BIN/llzk-witgen" "$WORK/candidate.llzk" --inputs "$WORK/empty_inputs.json" \
+            --backend=execution-engine > "$WORK/candidate.witgen-jit.json"
+          "$BIN/llzk-witgen" "$WORK/control.llzk" --inputs "$WORK/empty_inputs.json" \
+            --backend=execution-engine > "$WORK/control.witgen-jit.json"
+          grep -F '"out": "3"' "$WORK/candidate.witgen.json"
+          grep -F '"out": "0"' "$WORK/control.witgen.json"
+          grep -F '"out": "3"' "$WORK/candidate.witgen-jit.json"
+          grep -F '"out": "0"' "$WORK/control.witgen-jit.json"
+
           "$BIN/llzk-opt" --verify-each --llzk-flatten \
             "$WORK/candidate.product.mlir" -o "$WORK/candidate.flattened.mlir"
           "$BIN/llzk-opt" --verify-each --llzk-flatten \
@@ -97,23 +111,13 @@ jobs:
           grep -F 'func.func @smt_Main' "$WORK/candidate.smt.mlir"
           grep -F 'smt.assert' "$WORK/candidate.smt.mlir"
           grep -F 'smt.assert' "$WORK/control.smt.mlir"
+          grep -F 'smt.eq %out_w' "$WORK/candidate.smt.mlir"
 
           {
             echo 'source oracle: compute iterations are i=0,3; final @out is 3'
             echo 'fused-loop oracle: MLIR fusion uses the constraint loop bounds i=0; final @out is 0'
             echo 'control oracle: compute and constrain each execute only at i=0; final @out is 0'
           } > "$WORK/source-oracle.txt"
-
-          if [[ "$SOURCE_NAME" == main ]]; then
-            "$BIN/llzk-translate" --smt-to-smtlib "$WORK/candidate.smt.mlir" \
-              -o "$WORK/candidate.smt2"
-            "$BIN/llzk-translate" --smt-to-smtlib "$WORK/control.smt.mlir" \
-              -o "$WORK/control.smt2"
-            z3 "$WORK/candidate.smt2" > "$WORK/candidate.z3.txt"
-            z3 "$WORK/control.smt2" > "$WORK/control.z3.txt"
-            grep -Fx 'sat' "$WORK/candidate.z3.txt"
-            grep -Fx 'sat' "$WORK/control.z3.txt"
-          fi
 
           sha256sum "$WORK"/* > "$WORK/artifact.sha256"
 

@@ -1,8 +1,8 @@
 // RUN: llzk-opt --llzk-compute-constrain-to-product="root-struct=Main" --llzk-fuse-product-control-flow %s | FileCheck --check-prefix=CANDIDATE --enable-var-scope %s
 
-module attributes {llzk.lang} {
+module attributes {llzk.lang, llzk.main = !struct.type<@Main>} {
   struct.def @Main {
-    struct.member @out : !felt.type {llzk.pub}
+    struct.member @out : !felt.type<"babybear"> {llzk.pub}
 
     function.def @compute() -> !struct.type<@Main> {
       %self = struct.new : !struct.type<@Main>
@@ -11,8 +11,8 @@ module attributes {llzk.lang} {
       %step = arith.constant 3 : index
 
       scf.for %i = %lb to %ub step %step {
-        %out = cast.tofelt %i : index, !felt.type
-        struct.writem %self[@out] = %out : !struct.type<@Main>, !felt.type
+        %out = cast.tofelt %i : index, !felt.type<"babybear">
+        struct.writem %self[@out] = %out : !struct.type<@Main>, !felt.type<"babybear">
         scf.yield
       }
 
@@ -26,8 +26,8 @@ module attributes {llzk.lang} {
       %zero = felt.const 0
 
       scf.for %i = %lb to %ub step %step {
-        %i_felt = cast.tofelt %i : index, !felt.type
-        constrain.eq %i_felt, %zero : !felt.type
+        %i_felt = cast.tofelt %i : index, !felt.type<"babybear">
+        constrain.eq %i_felt, %zero : !felt.type<"babybear">
         scf.yield
       }
 
@@ -38,8 +38,8 @@ module attributes {llzk.lang} {
 
 // CANDIDATE: function.def @product
 // CANDIDATE: scf.for %{{.*}} = %{{.*}} to %{{.*}} step %{{.*}} {
-// CANDIDATE-NEXT: %{{.*}} = cast.tofelt %{{.*}} : index, !felt.type {product_source = "compute"}
-// CANDIDATE-NEXT: struct.writem %{{.*}}[@out] = %{{.*}} : !struct.type<@Main>, !felt.type {product_source = "compute"}
-// CANDIDATE-NEXT: %{{.*}} = cast.tofelt %{{.*}} : index, !felt.type {product_source = "constrain"}
-// CANDIDATE-NEXT: constrain.eq %{{.*}}, %{{.*}} : !felt.type, !felt.type {product_source = "constrain"}
+// CANDIDATE-NEXT: %{{.*}} = cast.tofelt %{{.*}} : index, !felt.type<"babybear"> {product_source = "compute"}
+// CANDIDATE-NEXT: struct.writem %{{.*}}[@out] = %{{.*}} : !struct.type<@Main>, !felt.type<"babybear"> {product_source = "compute"}
+// CANDIDATE-NEXT: %{{.*}} = cast.tofelt %{{.*}} : index, !felt.type<"babybear"> {product_source = "constrain"}
+// CANDIDATE-NEXT: constrain.eq %{{.*}}, %{{.*}} : !felt.type<"babybear">, !felt.type<"babybear"> {product_source = "constrain"}
 // CANDIDATE: } {product_source = "fused"}
