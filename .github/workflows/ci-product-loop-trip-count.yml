@@ -116,10 +116,17 @@ jobs:
             "$WORK/candidate.flattened.mlir" > "$WORK/candidate.flattened.product.function.mlir"
           awk '/function.def @product/{inside=1} inside{print} /function.def @compute/{exit}' \
             "$WORK/candidate.unfused.flattened.mlir" > "$WORK/candidate.unfused.flattened.product.function.mlir"
-          test "$(awk '/struct\\.writem.*\\[@out\\]/{n++} END{print n+0}' \
+          test "$(awk '/struct\.writem.*\[@out\]/{n++} END{print n+0}' \
             "$WORK/candidate.unfused.flattened.product.function.mlir")" -eq 2
-          test "$(awk '/struct\\.writem.*\\[@out\\]/{n++} END{print n+0}' \
+          test "$(awk '/struct\.writem.*\[@out\]/{n++} END{print n+0}' \
             "$WORK/candidate.flattened.product.function.mlir")" -eq 1
+          grep -F 'cast.tofelt %c3 : index' \
+            "$WORK/candidate.unfused.flattened.product.function.mlir"
+          if grep -F 'cast.tofelt %c3 : index' \
+            "$WORK/candidate.flattened.product.function.mlir"; then
+            echo 'fused product still contains the compute loop second iteration' >&2
+            exit 1
+          fi
 
           if "$BIN/llzk-opt" --llzk-to-smt-no-cf='field=babybear' \
             "$WORK/candidate.flattened.mlir" -o "$WORK/candidate.smt.mlir" \
@@ -128,7 +135,7 @@ jobs:
           else
             candidate_smt_status=$?
           fi
-          printf 'exit=%s bytes=%s\\n' "$candidate_smt_status" \
+          printf 'exit=%s bytes=%s\n' "$candidate_smt_status" \
             "$(wc -c < "$WORK/candidate.smt.mlir" 2>/dev/null || echo 0)" \
             > "$WORK/candidate.smt.status"
           if [ "$candidate_smt_status" -ne 0 ]; then
@@ -142,13 +149,15 @@ jobs:
           else
             control_smt_status=$?
           fi
-          printf 'exit=%s bytes=%s\\n' "$control_smt_status" \
+          printf 'exit=%s bytes=%s\n' "$control_smt_status" \
             "$(wc -c < "$WORK/control.smt.mlir" 2>/dev/null || echo 0)" \
             > "$WORK/control.smt.status"
           if [ "$control_smt_status" -ne 0 ]; then
             cat "$WORK/control.smt.stderr" >&2
             exit 1
           fi
+          grep -E '^exit=0 bytes=[1-9][0-9]*$' "$WORK/candidate.smt.status"
+          grep -E '^exit=0 bytes=[1-9][0-9]*$' "$WORK/control.smt.status"
           test -s "$WORK/candidate.smt.mlir"
           test -s "$WORK/control.smt.mlir"
 
@@ -156,6 +165,18 @@ jobs:
           grep -F 'smt.assert' "$WORK/candidate.smt.mlir"
           grep -F 'smt.assert' "$WORK/control.smt.mlir"
           grep -F 'smt.eq %out_w' "$WORK/candidate.smt.mlir"
+          grep -E 'smt.int.cmp le %out_w, %c3([[:space:]]|$)' \
+            "$WORK/candidate.smt.mlir"
+          grep -E 'smt.int.cmp le %out_w, %c0(_[0-9]+)?([[:space:]]|$)' \
+            "$WORK/control.smt.mlir"
+          {
+            echo 'candidate public relation:'
+            grep -E 'smt.int.cmp (ge|le) %out_w|smt.eq %out_w' \
+              "$WORK/candidate.smt.mlir"
+            echo 'control public relation:'
+            grep -E 'smt.int.cmp (ge|le) %out_w|smt.eq %out_w' \
+              "$WORK/control.smt.mlir"
+          } > "$WORK/downstream-public-relation.txt"
 
           {
             echo 'source oracle: compute iterations are i=0,3; final @out is 3'
