@@ -75,15 +75,27 @@ jobs:
             --llzk-compute-constrain-to-product="root-struct=Main" \
             "$FUSE_PASS" "$WORK/control.llzk" -o "$WORK/control.product.mlir"
 
+          "$BIN/llzk-opt" --verify-each \
+            --llzk-compute-constrain-to-product="root-struct=Main" \
+            "$WORK/candidate.llzk" -o "$WORK/candidate.unfused.product.mlir"
+
           awk '/function.def @product/{inside=1} inside{print} /function.def @compute/{exit}' \
             "$WORK/candidate.product.mlir" > "$WORK/candidate.product.function.mlir"
           awk '/function.def @product/{inside=1} inside{print} /function.def @compute/{exit}' \
             "$WORK/control.product.mlir" > "$WORK/control.product.function.mlir"
+          awk '/function.def @product/{inside=1} inside{print} /function.def @compute/{exit}' \
+            "$WORK/candidate.unfused.product.mlir" > "$WORK/candidate.unfused.product.function.mlir"
 
           grep -F 'product_source = "fused"' "$WORK/candidate.product.function.mlir"
           grep -F 'product_source = "fused"' "$WORK/control.product.function.mlir"
           grep -F 'struct.writem' "$WORK/candidate.product.function.mlir"
           grep -F 'constrain.eq' "$WORK/candidate.product.function.mlir"
+          test "$(awk '/struct\\.writem.*\\[@out\\]/{n++} END{print n+0}' \
+            "$WORK/candidate.unfused.product.function.mlir")" -eq 2
+          test "$(awk '/struct\\.writem.*\\[@out\\]/{n++} END{print n+0}' \
+            "$WORK/candidate.product.function.mlir")" -eq 1
+          grep -F 'scf.for %arg0 = %c0_0 to %c3_1 step %c3_2' \
+            "$WORK/candidate.product.function.mlir"
 
           "$BIN/llzk-witgen" "$WORK/candidate.llzk" --inputs "$WORK/empty_inputs.json" \
             > "$WORK/candidate.witgen.json"
@@ -101,6 +113,8 @@ jobs:
           "$BIN/llzk-opt" --verify-each --llzk-flatten \
             "$WORK/candidate.product.mlir" -o "$WORK/candidate.flattened.mlir"
           "$BIN/llzk-opt" --verify-each --llzk-flatten \
+            "$WORK/candidate.unfused.product.mlir" -o "$WORK/candidate.unfused.flattened.mlir"
+          "$BIN/llzk-opt" --verify-each --llzk-flatten \
             "$WORK/control.product.mlir" -o "$WORK/control.flattened.mlir"
 
           "$BIN/llzk-opt" --verify-each --llzk-to-smt-no-cf='field=babybear' \
@@ -115,6 +129,7 @@ jobs:
 
           {
             echo 'source oracle: compute iterations are i=0,3; final @out is 3'
+            echo 'unfused product oracle: compute side of product has two writes, @out=3 after flattening'
             echo 'fused-loop oracle: MLIR fusion uses the constraint loop bounds i=0; final @out is 0'
             echo 'control oracle: compute and constrain each execute only at i=0; final @out is 0'
           } > "$WORK/source-oracle.txt"
