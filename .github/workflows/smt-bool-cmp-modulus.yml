@@ -64,21 +64,20 @@ jobs:
           command -v z3
           z3 --version
 
+      - name: Inspect runtime library resolution
+        run: |
+          resolved_result="$(readlink -f "$GITHUB_WORKSPACE/result")"
+          printf 'Build output: %s\n' "$resolved_result"
+          for tool in llzk-opt llzk-translate llzk-smt-check; do
+            printf '\n%s\n' "$tool"
+            ldd "$resolved_result/bin/$tool" || true
+          done
+          printf '\n%s\n' 'system Z3'
+          ldd /usr/bin/z3 || true
+
       - name: Run source-to-SMT-LIB solver comparison
         run: |
-          runtime_library_path="$(
-            nix-store -qR "$GITHUB_WORKSPACE/result" |
-              while IFS= read -r store_path; do
-                for library_dir in "$store_path/lib" "$store_path/lib64"; do
-                  if [[ -d "$library_dir" ]]; then
-                    printf '%s\n' "$library_dir"
-                  fi
-                done
-              done |
-              paste -sd:
-          )"
-          LD_LIBRARY_PATH="$runtime_library_path${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" \
-            Z3_BIN=/usr/bin/z3 bash \
+          env -u LD_LIBRARY_PATH Z3_BIN=/usr/bin/z3 bash -x \
             "$RUNNER_TEMP/smt-bool-cmp-modulus/run.sh" \
             "$GITHUB_WORKSPACE/result" \
             "$RUNNER_TEMP/smt-bool-cmp-results"
