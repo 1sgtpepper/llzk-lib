@@ -121,10 +121,20 @@ jobs:
           test "$(awk '/struct\\.writem.*\\[@out\\]/{n++} END{print n+0}' \
             "$WORK/candidate.flattened.product.function.mlir")" -eq 1
 
-          "$BIN/llzk-opt" --verify-each --llzk-to-smt-no-cf='field=babybear' \
-            "$WORK/candidate.flattened.mlir" -o "$WORK/candidate.smt.mlir"
-          "$BIN/llzk-opt" --verify-each --llzk-to-smt-no-cf='field=babybear' \
-            "$WORK/control.flattened.mlir" -o "$WORK/control.smt.mlir"
+          if ! "$BIN/llzk-opt" --verify-each --llzk-to-smt-no-cf='field=babybear' \
+            "$WORK/candidate.flattened.mlir" -o "$WORK/candidate.smt.mlir" \
+            2>"$WORK/candidate.smt.stderr"; then
+            cat "$WORK/candidate.smt.stderr" >&2
+            exit 1
+          fi
+          if ! "$BIN/llzk-opt" --verify-each --llzk-to-smt-no-cf='field=babybear' \
+            "$WORK/control.flattened.mlir" -o "$WORK/control.smt.mlir" \
+            2>"$WORK/control.smt.stderr"; then
+            cat "$WORK/control.smt.stderr" >&2
+            exit 1
+          fi
+          test -s "$WORK/candidate.smt.mlir"
+          test -s "$WORK/control.smt.mlir"
 
           grep -F 'func.func @smt_Main' "$WORK/candidate.smt.mlir"
           grep -F 'smt.assert' "$WORK/candidate.smt.mlir"
