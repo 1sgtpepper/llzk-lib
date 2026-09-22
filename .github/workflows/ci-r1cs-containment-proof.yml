@@ -94,8 +94,8 @@ jobs:
             "$WORK/candidate.llzk" -o "$WORK/candidate.r1cs.mlir"
           "$BIN/llzk-opt" --verify-each -llzk-full-r1cs-lowering \
             "$WORK/control.llzk" -o "$WORK/control.r1cs.mlir"
-          diff -u "$WORK/candidate.r1cs.mlir" "$WORK/control.r1cs.mlir"
           test "$(grep -c 'r1cs.constrain' "$WORK/candidate.r1cs.mlir")" -eq 1
+          test "$(grep -c 'r1cs.constrain' "$WORK/control.r1cs.mlir")" -eq 1
           grep -F 'r1cs.constrain' "$WORK/candidate.r1cs.mlir"
 
           "$BIN/llzk-witgen" "$WORK/candidate.llzk" \
@@ -147,7 +147,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: r1cs-containment-proof-${{ github.ref_name }}
+          name: r1cs-containment-proof-${{ github.run_id }}
           path: |
             ${{ runner.temp }}/llzk-r1cs-containment/candidate.llzk
             ${{ runner.temp }}/llzk-r1cs-containment/control.llzk
