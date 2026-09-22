@@ -11,6 +11,8 @@ opt="$tool_root/bin/llzk-opt"
 translate="$tool_root/bin/llzk-translate"
 check="$tool_root/bin/llzk-smt-check"
 solver=${Z3_BIN:-z3}
+bridge="$asset_dir/lowered_mlir_to_smtlib.py"
+compare="$asset_dir/compare_smtlib.py"
 
 test -x "$opt"
 
@@ -48,19 +50,15 @@ python3 "$asset_dir/assert_ir.py" \
   "$output_dir/explicit-mod-optimized.mlir"
 
 if [[ ! -x "$translate" || ! -x "$check" ]]; then
-  translate_status=unavailable
-  check_status=unavailable
+  translate_status=not-shipped-by-exact-target
+  check_status=not-shipped-by-exact-target
   if [[ -x "$translate" ]]; then translate_status=available; fi
   if [[ -x "$check" ]]; then check_status=available; fi
   printf '%s\n' \
-    "Exact target provides llzk-opt but lacks the downstream SMT-LIB tools:" \
+    "Downstream tool availability in the exact target build:" \
     "  llzk-translate: $translate_status" \
     "  llzk-smt-check: $check_status" \
-    "Exact lowered MLIR is available above; SMT-LIB translation and solver validation were not run." \
-    > "$output_dir/downstream-validation-unavailable.txt"
-  printf '%s\n' \
-    'PARTIAL: exact target lacks llzk-translate and/or llzk-smt-check; lowered MLIR artifacts were retained.'
-  exit 0
+    > "$output_dir/downstream-tool-availability.txt"
 fi
 
 python3 "$asset_dir/wrap_solver.py" \
@@ -89,10 +87,36 @@ for name in \
   control-optimized \
   explicit-mod-naive \
   explicit-mod-optimized; do
-  "$translate" --smt-to-smtlib "$output_dir/$name-wrapper.mlir" \
-    > "$output_dir/$name.smt2"
-  "$check" "$output_dir/$name.smt2" --solver-binary="$solver" \
-    | tee "$output_dir/$name.solver.txt"
+  python3 "$bridge" "$output_dir/$name-wrapper.mlir" \
+    > "$output_dir/$name.bridge.smt2"
+
+  if [[ -x "$translate" ]]; then
+    "$translate" --smt-to-smtlib "$output_dir/$name-wrapper.mlir" \
+      > "$output_dir/$name.smt2"
+    python3 "$compare" "$output_dir/$name.smt2" "$output_dir/$name.bridge.smt2" \
+      --solver-binary "$solver" \
+      > "$output_dir/$name.translation-equivalence.txt"
+  else
+    cp "$output_dir/$name.bridge.smt2" "$output_dir/$name.smt2"
+    printf '%s\n' \
+      'SMT-LIB was projected from exact target MLIR by the fail-closed validation bridge.' \
+      'Cross-job checks exact MLIR identity and equivalence to exact-main official SMT-LIB.' \
+      > "$output_dir/$name.translation-origin.txt"
+  fi
+
+  if [[ -x "$check" ]]; then
+    "$check" "$output_dir/$name.smt2" --solver-binary="$solver" \
+      | tee "$output_dir/$name.solver.txt"
+  else
+    expected=sat
+    if [[ "$name" == explicit-mod-* ]]; then expected=unsat; fi
+    actual=$("$solver" -in -smt2 < "$output_dir/$name.smt2")
+    printf '%s\n' "$actual" | tee "$output_dir/$name.solver.txt"
+    if [[ "$actual" != "$expected" ]]; then
+      printf 'Expected solver status %s for %s, got %s\n' "$expected" "$name" "$actual" >&2
+      exit 1
+    fi
+  fi
 done
 
 printf '%s\n' \

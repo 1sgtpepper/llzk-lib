@@ -88,3 +88,77 @@ jobs:
         with:
           name: smt-bool-cmp-${{ matrix.name }}
           path: ${{ runner.temp }}/smt-bool-cmp-results
+
+  cross-check:
+    name: Compare exact target outputs
+    needs: validate
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout validation harness
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Download exact-main artifacts
+        uses: actions/download-artifact@v7
+        with:
+          name: smt-bool-cmp-upstream-main
+          path: ${{ runner.temp }}/upstream-main
+
+      - name: Download exact-release artifacts
+        uses: actions/download-artifact@v7
+        with:
+          name: smt-bool-cmp-release-v2.1.2
+          path: ${{ runner.temp }}/release-v2.1.2
+
+      - name: Install Z3 solver
+        run: |
+          if ! command -v z3 >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install --yes z3
+          fi
+          z3 --version
+
+      - name: Prove release lowering and relation match exact main
+        run: |
+          set -euo pipefail
+          main="$RUNNER_TEMP/upstream-main"
+          release="$RUNNER_TEMP/release-v2.1.2"
+          script="$GITHUB_WORKSPACE/validation/smt-bool-cmp-modulus/compare_smtlib.py"
+          evidence="$RUNNER_TEMP/cross-revision-validation.txt"
+          : > "$evidence"
+          for name in \
+            candidate-naive \
+            candidate-optimized \
+            control-naive \
+            control-optimized \
+            explicit-mod-naive \
+            explicit-mod-optimized; do
+            cmp "$main/$name.mlir" "$release/$name.mlir"
+            cmp "$main/$name-wrapper.mlir" "$release/$name-wrapper.mlir"
+            python3 "$script" "$main/$name.smt2" "$release/$name.smt2" \
+              --solver-binary /usr/bin/z3
+            printf '%s: MLIR byte-identical; SMT formulas equivalent.\n' "$name" \
+              | tee -a "$evidence"
+          done
+          printf '\nRelease solver statuses:\n' | tee -a "$evidence"
+          for pair in \
+            candidate-naive:sat \
+            candidate-optimized:sat \
+            control-naive:sat \
+            control-optimized:sat \
+            explicit-mod-naive:unsat \
+            explicit-mod-optimized:unsat; do
+            name=${pair%%:*}
+            expected=${pair##*:}
+            actual=$(cat "$release/$name.solver.txt")
+            test "$actual" = "$expected"
+            printf '%s: %s\n' "$name" "$actual" | tee -a "$evidence"
+          done
+
+      - name: Upload cross-revision proof
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: smt-bool-cmp-cross-revision
+          path: ${{ runner.temp }}/cross-revision-validation.txt
