@@ -154,7 +154,7 @@ module attributes {llzk.lang} {
 
   // Wrong operation kinds are rejected for unrestricted parameters.
   function.def @function_untyped() -> index {
-    // expected-error@+1 {{'function.call' op instantiation value '@WrongFunction' refers to a 'function.def' which is not allowed}}
+    // expected-error@+1 {{'function.call' op template argument '@WrongFunction' refers to a 'function.def' which is not allowed}}
     %value = function.call @UntypedTarget::@id<[@WrongFunction]>() : () -> index
     function.return %value : index
   }
@@ -176,7 +176,7 @@ module attributes {llzk.lang} {
 
   // Wrong operation kinds are rejected for typed parameters.
   function.def @function_typed() -> index {
-    // expected-error@+1 {{'function.call' op instantiation value '@WrongFunction' refers to a 'function.def' which is not allowed}}
+    // expected-error@+1 {{'function.call' op template argument '@WrongFunction' refers to a 'function.def' which is not allowed}}
     %value = function.call @TypedTarget::@id<[@WrongFunction]>() : () -> index
     function.return %value : index
   }
@@ -195,7 +195,7 @@ module attributes {llzk.lang} {
 
   // Wrong operation kinds are rejected for unrestricted parameters.
   function.def @module_untyped() -> index {
-    // expected-error@+1 {{'function.call' op instantiation value '@WrongModule' refers to a 'builtin.module' which is not allowed}}
+    // expected-error@+1 {{'function.call' op template argument '@WrongModule' refers to a 'builtin.module' which is not allowed}}
     %value = function.call @UntypedTarget::@id<[@WrongModule]>() : () -> index
     function.return %value : index
   }
@@ -214,7 +214,7 @@ module attributes {llzk.lang} {
 
   // Wrong operation kinds are rejected for typed parameters.
   function.def @module_typed() -> index {
-    // expected-error@+1 {{'function.call' op instantiation value '@WrongModule' refers to a 'builtin.module' which is not allowed}}
+    // expected-error@+1 {{'function.call' op template argument '@WrongModule' refers to a 'builtin.module' which is not allowed}}
     %value = function.call @TypedTarget::@id<[@WrongModule]>() : () -> index
     function.return %value : index
   }
@@ -239,7 +239,7 @@ module attributes {llzk.lang} {
 
   // Wrong operation kinds are rejected for unrestricted parameters.
   function.def @struct_untyped() -> index {
-    // expected-error@+1 {{'function.call' op instantiation value '@WrongStruct' refers to a 'struct.def' which is not allowed}}
+    // expected-error@+1 {{'function.call' op template argument '@WrongStruct' refers to a 'struct.def' which is not allowed}}
     %value = function.call @UntypedTarget::@id<[@WrongStruct]>() : () -> index
     function.return %value : index
   }
@@ -264,7 +264,7 @@ module attributes {llzk.lang} {
 
   // Wrong operation kinds are rejected for typed parameters.
   function.def @struct_typed() -> index {
-    // expected-error@+1 {{'function.call' op instantiation value '@WrongStruct' refers to a 'struct.def' which is not allowed}}
+    // expected-error@+1 {{'function.call' op template argument '@WrongStruct' refers to a 'struct.def' which is not allowed}}
     %value = function.call @TypedTarget::@id<[@WrongStruct]>() : () -> index
     function.return %value : index
   }
@@ -289,7 +289,7 @@ module attributes {llzk.lang} {
   struct.def @Caller {
     function.def @compute() -> !struct.type<@Caller> {
       %self = struct.new : !struct.type<@Caller>
-      // expected-error@+1 {{'function.call' op instantiation value '@globals::@G' refers to a global that is not marked as 'const'}}
+      // expected-error@+1 {{'function.call' op template argument '@globals::@G' refers to a global that is not marked as 'const'}}
       %value = function.call @MutableGlobalInitializedCall::@id<[@globals::@G]>() : () -> !felt.type
       function.return %self : !struct.type<@Caller>
     }
@@ -316,7 +316,7 @@ module attributes {llzk.lang} {
   struct.def @Caller {
     function.def @compute() -> !struct.type<@Caller> {
       %self = struct.new : !struct.type<@Caller>
-      // expected-error@+1 {{'function.call' op instantiation value '@globals::@G' refers to a global that is not marked as 'const'}}
+      // expected-error@+1 {{'function.call' op template argument '@globals::@G' refers to a global that is not marked as 'const'}}
       %value = function.call @MutableGlobalUninitializedCall::@id<[@globals::@G]>() : () -> !felt.type
       function.return %self : !struct.type<@Caller>
     }
@@ -790,5 +790,28 @@ module attributes {llzk.lang} {
     function.call @RepeatedParam::@accept(%lhs, %rhs) :
         (!array.type<5 x index>, !array.type<5 x index>) -> ()
     function.return
+  }
+}
+
+// -----
+
+// A constant global must satisfy a template parameter restriction even when
+// that parameter cannot be inferred from the callee's function signature.
+module attributes {llzk.lang} {
+  global.def const @F : !felt.type = 7
+
+  poly.template @GlobalFunc {
+    poly.param @N : index
+
+    function.def @id() -> index {
+      %zero = arith.constant 0 : index
+      function.return %zero : index
+    }
+  }
+
+  function.def @use() -> index {
+    // expected-error@+1 {{'function.call' op instantiation value '@F' is not compatible with parameter "@N" type restriction 'index'}}
+    %value = function.call @GlobalFunc::@id<[@F]>() : () -> index
+    function.return %value : index
   }
 }

@@ -752,32 +752,6 @@ void IncludeOp::build(
   addTemplateParams<IncludeOp>(odsBuilder, props, templateParams);
 }
 
-LogicalResult IncludeOp::verifyTemplateParamCompatibility(
-    Attribute paramFromIncludeOp, TemplateParamOp targetParam
-) {
-  return llzk::verifyTemplateParamValueCompatibility(
-      getOperation(), paramFromIncludeOp, targetParam
-  );
-}
-
-LogicalResult IncludeOp::verifyTemplateParamCompatibility(
-    llvm::iterator_range<Region::op_iterator<TemplateParamOp>> targetParamDefs
-) {
-  return llzk::verifyTemplateParamValuesCompatibility(
-      getOperation(), getTemplateParamsAttr(), targetParamDefs
-  );
-}
-
-LogicalResult IncludeOp::verifyTemplateParamsMatchInferred(
-    llvm::iterator_range<Region::op_iterator<TemplateParamOp>> targetParamDefs,
-    const UnificationMap &unifications
-) {
-  return llzk::verifyTemplateParamsMatchInferred(
-      getOperation(), getTemplateParamsAttr(), targetParamDefs, unifications,
-      llzk::TemplateParamSignatureKind::Contract
-  );
-}
-
 namespace {
 
 struct IncludeOpVerifier {
@@ -916,18 +890,6 @@ LogicalResult IncludeOp::verifySymbolUses(SymbolTableCollection &tables) {
   return KnownTargetVerifier(this, std::move(*tgtOpt)).verify();
 }
 
-FunctionType IncludeOp::getTypeSignature() {
-  return FunctionType::get(getContext(), getArgOperands().getTypes(), /*results*/ {});
-}
-
-FailureOr<UnificationMap> IncludeOp::unifyTypeSignature(FunctionType other) {
-  UnificationMap unifications;
-  if (functionTypesUnify(getTypeSignature(), other, {}, &unifications)) {
-    return unifications;
-  }
-  return failure();
-}
-
 FailureOr<SymbolLookupResult<ContractOp>>
 IncludeOp::getCalleeTarget(SymbolTableCollection &tables) {
   Operation *thisOp = this->getOperation();
@@ -959,13 +921,6 @@ CallInterfaceCallable IncludeOp::getCallableForCallee() { return getCalleeAttr()
 /// Set the callee for this operation.
 void IncludeOp::setCalleeFromCallable(CallInterfaceCallable callee) {
   setCalleeAttr(llvm::cast<SymbolRefAttr>(callee));
-}
-
-SmallVector<ValueRange> IncludeOp::toVectorOfValueRange(OperandRangeRange input) {
-  llvm::SmallVector<ValueRange, 4> output;
-  output.reserve(input.size());
-  output.insert(output.end(), input.begin(), input.end());
-  return output;
 }
 
 Operation *IncludeOp::resolveCallableInTable(SymbolTableCollection *symbolTable) {

@@ -10,19 +10,20 @@
 #ifndef LLZK_VERIF_OPS
 #define LLZK_VERIF_OPS
 
+include "llzk/Dialect/Felt/IR/Types.td"
+include "llzk/Dialect/Function/IR/OpTraits.td"
 include "llzk/Dialect/Verif/IR/Dialect.td"
 include "llzk/Dialect/Verif/IR/OpInterfaces.td"
 include "llzk/Dialect/SMT/IR/SMTTypes.td"
-include "mlir/Interfaces/CallInterfaces.td"
-include "mlir/Interfaces/FunctionInterfaces.td"
+include "llzk/Dialect/Shared/CallLikeOpInterfaces.td"
 include "llzk/Dialect/Shared/OpTraits.td"
 include "llzk/Dialect/Shared/Types.td"
-include "llzk/Dialect/Felt/IR/Types.td"
-include "llzk/Dialect/Function/IR/OpTraits.td"
 
 include "mlir/IR/OpAsmInterface.td"
 include "mlir/IR/OpBase.td"
 include "mlir/IR/SymbolInterfaces.td"
+include "mlir/Interfaces/CallInterfaces.td"
+include "mlir/Interfaces/FunctionInterfaces.td"
 
 class VerifDialectOp<string mnemonic, list<Trait> traits = []>
     : Op<VerifDialect, mnemonic, traits>;
@@ -91,7 +92,7 @@ def ProveDetOp : VerifDialectOp<"det.prove", [Verification<>]> {
 
     Returns a boolean that indicates if the operand was proven deterministic or not.
 
-    This operation has the `Verification` trait and can be used inside `function.def` 
+    This operation has the `Verification` trait and can be used inside `function.def`
     ops that have the `allow_verif` attribute.
   }];
   let arguments = (ins EmitEqType:$condition);
@@ -106,7 +107,7 @@ def AssumeDetOp : VerifDialectOp<"det.assume", [Verification<>]> {
     Hints to the proving backend that the operand is deterministic, for a concrete definition
     of determinism determined by the backend.
 
-    This operation has the `Verification` trait and can be used inside `function.def` 
+    This operation has the `Verification` trait and can be used inside `function.def`
     ops that have the `allow_verif` attribute.
   }];
   let arguments = (ins EmitEqType:$hint);
@@ -166,7 +167,7 @@ class EnsureOpBase<string mnemonic, bit inlinable = false,
     Encodes a postcondition in the `@}]#mnemonic#[{` function.
   }]#!if(inlinable, [{
 
-    This operation has the `Verification` trait and can be used inside `function.def` 
+    This operation has the `Verification` trait and can be used inside `function.def`
     ops that have the `allow_verif_ops` attribute.
     }],
          "");
@@ -432,12 +433,11 @@ def ContractEndOp
 //===------------------------------------------------------------------===//
 
 def IncludeOp
-    : VerifDialectOp<
-          "include", [MemRefsNormalizable, AttrSizedOperandSegments,
-                      VerifySizesForMultiAffineOps<1>,
-                      DeclareOpInterfaceMethods<CallOpInterface>,
-                      DeclareOpInterfaceMethods<SymbolUserOpInterface>,
-                      HasAncestor<"::llzk::verif::ContractOp">]> {
+    : VerifDialectOp<"include", [MemRefsNormalizable, AttrSizedOperandSegments,
+                                 DeclareOpInterfaceMethods<
+                                     LLZKCallLikeOpInterface, ["getSelfValue"]>,
+                                 VerifySizesForMultiAffineOps<1>,
+                                 HasAncestor<"::llzk::verif::ContractOp">]> {
   let summary = "contract inclusion operation";
   let description = [{
     Invokes another specification contract from another contract, effectively including the
@@ -558,65 +558,12 @@ def IncludeOp
                   }]>];
 
   let extraClassDeclaration = [{
-    /// Required by CallOpInterface
-    ::mlir::Operation *resolveCallableInTable(::mlir::SymbolTableCollection *symbolTable);
-
-    /// Required by CallOpInterface
-    ::mlir::Operation *resolveCallable();
-
-    /// Return the FunctionType inferred from the argument operands of this IncludeOp.
-    /// This is not necessarily the same as the target contract's FunctionType but must unify with
-    /// it or else IR verification will fail.
-    ::mlir::FunctionType getTypeSignature();
-
-    /// Attempt type unification between the inferred FunctionType from this IncludeOp (as LHS) and
-    /// the given contract FunctionType (as RHS). If successful, return a UnificationMap containing
-    /// the unifications that were made. Otherwise, return failure.
-    ::mlir::FailureOr<UnificationMap> unifyTypeSignature(::mlir::FunctionType other);
-
     /// Return `true` iff the contract targets a struct type.
     bool contractTargetsStruct();
 
-    /// Return the "self" value (i.e. the first parameter) from the callee contract,
-    /// assuming the target of the contract is a struct target.
-    ::mlir::Value getSelfValue();
-
-    /// Resolve and return the target Contract for this IncludeOp.
+    /// Resolve and return the target Contract for this CallOp.
     ::mlir::FailureOr<::llzk::SymbolLookupResult<::llzk::verif::ContractOp>>
     getCalleeTarget(::mlir::SymbolTableCollection &tables);
-
-    /// Allocate consecutive storage of the ValueRange instances in the parameter
-    /// so it can be passed to the builders as an `ArrayRef<ValueRange>`.
-    static ::llvm::SmallVector<::mlir::ValueRange> toVectorOfValueRange(::mlir::OperandRangeRange);
-
-    /// Check one template argument from this `IncludeOp` against the target parameter restriction.
-    ::mlir::LogicalResult verifyTemplateParamCompatibility(
-        ::mlir::Attribute paramFromIncludeOp,
-        ::llzk::polymorphic::TemplateParamOp targetParam
-    );
-
-    /// Check each explicit template argument from this `IncludeOp` against the corresponding target
-    /// parameter restriction. The argument and parameter ranges must be non-empty and have the
-    /// same size.
-    ::mlir::LogicalResult verifyTemplateParamCompatibility(
-        ::llvm::iterator_range<
-            ::mlir::Region::op_iterator<::llzk::polymorphic::TemplateParamOp>> targetParamDefs
-    );
-
-    /// Verify that each template parameter value provided in this `IncludeOp` is consistent with
-    /// the value inferred for the target `TemplateParamOp` in the given `UnificationMap`. The
-    /// `UnificationMap` is expected to contain the unification results of this `IncludeOp` against
-    /// the target contract type signature.
-    ///
-    /// The template parameter list may be omitted when all parameters are inferable from the
-    /// contract type signature.
-    ///
-    /// Pre-condition assertions when the list is present:
-    ///   - `getTemplateParamsAttr().size() == llvm::range_size(targetParamDefs)`
-    ::mlir::LogicalResult verifyTemplateParamsMatchInferred(
-        ::llvm::iterator_range<::mlir::Region::op_iterator<::llzk::polymorphic::TemplateParamOp>> targetParamDefs,
-        const UnificationMap &unifications
-    );
   }];
 }
 

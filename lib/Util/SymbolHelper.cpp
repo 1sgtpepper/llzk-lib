@@ -18,6 +18,7 @@
 #include "llzk/Dialect/Felt/IR/Types.h"
 #include "llzk/Dialect/Function/IR/Ops.h"
 #include "llzk/Dialect/Global/IR/Ops.h"
+#include "llzk/Dialect/Polymorphic/IR/Ops.h"
 #include "llzk/Dialect/Polymorphic/IR/Types.h"
 #include "llzk/Dialect/Verif/IR/Ops.h"
 #include "llzk/Util/SymbolLookup.h"
@@ -42,9 +43,28 @@ namespace llzk {
 
 using namespace array;
 using namespace component;
+using namespace felt;
 using namespace function;
 using namespace global;
 using namespace polymorphic;
+
+void eraseEmptyNestedModules(ModuleOp rootModule) {
+  SmallVector<ModuleOp> emptyModules;
+  rootModule.walk<WalkOrder::PostOrder>([&](ModuleOp module) {
+    if (module == rootModule) {
+      return;
+    }
+    Region &region = module.getBodyRegion();
+    if (region.empty() || region.front().empty()) { // ModuleOp has the SingleBlock trait.
+      emptyModules.push_back(module);
+    }
+  });
+
+  for (ModuleOp module : emptyModules) {
+    LLVM_DEBUG(llvm::dbgs() << "Removing empty module " << module.getName() << '\n');
+    module.erase();
+  }
+}
 
 namespace {
 
@@ -420,6 +440,35 @@ FailureOr<TemplateOp> getConstResolutionTemplate(SymbolTableCollection &tables, 
   return getParentOfType<TemplateOp>(origin);
 }
 
+LogicalResult
+verifyTemplateParamSymbol(SymbolTableCollection &tables, SymbolRefAttr symbol, Operation *origin) {
+  if (symbol.getNestedReferences().empty()) {
+    FailureOr<TemplateOp> parent = getConstResolutionTemplate(tables, origin);
+    if (failed(parent)) {
+      return failure();
+    }
+    if (*parent &&
+        parent->getConstNamed<TemplateSymbolBindingOpInterface>(symbol.getRootReference())) {
+      return success();
+    }
+  }
+
+  auto lookupRes = lookupTopLevelSymbol(tables, symbol, origin);
+  if (failed(lookupRes)) {
+    return failure();
+  }
+  auto global = llvm::dyn_cast<GlobalDefOp>(lookupRes->get());
+  if (!global) {
+    return origin->emitOpError() << "template argument '" << symbol << "' refers to a '"
+                                 << lookupRes->get()->getName() << "' which is not allowed";
+  }
+  if (!global.isConstant()) {
+    return origin->emitOpError() << "template argument '" << symbol
+                                 << "' refers to a global that is not marked as 'const'";
+  }
+  return success();
+}
+
 LogicalResult verifyTemplateParamValueCompatibility(
     Operation *origin, Attribute value, TemplateParamOp targetParam
 ) {
@@ -448,9 +497,16 @@ LogicalResult verifyTemplateParamValueCompatibility(
   std::optional<Type> declaredType = targetParam.getTypeOpt();
   bool compatible = !declaredType;
   if (auto sym = llvm::dyn_cast<SymbolRefAttr>(value)) {
+    SymbolTableCollection tables;
+    if (failed(verifyTemplateParamSymbol(tables, sym, origin))) {
+      return failure();
+    }
+    if (!declaredType) {
+      return success();
+    }
+
     bool resolvedLocal = false;
     if (sym.getNestedReferences().empty()) {
-      SymbolTableCollection tables;
       FailureOr<TemplateOp> parentTemplate = getConstResolutionTemplate(tables, origin);
       if (failed(parentTemplate)) {
         return failure();
@@ -466,28 +522,13 @@ LogicalResult verifyTemplateParamValueCompatibility(
       }
     }
     if (!resolvedLocal) {
-      SymbolTableCollection tables;
       auto lookup = lookupTopLevelSymbol(tables, sym, origin);
       if (failed(lookup)) {
         return failure();
       }
-      auto global = llvm::dyn_cast<GlobalDefOp>(lookup->get());
-      if (!global) {
-        return origin->emitOpError().append(
-            "instantiation value '", value, "' refers to a '", lookup->get()->getName(),
-            "' which is not allowed"
-        );
-      }
-      if (!global.isConstant()) {
-        auto diag = origin->emitOpError().append(
-            "instantiation value '", value, "' refers to a global that is not marked as 'const'"
-        );
-        diag.attachNote(global.getLoc()).append("global defined here");
-        return diag;
-      }
-      if (declaredType) {
-        compatible = isTemplateParamTypeCompatible(global.getType(), *declaredType);
-      }
+      auto global = llvm::cast<GlobalDefOp>(lookup->get());
+      assert(global.isConstant() && "verifyTemplateParamSymbol already checked constness");
+      compatible = isTemplateParamTypeCompatible(global.getType(), *declaredType);
     }
   } else if (declaredType && llvm::isa<TypeVarType>(*declaredType)) {
     TypeAttr typeValue = llvm::dyn_cast<TypeAttr>(value);
@@ -730,6 +771,24 @@ LogicalResult verifyTemplateParamsMatchInferred(
   return success();
 }
 
+LogicalResult verifyTemplateParamsMatchInferred(
+    Operation *origin, ArrayAttr explicitParams,
+    llvm::iterator_range<Region::op_iterator<TemplateParamOp>> targetParamDefs,
+    const UnificationMap &unifications
+) {
+  TemplateParamSignatureKind signatureKind;
+  if (llvm::isa<function::CallOp>(origin)) {
+    signatureKind = TemplateParamSignatureKind::Function;
+  } else if (llvm::isa<verif::IncludeOp>(origin)) {
+    signatureKind = TemplateParamSignatureKind::Contract;
+  } else {
+    llvm_unreachable("template parameter inference requires a call-like operation");
+  }
+  return verifyTemplateParamsMatchInferred(
+      origin, explicitParams, targetParamDefs, unifications, signatureKind
+  );
+}
+
 LogicalResult verifyParamOfType(
     SymbolTableCollection &tables, SymbolRefAttr param, Type parameterizedType, Operation *origin,
     std::optional<Type> requiredParamType, std::optional<Location> requiredParamLoc
@@ -761,7 +820,7 @@ LogicalResult verifyParamOfType(
   auto global = llvm::dyn_cast<GlobalDefOp>(foundOp);
   if (!global) {
     return origin->emitError() << "ref \"" << param << "\" in type " << parameterizedType
-                               << " refers to a '" << foundOp->getName()
+                               << " refers to a '" << lookupRes->get()->getName()
                                << "' which is not allowed";
   }
   if (!global.isConstant()) {

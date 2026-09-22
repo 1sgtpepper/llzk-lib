@@ -55,7 +55,7 @@ module attributes {llzk.lang} {
     global.def @G : !felt.type<"bn128"> = 35
   }
   verif.contract @Wrapper for @MutableGlobalInitializedInclude::@token () {
-    // expected-error@+1 {{'verif.include' op instantiation value '@globals::@G' refers to a global that is not marked as 'const'}}
+    // expected-error@+1 {{'verif.include' op template argument '@globals::@G' refers to a global that is not marked as 'const'}}
     verif.include @MutableGlobalInitializedInclude::@Base<[@globals::@G]>() : () -> ()
   }
 }
@@ -79,7 +79,7 @@ module attributes {llzk.lang} {
     global.def @G : !felt.type<"bn128">
   }
   verif.contract @Wrapper for @MutableGlobalUninitializedInclude::@token () {
-    // expected-error@+1 {{'verif.include' op instantiation value '@globals::@G' refers to a global that is not marked as 'const'}}
+    // expected-error@+1 {{'verif.include' op template argument '@globals::@G' refers to a global that is not marked as 'const'}}
     verif.include @MutableGlobalUninitializedInclude::@Base<[@globals::@G]>() : () -> ()
   }
 }
@@ -639,7 +639,7 @@ module attributes {llzk.lang} {
   function.def @Entry() { function.return }
   verif.contract @Wrapper for @Entry () {
     // Wrong operation kinds are rejected for unrestricted parameters.
-    // expected-error@+1 {{'verif.include' op instantiation value '@WrongFunction' refers to a 'function.def' which is not allowed}}
+    // expected-error@+1 {{'verif.include' op template argument '@WrongFunction' refers to a 'function.def' which is not allowed}}
     verif.include @UntypedTarget::@Base<[@WrongFunction]>() : () -> ()
   }
 }
@@ -659,7 +659,7 @@ module attributes {llzk.lang} {
   function.def @Entry() { function.return }
   verif.contract @Wrapper for @Entry () {
     // Wrong operation kinds are rejected for typed parameters.
-    // expected-error@+1 {{'verif.include' op instantiation value '@WrongFunction' refers to a 'function.def' which is not allowed}}
+    // expected-error@+1 {{'verif.include' op template argument '@WrongFunction' refers to a 'function.def' which is not allowed}}
     verif.include @TypedTarget::@Base<[@WrongFunction]>() : () -> ()
   }
 }
@@ -679,7 +679,7 @@ module attributes {llzk.lang} {
   function.def @Entry() { function.return }
   verif.contract @Wrapper for @Entry () {
     // Wrong operation kinds are rejected for unrestricted parameters.
-    // expected-error@+1 {{'verif.include' op instantiation value '@WrongModule' refers to a 'builtin.module' which is not allowed}}
+    // expected-error@+1 {{'verif.include' op template argument '@WrongModule' refers to a 'builtin.module' which is not allowed}}
     verif.include @UntypedTarget::@Base<[@WrongModule]>() : () -> ()
   }
 }
@@ -699,7 +699,7 @@ module attributes {llzk.lang} {
   function.def @Entry() { function.return }
   verif.contract @Wrapper for @Entry () {
     // Wrong operation kinds are rejected for typed parameters.
-    // expected-error@+1 {{'verif.include' op instantiation value '@WrongModule' refers to a 'builtin.module' which is not allowed}}
+    // expected-error@+1 {{'verif.include' op template argument '@WrongModule' refers to a 'builtin.module' which is not allowed}}
     verif.include @TypedTarget::@Base<[@WrongModule]>() : () -> ()
   }
 }
@@ -725,7 +725,7 @@ module attributes {llzk.lang} {
   function.def @Entry() { function.return }
   verif.contract @Wrapper for @Entry () {
     // Wrong operation kinds are rejected for unrestricted parameters.
-    // expected-error@+1 {{'verif.include' op instantiation value '@WrongStruct' refers to a 'struct.def' which is not allowed}}
+    // expected-error@+1 {{'verif.include' op template argument '@WrongStruct' refers to a 'struct.def' which is not allowed}}
     verif.include @UntypedTarget::@Base<[@WrongStruct]>() : () -> ()
   }
 }
@@ -751,7 +751,7 @@ module attributes {llzk.lang} {
   function.def @Entry() { function.return }
   verif.contract @Wrapper for @Entry () {
     // Wrong operation kinds are rejected for typed parameters.
-    // expected-error@+1 {{'verif.include' op instantiation value '@WrongStruct' refers to a 'struct.def' which is not allowed}}
+    // expected-error@+1 {{'verif.include' op template argument '@WrongStruct' refers to a 'struct.def' which is not allowed}}
     verif.include @TypedTarget::@Base<[@WrongStruct]>() : () -> ()
   }
 }
@@ -775,6 +775,61 @@ module attributes {llzk.lang} {
     verif.contract @Wrapper for @SpecTemplate::@token () {
       // expected-error@+1 {{'verif.include' op instantiation value '#felt<const 9> : !felt.type' is not compatible with parameter "@N" type restriction 'index'}}
       verif.include @SpecTemplate::@Base<[#felt<const 9>]>() : () -> ()
+    }
+  }
+}
+
+// -----
+
+// A local template binding must satisfy the included contract's parameter
+// restriction even when that parameter cannot be inferred from the contract
+// target's function signature.
+module attributes {llzk.lang} {
+  poly.template @IncludeLocalParamTypeMismatch {
+    poly.param @N : index
+    poly.param @F : !felt.type
+
+    function.def @token() {
+      function.return
+    }
+
+    verif.contract @Base for @IncludeLocalParamTypeMismatch::@token () {
+      %ok = arith.constant true
+      verif.ensure_compute %ok
+    }
+
+    verif.contract @Wrapper for @IncludeLocalParamTypeMismatch::@token () {
+      // expected-error@+1 {{'verif.include' op instantiation value '@N' is not compatible with parameter "@F" type restriction '!felt.type'}}
+      verif.include @IncludeLocalParamTypeMismatch::@Base<[@N, @N]>() : () -> ()
+    }
+  }
+}
+
+// -----
+
+// Exercise the same check when the local binding is a poly.expr rather than a
+// poly.param.
+module attributes {llzk.lang} {
+  poly.template @IncludeLocalExprTypeMismatch {
+    poly.param @F : !felt.type
+
+    poly.expr @Index {
+      %index = arith.constant 0 : index
+      poly.yield %index : index
+    }
+
+    function.def @token() {
+      function.return
+    }
+
+    verif.contract @Base for @IncludeLocalExprTypeMismatch::@token () {
+      %ok = arith.constant true
+      verif.ensure_compute %ok
+    }
+
+    verif.contract @Wrapper for @IncludeLocalExprTypeMismatch::@token () {
+      // expected-error@+1 {{'verif.include' op instantiation value '@Index' is not compatible with parameter "@F" type restriction '!felt.type'}}
+      verif.include @IncludeLocalExprTypeMismatch::@Base<[@Index]>() : () -> ()
     }
   }
 }
@@ -1847,5 +1902,35 @@ module attributes {llzk.lang} {
         (!array.type<5 x index>, !array.type<5 x index>) -> ()
     verif.include @RepeatedParam::@Base(%lhs, %rhs) :
         (!array.type<5 x index>, !array.type<5 x index>) -> ()
+  }
+}
+
+// -----
+
+// A constant global must satisfy a template parameter restriction even when
+// that parameter cannot be inferred from the included contract's signature.
+module attributes {llzk.lang} {
+  global.def const @F : !felt.type = 7
+
+  poly.template @SpecTemplate {
+    poly.param @N : index
+
+    function.def @token() {
+      function.return
+    }
+
+    verif.contract @Base for @SpecTemplate::@token () {
+      %ok = arith.constant true
+      verif.ensure_compute %ok
+    }
+  }
+
+  function.def @wrapper_entry() {
+    function.return
+  }
+
+  verif.contract @Wrapper for @wrapper_entry () {
+    // expected-error@+1 {{'verif.include' op instantiation value '@F' is not compatible with parameter "@N" type restriction 'index'}}
+    verif.include @SpecTemplate::@Base<[@F]>() : () -> ()
   }
 }

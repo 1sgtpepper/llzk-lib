@@ -37,6 +37,9 @@ class TemplateOp;
 class TemplateParamOp;
 } // namespace polymorphic
 
+/// Remove nested builtin modules whose body is empty, preserving the root module.
+void eraseEmptyNestedModules(mlir::ModuleOp rootModule);
+
 llvm::SmallVector<mlir::StringRef> getNames(mlir::SymbolRefAttr ref);
 llvm::SmallVector<mlir::FlatSymbolRefAttr> getPieces(mlir::SymbolRefAttr ref);
 
@@ -215,26 +218,39 @@ inline mlir::FailureOr<SymbolLookupResult<T>> resolveCallable(mlir::CallOpInterf
 mlir::FailureOr<polymorphic::TemplateOp>
 getConstResolutionTemplate(mlir::SymbolTableCollection &tables, mlir::Operation *origin);
 
+/// Ensure that a SymbolRef template argument resolves to a binding in the enclosing template or
+/// to a constant global.
+mlir::LogicalResult verifyTemplateParamSymbol(
+    mlir::SymbolTableCollection &tables, mlir::SymbolRefAttr symbol, mlir::Operation *origin
+);
+
 /// Verify one explicit or inferred template argument against its declared parameter restriction.
 /// Symbol references are resolved in the context of `origin`; diagnostics are emitted on it.
 mlir::LogicalResult verifyTemplateParamValueCompatibility(
     mlir::Operation *origin, mlir::Attribute value, polymorphic::TemplateParamOp targetParam
 );
 
-/// Verify each explicit template value against the corresponding declared parameter restriction.
-/// The values and declarations must be non-empty and have the same size. Diagnostics are emitted
-/// on `origin`.
+/// Verify each explicit template argument against the corresponding declared parameter restriction.
+/// The argument list and parameter declarations must be non-empty and have equal length.
 mlir::LogicalResult verifyTemplateParamValuesCompatibility(
     mlir::Operation *origin, mlir::ArrayAttr explicitParams,
     llvm::iterator_range<mlir::Region::op_iterator<polymorphic::TemplateParamOp>> targetParamDefs
+);
+
+/// Verify template arguments against values inferred from the target signature. The argument and
+/// parameter ranges must have equal sizes when explicit arguments are present.
+mlir::LogicalResult verifyTemplateParamsMatchInferred(
+    mlir::Operation *origin, mlir::ArrayAttr explicitParams,
+    llvm::iterator_range<mlir::Region::op_iterator<polymorphic::TemplateParamOp>> targetParamDefs,
+    const UnificationMap &unifications
 );
 
 /// Identify the signature whose inferred template values are being checked so shared verification
 /// can preserve the operation-specific diagnostic wording.
 enum class TemplateParamSignatureKind : std::uint8_t { Function, Contract };
 
-/// Verify explicit template values against the values inferred from a call-like operation's target
-/// signature. The operation-specific entry points delegate here so value compatibility and
+/// Verify template values against values inferred from a call-like operation's target signature.
+/// The call-like entry points delegate here so value compatibility and
 /// conflict handling stay identical for function calls and contract includes. When provided, the
 /// candidate lookup returns each distinct value observed for a parameter, allowing repeated
 /// felt-valued signature positions to be checked before the generic unifier reports ambiguity.
