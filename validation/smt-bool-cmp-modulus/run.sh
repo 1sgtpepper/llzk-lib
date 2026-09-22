@@ -50,22 +50,22 @@ python3 "$asset_dir/assert_ir.py" \
   "$output_dir/explicit-mod-optimized.mlir"
 
 python3 "$asset_dir/wrap_solver.py" \
-  "$output_dir/candidate-naive.mlir" CmpBoundary unsat \
+  "$output_dir/candidate-naive.mlir" smt_CmpBoundary unsat \
   > "$output_dir/candidate-naive-wrapper.mlir"
 python3 "$asset_dir/wrap_solver.py" \
-  "$output_dir/candidate-optimized.mlir" CmpBoundary unsat \
+  "$output_dir/candidate-optimized.mlir" smt_CmpBoundary unsat \
   > "$output_dir/candidate-optimized-wrapper.mlir"
 python3 "$asset_dir/wrap_solver.py" \
-  "$output_dir/control-naive.mlir" CmpBoundaryControl sat \
+  "$output_dir/control-naive.mlir" smt_CmpBoundaryControl sat \
   > "$output_dir/control-naive-wrapper.mlir"
 python3 "$asset_dir/wrap_solver.py" \
-  "$output_dir/control-optimized.mlir" CmpBoundaryControl sat \
+  "$output_dir/control-optimized.mlir" smt_CmpBoundaryControl sat \
   > "$output_dir/control-optimized-wrapper.mlir"
 python3 "$asset_dir/wrap_solver.py" \
-  "$output_dir/explicit-mod-naive.mlir" CmpBoundaryExplicitMod sat \
+  "$output_dir/explicit-mod-naive.mlir" smt_CmpBoundaryExplicitMod sat \
   > "$output_dir/explicit-mod-naive-wrapper.mlir"
 python3 "$asset_dir/wrap_solver.py" \
-  "$output_dir/explicit-mod-optimized.mlir" CmpBoundaryExplicitMod sat \
+  "$output_dir/explicit-mod-optimized.mlir" smt_CmpBoundaryExplicitMod sat \
   > "$output_dir/explicit-mod-optimized-wrapper.mlir"
 
 for name in \
