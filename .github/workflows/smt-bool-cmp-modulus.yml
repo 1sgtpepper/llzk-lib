@@ -66,12 +66,22 @@ jobs:
 
       - name: Run source-to-SMT-LIB solver comparison
         run: |
-          nix develop --command bash -c '
+          runtime_library_path="$(
+            nix-store -qR "$GITHUB_WORKSPACE/result" |
+              while IFS= read -r store_path; do
+                for library_dir in "$store_path/lib" "$store_path/lib64"; do
+                  if [[ -d "$library_dir" ]]; then
+                    printf '%s\n' "$library_dir"
+                  fi
+                done
+              done |
+              paste -sd:
+          )"
+          LD_LIBRARY_PATH="$runtime_library_path${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" \
             Z3_BIN=/usr/bin/z3 bash \
-              "$RUNNER_TEMP/smt-bool-cmp-modulus/run.sh" \
-              "$GITHUB_WORKSPACE/result" \
-              "$RUNNER_TEMP/smt-bool-cmp-results"
-          '
+            "$RUNNER_TEMP/smt-bool-cmp-modulus/run.sh" \
+            "$GITHUB_WORKSPACE/result" \
+            "$RUNNER_TEMP/smt-bool-cmp-results"
 
       - name: Upload lowered relations and solver output
         if: always()
