@@ -101,7 +101,7 @@ jobs:
           "$BIN/llzk-witgen" "$WORK/candidate.llzk" \
             --inputs "$WORK/input.json" --output-scope=full-witness \
             --output-wtns "$WORK/candidate.wtns" > "$WORK/candidate.witness.json"
-          grep -F '"x": "2"' "$WORK/candidate.witness.json"
+          grep -F '"arg0": "2"' "$WORK/candidate.witness.json"
           grep -F '"out": "2"' "$WORK/candidate.witness.json"
 
           PRIME=21888242871839275222246405745257275088548364400416034343698204186575808495617
