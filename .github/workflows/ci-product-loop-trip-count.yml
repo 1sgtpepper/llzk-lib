@@ -1,0 +1,125 @@
+name: Product loop trip-count reproduction
+
+on:
+  push:
+    branches:
+      - repro/product-loop-trip-count
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  reproduce:
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - name: main
+            commit: d1198631dbe9906cb149d1ddcd0dd1ca071dae6b
+            fuse: --llzk-fuse-product-control-flow
+          - name: release
+            commit: b1b8d52ca4e6114cdd9a80417f96342a9f9e8b6c
+            fuse: --llzk-fuse-product-loops
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout reproducer files
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - uses: cachix/install-nix-action@d1ca217b388ee87b2507a9a93bf01368bde7cec2
+        with:
+          install_url: https://releases.nixos.org/nix/nix-2.23.3/install
+          github_access_token: "${{ secrets.GITHUB_TOKEN }}"
+
+      - name: Set Git credentials
+        run: |
+          git config --global 'url.https://api@github.com/'.insteadOf 'https://github.com/'
+          git config --global 'url.https://ssh@github.com/'.insteadOf 'ssh://git@github.com/'
+          git config --global 'url.https://git@github.com/'.insteadOf 'git@github.com:'
+
+      - uses: cachix/cachix-action@v17
+        with:
+          name: veridise-public
+          authToken: '${{ secrets.CACHIX_PUBLIC_TOKEN }}'
+
+      - name: Run exact-revision reproduction (${{ matrix.target.name }})
+        env:
+          SOURCE_COMMIT: ${{ matrix.target.commit }}
+          FUSE_PASS: ${{ matrix.target.fuse }}
+          SOURCE_NAME: ${{ matrix.target.name }}
+          WORK: ${{ runner.temp }}/llzk-product-loop-trip-count
+        run: |
+          set -euo pipefail
+          SOURCE="$RUNNER_TEMP/llzk-source"
+          mkdir -p "$SOURCE" "$WORK"
+          git rev-parse "$SOURCE_COMMIT^{commit}"
+          git archive "$SOURCE_COMMIT" | tar -x -C "$SOURCE"
+          cp test/Transforms/FuseProductControlFlow/unequal_step_trip_count.llzk "$WORK/candidate.llzk"
+          cp .github/validation/unequal_step_trip_count_control.llzk "$WORK/control.llzk"
+
+          cd "$SOURCE"
+          nix --print-build-logs build '.#debugGCC'
+          BIN="$SOURCE/result/bin"
+
+          grep -F 'arith.constant 4 : index' "$WORK/candidate.llzk"
+          grep -F 'arith.constant 3 : index' "$WORK/control.llzk"
+
+          "$BIN/llzk-opt" --verify-each \
+            --llzk-compute-constrain-to-product="root-struct=Main" \
+            "$FUSE_PASS" "$WORK/candidate.llzk" -o "$WORK/candidate.product.mlir"
+          "$BIN/llzk-opt" --verify-each \
+            --llzk-compute-constrain-to-product="root-struct=Main" \
+            "$FUSE_PASS" "$WORK/control.llzk" -o "$WORK/control.product.mlir"
+
+          awk '/function.def @product/{inside=1} inside{print} /function.def @compute/{exit}' \
+            "$WORK/candidate.product.mlir" > "$WORK/candidate.product.function.mlir"
+          awk '/function.def @product/{inside=1} inside{print} /function.def @compute/{exit}' \
+            "$WORK/control.product.mlir" > "$WORK/control.product.function.mlir"
+
+          grep -F 'product_source = "fused"' "$WORK/candidate.product.function.mlir"
+          grep -F 'product_source = "fused"' "$WORK/control.product.function.mlir"
+          grep -F 'struct.writem' "$WORK/candidate.product.function.mlir"
+          grep -F 'constrain.eq' "$WORK/candidate.product.function.mlir"
+
+          "$BIN/llzk-opt" --verify-each --llzk-flatten \
+            "$WORK/candidate.product.mlir" -o "$WORK/candidate.flattened.mlir"
+          "$BIN/llzk-opt" --verify-each --llzk-flatten \
+            "$WORK/control.product.mlir" -o "$WORK/control.flattened.mlir"
+
+          "$BIN/llzk-opt" --verify-each --llzk-to-smt-no-cf='field=babybear' \
+            "$WORK/candidate.flattened.mlir" -o "$WORK/candidate.smt.mlir"
+          "$BIN/llzk-opt" --verify-each --llzk-to-smt-no-cf='field=babybear' \
+            "$WORK/control.flattened.mlir" -o "$WORK/control.smt.mlir"
+
+          grep -F 'func.func @smt_Main' "$WORK/candidate.smt.mlir"
+          grep -F 'smt.assert' "$WORK/candidate.smt.mlir"
+          grep -F 'smt.assert' "$WORK/control.smt.mlir"
+
+          {
+            echo 'source oracle: compute iterations are i=0,3; final @out is 3'
+            echo 'fused-loop oracle: MLIR fusion uses the constraint loop bounds i=0; final @out is 0'
+            echo 'control oracle: compute and constrain each execute only at i=0; final @out is 0'
+          } > "$WORK/source-oracle.txt"
+
+          if [[ "$SOURCE_NAME" == main ]]; then
+            "$BIN/llzk-translate" --smt-to-smtlib "$WORK/candidate.smt.mlir" \
+              -o "$WORK/candidate.smt2"
+            "$BIN/llzk-translate" --smt-to-smtlib "$WORK/control.smt.mlir" \
+              -o "$WORK/control.smt2"
+            z3 "$WORK/candidate.smt2" > "$WORK/candidate.z3.txt"
+            z3 "$WORK/control.smt2" > "$WORK/control.z3.txt"
+            grep -Fx 'sat' "$WORK/candidate.z3.txt"
+            grep -Fx 'sat' "$WORK/control.z3.txt"
+          fi
+
+          sha256sum "$WORK"/* > "$WORK/artifact.sha256"
+
+      - name: Upload reproduction artifacts
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: product-loop-trip-count-${{ matrix.target.name }}-${{ github.run_id }}
+          path: ${{ runner.temp }}/llzk-product-loop-trip-count

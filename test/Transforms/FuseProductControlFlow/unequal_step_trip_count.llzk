@@ -1,0 +1,45 @@
+// RUN: llzk-opt --llzk-compute-constrain-to-product="root-struct=Main" --llzk-fuse-product-control-flow %s | FileCheck --check-prefix=CANDIDATE --enable-var-scope %s
+
+module attributes {llzk.lang} {
+  struct.def @Main {
+    struct.member @out : !felt.type {llzk.pub}
+
+    function.def @compute() -> !struct.type<@Main> {
+      %self = struct.new : !struct.type<@Main>
+      %lb = arith.constant 0 : index
+      %ub = arith.constant 4 : index
+      %step = arith.constant 3 : index
+
+      scf.for %i = %lb to %ub step %step {
+        %out = cast.tofelt %i : index, !felt.type
+        struct.writem %self[@out] = %out : !struct.type<@Main>, !felt.type
+        scf.yield
+      }
+
+      function.return %self : !struct.type<@Main>
+    }
+
+    function.def @constrain(%self : !struct.type<@Main>) {
+      %lb = arith.constant 0 : index
+      %ub = arith.constant 3 : index
+      %step = arith.constant 3 : index
+      %zero = felt.const 0
+
+      scf.for %i = %lb to %ub step %step {
+        %i_felt = cast.tofelt %i : index, !felt.type
+        constrain.eq %i_felt, %zero : !felt.type
+        scf.yield
+      }
+
+      function.return
+    }
+  }
+}
+
+// CANDIDATE: function.def @product
+// CANDIDATE: scf.for %{{.*}} = %{{.*}} to %{{.*}} step %{{.*}} {
+// CANDIDATE-NEXT: %{{.*}} = cast.tofelt %{{.*}} : index, !felt.type {product_source = "compute"}
+// CANDIDATE-NEXT: struct.writem %{{.*}}[@out] = %{{.*}} : !struct.type<@Main>, !felt.type {product_source = "compute"}
+// CANDIDATE-NEXT: %{{.*}} = cast.tofelt %{{.*}} : index, !felt.type {product_source = "constrain"}
+// CANDIDATE-NEXT: constrain.eq %{{.*}}, %{{.*}} : !felt.type, !felt.type {product_source = "constrain"}
+// CANDIDATE: } {product_source = "fused"}

@@ -1,0 +1,35 @@
+module attributes {llzk.lang} {
+  struct.def @Main {
+    struct.member @out : !felt.type {llzk.pub}
+
+    function.def @compute() -> !struct.type<@Main> {
+      %self = struct.new : !struct.type<@Main>
+      %lb = arith.constant 0 : index
+      %ub = arith.constant 3 : index
+      %step = arith.constant 3 : index
+
+      scf.for %i = %lb to %ub step %step {
+        %out = cast.tofelt %i : index, !felt.type
+        struct.writem %self[@out] = %out : !struct.type<@Main>, !felt.type
+        scf.yield
+      }
+
+      function.return %self : !struct.type<@Main>
+    }
+
+    function.def @constrain(%self : !struct.type<@Main>) {
+      %lb = arith.constant 0 : index
+      %ub = arith.constant 3 : index
+      %step = arith.constant 3 : index
+      %zero = felt.const 0
+
+      scf.for %i = %lb to %ub step %step {
+        %i_felt = cast.tofelt %i : index, !felt.type
+        constrain.eq %i_felt, %zero : !felt.type
+        scf.yield
+      }
+
+      function.return
+    }
+  }
+}
