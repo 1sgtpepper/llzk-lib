@@ -2,7 +2,10 @@
 // RUN: llzk-opt --verify-each -llzk-full-r1cs-lowering %t/candidate.llzk -o %t/candidate.r1cs.mlir
 // RUN: llzk-opt --verify-each -llzk-full-r1cs-lowering %t/control.llzk -o %t/control.r1cs.mlir
 // RUN: test "$(grep -c 'r1cs.constrain' %t/candidate.r1cs.mlir)" -eq 1
-// RUN: diff -u %t/candidate.r1cs.mlir %t/control.r1cs.mlir
+// RUN: test "$(grep -c 'r1cs.constrain' %t/control.r1cs.mlir)" -eq 1
+// RUN: llzk-translate --r1cs-to-binary --r1cs-prime=21888242871839275222246405745257275088548364400416034343698204186575808495617 %t/candidate.r1cs.mlir -o %t/candidate.r1cs
+// RUN: llzk-translate --r1cs-to-binary --r1cs-prime=21888242871839275222246405745257275088548364400416034343698204186575808495617 %t/control.r1cs.mlir -o %t/control.r1cs
+// RUN: cmp %t/candidate.r1cs %t/control.r1cs
 // RUN: FileCheck %s --input-file=%t/candidate.r1cs.mlir --check-prefix=CANDIDATE
 
 // CANDIDATE-LABEL: r1cs.circuit @Main inputs
