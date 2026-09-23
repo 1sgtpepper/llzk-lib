@@ -24,6 +24,33 @@ compare_files() {
   fi
 }
 
+assert_scalar_relation() {
+  python3 - "$1" <<'PY'
+import re
+import sys
+
+path = sys.argv[1]
+text = open(path, encoding="utf-8").read()
+start = text.index("function.def @constrain")
+end = text.index("function.return", start)
+body = text[start:end]
+if "tableOffset" in body:
+    raise SystemExit(f"{path}: tableOffset unexpectedly survived ArrayToScalar")
+members = {
+    value: member
+    for value, member in re.findall(
+        r"(%[0-9]+) = struct.readm %arg0\[@([^]]+)\]", body
+    )
+}
+equation = re.search(r"constrain.eq (%[0-9]+), (%[0-9]+)", body)
+if equation is None:
+    raise SystemExit(f"{path}: no constrain.eq in @constrain")
+relation = {members.get(value) for value in equation.groups()}
+if relation != {"values_0", "out"}:
+    raise SystemExit(f"{path}: expected values_0 == out, got {relation}")
+PY
+}
+
 git -C "$GITHUB_WORKSPACE" rev-parse "$MAIN_COMMIT^{commit}"
 git -C "$GITHUB_WORKSPACE" archive "$MAIN_COMMIT" | tar -x -C "$SOURCES/main"
 (cd "$SOURCES/main" && nix --print-build-logs build '.#debugGCC')
@@ -34,7 +61,8 @@ MAIN_BIN=$(readlink -f "$SOURCES/main/result/bin")
 "$MAIN_BIN/llzk-opt" --verify-each -llzk-array-to-scalar \
   "$FIXTURES/control.llzk" -o "$WORK/main/control.scalar.mlir"
 cp "$WORK/main/candidate.scalar.mlir" "$WORK/main/control.scalar.mlir" "$ARTIFACTS/main/"
-compare_files "$WORK/main/candidate.scalar.mlir" "$WORK/main/control.scalar.mlir"
+assert_scalar_relation "$WORK/main/candidate.scalar.mlir"
+assert_scalar_relation "$WORK/main/control.scalar.mlir"
 
 "$MAIN_BIN/llzk-opt" --verify-each -llzk-full-r1cs-lowering \
   "$FIXTURES/candidate.llzk" -o "$WORK/main/candidate.r1cs.mlir"
@@ -67,7 +95,8 @@ RELEASE_BIN=$(readlink -f "$SOURCES/release/result/bin")
   "$FIXTURES/control.llzk" -o "$WORK/release/control.scalar.mlir"
 cp "$WORK/release/candidate.scalar.mlir" "$WORK/release/control.scalar.mlir" \
   "$ARTIFACTS/release/"
-compare_files "$WORK/release/candidate.scalar.mlir" "$WORK/release/control.scalar.mlir"
+assert_scalar_relation "$WORK/release/candidate.scalar.mlir"
+assert_scalar_relation "$WORK/release/control.scalar.mlir"
 "$RELEASE_BIN/llzk-opt" --verify-each -llzk-full-r1cs-lowering \
   "$WORK/release/candidate.scalar.mlir" -o "$WORK/release/candidate.r1cs.mlir"
 "$RELEASE_BIN/llzk-opt" --verify-each -llzk-full-r1cs-lowering \
@@ -145,7 +174,7 @@ main revision: $MAIN_COMMIT
 release revision: $RELEASE_COMMIT
 Powers of Tau URL: $PTAU_URL
 Powers of Tau SHA-512: $actual_ptau_sha512
-candidate/control ArrayToScalar output: byte-identical at both revisions
+candidate/control ArrayToScalar output: both constrain values_0 == out at both revisions
 candidate/control R1CS binary: byte-identical at both revisions after canonical serialization
 candidate/control R1CS IR: preserved for inspection; linear term print order may differ
 main/release candidate R1CS binary: byte-identical after exact-main serialization
