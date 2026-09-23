@@ -456,8 +456,8 @@ def IncludeOp
     when the referenced binding or global has the required field type. The direct argument for an
     index or integer restriction must be an integer, not an affine map. The `?` wildcard is valid
     for any parameter with a `poly.tvar` restriction and leaves that type for later inference based
-    on the callee. For a parameter with a `poly.tvar` restriction, a type argument must be a valid
-    LLZK type. The verifier recursively resolves references in `struct.type` and `array.type`
+    on the target contract. For a parameter with a `poly.tvar` restriction, a type argument must be
+    a valid LLZK type. The verifier recursively resolves references in `struct.type` and `array.type`
     arguments and resolves a `poly.tvar` parameter reference at the inclusion site. A `poly.tvar`
     is accepted once its parameter reference resolves, even when its concrete type remains
     deferred. Record member types within a `pod.type` are not traversed.
