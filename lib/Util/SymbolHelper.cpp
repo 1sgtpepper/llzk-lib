@@ -741,7 +741,7 @@ LogicalResult verifyTemplateParamsMatchInferred(
         }
         continue;
       }
-      if (requiredType && llvm::isa<TypeVarType>(*requiredType)) {
+      if (!inferredCandidates.empty() && requiredType && llvm::isa<TypeVarType>(*requiredType)) {
         // Preserve unresolved symbolic candidates, but compare each with the explicit type so
         // concrete signature conflicts are rejected before any later specialization.
         for (Attribute inferredCandidate : inferredCandidates) {
