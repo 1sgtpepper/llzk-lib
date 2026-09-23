@@ -59,7 +59,8 @@ jobs:
           git archive "$TARGET_SHA" | tar -x -C "$SOURCE"
           cp "$VALIDATION_ROOT/validation/array-selector-r1cs/candidate.llzk" "$WORK/"
           cp "$VALIDATION_ROOT/validation/array-selector-r1cs/control.llzk" "$WORK/"
-          printf '{"v":[1,2]}\n' > "$WORK/current-input.json"
+          printf '{"v":[1]}\n' > "$WORK/current-input.json"
+          printf '[1]\n' > "$WORK/scalarized-input.json"
 
           cd "$SOURCE"
           nix --print-build-logs build '.#debugGCC'
@@ -138,12 +139,17 @@ jobs:
 
           "$BIN/llzk-witgen" "$WORK/candidate.llzk" --inputs "$WORK/current-input.json" \
             --output-scope=full-witness > "$WORK/current-witness.json"
+          "$BIN/llzk-witgen" "$WORK/candidate.array-to-scalar.mlir" \
+            --inputs "$WORK/scalarized-input.json" --output-scope=full-witness \
+            > "$WORK/scalarized-current-witness.json"
 
           if [ "$TARGET_NAME" != release-v2.1.2 ]; then
-            "$BIN/llzk-witgen" "$WORK/candidate.llzk" --inputs "$WORK/current-input.json" \
+            "$BIN/llzk-witgen" "$WORK/candidate.array-to-scalar.mlir" \
+              --inputs "$WORK/scalarized-input.json" \
               --output-scope=full-witness --output-wtns "$WORK/current.wtns" \
-              > "$WORK/current-witness-with-wtns.json"
-            cmp "$WORK/current-witness.json" "$WORK/current-witness-with-wtns.json"
+              > "$WORK/scalarized-current-witness-with-wtns.json"
+            cmp "$WORK/scalarized-current-witness.json" \
+              "$WORK/scalarized-current-witness-with-wtns.json"
             "$BIN/llzk-translate" --r1cs-to-binary \
               --r1cs-prime=21888242871839275222246405745257275088548364400416034343698204186575808495617 \
               "$WORK/candidate.r1cs.mlir" -o "$WORK/candidate.r1cs"
@@ -162,7 +168,7 @@ jobs:
             printf 'candidate_r1cs_constraints=%s\n' "$CANDIDATE_CONSTRAINTS"
             printf 'control_r1cs_constraints=%s\n' "$CONTROL_CONSTRAINTS"
             printf 'candidate_control_r1cs_mlir_identical=yes\n'
-            printf 'witgen_input=[1,2]\n'
+            printf 'witgen_input=[1]\n'
             printf 'array_to_scalar_candidate_equals_control=yes\n'
             printf 'array_to_scalar_output_has_no_tableOffset=yes\n'
             if [ "$TARGET_NAME" = release-v2.1.2 ]; then
@@ -236,8 +242,10 @@ jobs:
             ${{ runner.temp }}/array-selector-r1cs/candidate.r1cs
             ${{ runner.temp }}/array-selector-r1cs/control.r1cs
             ${{ runner.temp }}/array-selector-r1cs/current-input.json
+            ${{ runner.temp }}/array-selector-r1cs/scalarized-input.json
             ${{ runner.temp }}/array-selector-r1cs/current-witness.json
-            ${{ runner.temp }}/array-selector-r1cs/current-witness-with-wtns.json
+            ${{ runner.temp }}/array-selector-r1cs/scalarized-current-witness.json
+            ${{ runner.temp }}/array-selector-r1cs/scalarized-current-witness-with-wtns.json
             ${{ runner.temp }}/array-selector-r1cs/current.wtns
             ${{ runner.temp }}/array-selector-r1cs/proof.json
             ${{ runner.temp }}/array-selector-r1cs/public.json
@@ -271,6 +279,7 @@ jobs:
           cmp "$MAIN/candidate.r1cs.mlir" "$RELEASE/candidate.r1cs.mlir"
           cmp "$MAIN/control.r1cs.mlir" "$RELEASE/control.r1cs.mlir"
           cmp "$MAIN/current-witness.json" "$RELEASE/current-witness.json"
+          cmp "$MAIN/scalarized-current-witness.json" "$RELEASE/scalarized-current-witness.json"
           cmp "$MAIN/candidate.r1cs" "$MAIN/control.r1cs"
           cmp "$MAIN/candidate.r1cs.mlir" "$MAIN/control.r1cs.mlir"
           cp "$MAIN/candidate.r1cs" "$OUT/candidate.r1cs"
@@ -283,6 +292,7 @@ jobs:
           {
             printf 'main_r1cs_mlir_equals_release_r1cs_mlir=yes\n'
             printf 'main_witness_json_equals_release_witness_json=yes\n'
+            printf 'main_scalarized_witness_equals_release_scalarized_witness=yes\n'
             printf 'main_exported_r1cs_candidate_equals_control=yes\n'
             printf 'main_groth16_proof_verified=yes\n'
             printf 'release_proof_status=equivalent exact-main serializer/proof over byte-identical release lowering and witness\n'
