@@ -1462,8 +1462,9 @@ public:
   }
 
 private:
-  /// Re-run call/callee type unification so flattening can surface a useful error if a chain of
-  /// partially-instantiated calls stops unifying once earlier substitutions have been applied.
+  /// Re-run call/callee type unification in the callee's namespace after earlier substitutions.
+  /// Record each candidate so an explicit type or body-inferred wildcard can be checked against
+  /// every signature position before specialization.
   static FailureOr<UnificationMap> unifyTypeSignature(
       CallOp op, FuncDefOp callTgt, ArrayRef<StringRef> rhsReversePrefix,
       UnificationCandidateFn recordCandidate, PatternRewriter &rewriter
@@ -1483,8 +1484,8 @@ private:
     });
   }
 
-  /// Populate the concrete subset of template parameters chosen for this instantiation, using
-  /// explicit call-site arguments when present and otherwise relying on unification.
+  /// Populate the concrete subset of template parameters for this instantiation. Check repeated
+  /// signature candidates against explicit arguments and any type inferred from the callee body.
   static LogicalResult collectConcreteTemplateParams(
       CallOp op, PatternRewriter &rewriter, SymbolTableCollection &symTables, FuncDefOp callTgt,
       TemplateOp parentTemplate, const UnificationMap &unifyResult,

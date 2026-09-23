@@ -252,8 +252,9 @@ enum class TemplateParamSignatureKind : std::uint8_t { Function, Contract };
 /// Verify template values against values inferred from a call-like operation's target signature.
 /// The call-like entry points delegate here so value compatibility and
 /// conflict handling stay identical for function calls and contract includes. When provided, the
-/// candidate lookup returns each distinct value observed for a parameter, allowing repeated
-/// felt-valued signature positions to be checked before the generic unifier reports ambiguity.
+/// candidate lookup returns each distinct value observed for a parameter. Repeated felt-valued
+/// positions must agree; for a type variable with an explicit value, every concrete candidate
+/// must agree while unresolved symbolic candidates remain deferred.
 mlir::LogicalResult verifyTemplateParamsMatchInferred(
     mlir::Operation *origin, mlir::ArrayAttr explicitParams,
     llvm::iterator_range<mlir::Region::op_iterator<polymorphic::TemplateParamOp>> targetParamDefs,

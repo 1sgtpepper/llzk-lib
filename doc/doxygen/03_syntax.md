@@ -88,6 +88,10 @@ LLZK supports arrays where the element type is not truly homogeneous, specifical
   A binding without a declared type restriction may remain deferred for an index, integer, or fieldless felt parameter. It cannot satisfy a fielded felt or `poly.tvar` restriction, and an array dimension requires an index-typed binding at that type use.
 - A direct `function.call` or `verif.include` argument for an index or integer restriction must be an integer, not an affine map. A single-result affine map remains valid as a `struct.type` argument with such a restriction.
 - The `?` wildcard in a `function.call` or `verif.include` template argument is valid only for a `poly.tvar` restriction and leaves its concrete type for later inference from the target body. An array dimension may independently use `?` as a dynamic size.
+- When a `poly.tvar` parameter appears in multiple positions of a function or contract signature,
+  every concrete inferred type must agree with an explicit type argument. For a `function.call`
+  wildcard resolved from the callee body during flattening, the resolved type must also agree with
+  every concrete signature position; unresolved symbolic types remain deferred.
 - A type argument must be a valid LLZK type. A `function.call` or `verif.include` verifier
   recursively resolves references in `struct.type` and `array.type` arguments and resolves a
   `poly.tvar` parameter reference at the call or inclusion site. A `poly.tvar` is accepted once its
