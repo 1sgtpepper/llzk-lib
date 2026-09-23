@@ -206,6 +206,14 @@ done
 cmp "$WORK/release-v2.1.2/candidate.witness.json" \
   "$WORK/release-v2.1.2/no-wrap-control.witness.json"
 
+python3 "$FIXTURES/check_release_r1cs_ir.py" \
+  --candidate "$WORK/release-v2.1.2/candidate.r1cs.mlir" \
+  --control "$WORK/release-v2.1.2/no-wrap-control.r1cs.mlir" \
+  --reference "$WORK/release-v2.1.2/source-reference.r1cs.mlir" \
+  --witness "$WORK/release-v2.1.2/candidate.witness.json" \
+  --prime "$BABYBEAR_PRIME" \
+  | tee "$ARTIFACTS/release-v2.1.2/direct-r1cs-mlir-check.txt"
+
 for name in original-main current-main release-v2.1.2; do
   python3 "$FIXTURES/check_r1cs_wtns.py" \
     --candidate "$WORK/$name/candidate.r1cs" \
@@ -224,8 +232,9 @@ Field: BabyBear ($BABYBEAR_PRIME)
 Source loop trace: candidate [1, 0], no-wrap control [1]
 Generated witness: public out=1; exact-main llzk-witgen wrote WTNS v2
 R1CS check: candidate and no-wrap accept the witness; explicit source reference rejects it
-Release path: exact release llzk-while-to-for, canonicalize, and llzk-flatten run before its already-flattened full-R1CS lowering; exact-main exporter serializes normalized release R1CS IR
-Witness interpretation: satisfiability of the LLZK-emitted BabyBear R1CS/WTNS was checked by the standard R1CS equation evaluator in check_r1cs_wtns.py
+Release path: exact release llzk-while-to-for, canonicalize, and llzk-flatten run before its already-flattened full-R1CS lowering; the exact release R1CS dialect output is evaluated directly
+Release witness interpretation: v2.1.2 llzk-witgen JSON is checked against exact-release R1CS dialect MLIR by check_release_r1cs_ir.py; the main binary exporter is only a cross-check
+Main witness interpretation: the emitted BabyBear R1CS/WTNS is checked by the standard R1CS equation evaluator in check_r1cs_wtns.py
 Proof limitation: no cryptographic proof or shipped BabyBear prover is claimed
 EOF
 find "$ARTIFACTS" -type f ! -name SHA256SUMS -print0 | sort -z | \
