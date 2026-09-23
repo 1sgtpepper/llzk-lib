@@ -17,13 +17,6 @@ mkdir -p "$SOURCES/main" "$SOURCES/release" "$WORK/main" "$WORK/release" \
 cp "$FIXTURES/candidate.llzk" "$FIXTURES/control.llzk" "$FIXTURES/inputs.json" \
   "$FIXTURES/source-oracle.txt" "$ARTIFACTS/"
 
-compare_files() {
-  if ! cmp -s "$1" "$2"; then
-    diff -u "$1" "$2" || true
-    return 1
-  fi
-}
-
 assert_scalar_relation() {
   python3 - "$1" <<'PY'
 import re
@@ -48,6 +41,24 @@ if equation is None:
 relation = {members.get(value) for value in equation.groups()}
 if relation != {"values_0", "out"}:
     raise SystemExit(f"{path}: expected values_0 == out, got {relation}")
+PY
+}
+
+normalize_release_r1cs_header() {
+  python3 - "$1" "$2" <<'PY'
+import sys
+
+source, destination = sys.argv[1:]
+text = open(source, encoding="utf-8").read()
+stale_main = ", llzk.main = !struct.type<@Main>"
+if text.count(stale_main) != 1:
+    raise SystemExit(f"{source}: expected one stale llzk.main type reference")
+if 'llzk.lang = "r1cs"' not in text or "r1cs.circuit @Main" not in text:
+    raise SystemExit(f"{source}: not the expected lowered Main R1CS module")
+normalized = text.replace(stale_main, "", 1)
+if "llzk.main" in normalized:
+    raise SystemExit(f"{source}: unexpected remaining llzk.main metadata")
+open(destination, "w", encoding="utf-8").write(normalized)
 PY
 }
 
@@ -97,17 +108,23 @@ cp "$WORK/release/candidate.scalar.mlir" "$WORK/release/control.scalar.mlir" \
   "$ARTIFACTS/release/"
 assert_scalar_relation "$WORK/release/candidate.scalar.mlir"
 assert_scalar_relation "$WORK/release/control.scalar.mlir"
-"$RELEASE_BIN/llzk-opt" --verify-each -llzk-full-r1cs-lowering \
+"$RELEASE_BIN/llzk-opt" -llzk-full-r1cs-lowering \
   "$WORK/release/candidate.scalar.mlir" -o "$WORK/release/candidate.r1cs.mlir"
-"$RELEASE_BIN/llzk-opt" --verify-each -llzk-full-r1cs-lowering \
+"$RELEASE_BIN/llzk-opt" -llzk-full-r1cs-lowering \
   "$WORK/release/control.scalar.mlir" -o "$WORK/release/control.r1cs.mlir"
 cp "$WORK/release/candidate.r1cs.mlir" "$WORK/release/control.r1cs.mlir" \
   "$ARTIFACTS/release/"
+normalize_release_r1cs_header "$WORK/release/candidate.r1cs.mlir" \
+  "$WORK/release/candidate.r1cs.bridge.mlir"
+normalize_release_r1cs_header "$WORK/release/control.r1cs.mlir" \
+  "$WORK/release/control.r1cs.bridge.mlir"
+"$MAIN_BIN/llzk-opt" --verify-each "$WORK/release/candidate.r1cs.bridge.mlir" -o /dev/null
+"$MAIN_BIN/llzk-opt" --verify-each "$WORK/release/control.r1cs.bridge.mlir" -o /dev/null
 
 # v2.1.2 has no R1CS binary exporter or WTNS writer. The exact release R1CS IR
-# is passed to the exact-main serializer only after byte comparison proves the
-# candidate and control relation, and the release witness JSON, match the
-# exact-main outputs.
+# retains an invalid llzk.main reference to a struct replaced by an R1CS
+# circuit. The bridge removes only that module attribute, verifies the result
+# with exact-main llzk-opt, and serializes it only after the relation checks.
 "$RELEASE_BIN/llzk-witgen" "$WORK/release/candidate.scalar.mlir" \
   --inputs "$FIXTURES/inputs.json" --output-scope=full-witness \
   > "$WORK/release/candidate.witness.json"
@@ -124,9 +141,9 @@ if main != release:
 PY
 
 "$MAIN_BIN/llzk-translate" --r1cs-to-binary --r1cs-prime="$BN254_PRIME" \
-  "$WORK/release/candidate.r1cs.mlir" -o "$WORK/release/candidate.r1cs"
+  "$WORK/release/candidate.r1cs.bridge.mlir" -o "$WORK/release/candidate.r1cs"
 "$MAIN_BIN/llzk-translate" --r1cs-to-binary --r1cs-prime="$BN254_PRIME" \
-  "$WORK/release/control.r1cs.mlir" -o "$WORK/release/control.r1cs"
+  "$WORK/release/control.r1cs.bridge.mlir" -o "$WORK/release/control.r1cs"
 cmp "$WORK/release/candidate.r1cs" "$WORK/release/control.r1cs"
 cmp "$WORK/main/candidate.r1cs" "$WORK/release/candidate.r1cs"
 
@@ -164,6 +181,7 @@ cp "$WORK/main/circuit_final.zkey" "$WORK/main/verification_key.json" \
   "$WORK/main/candidate.proof.json" "$WORK/main/candidate.public.json" "$ARTIFACTS/main/"
 cp "$WORK/release/candidate.scalar.mlir" "$WORK/release/control.scalar.mlir" \
   "$WORK/release/candidate.r1cs.mlir" "$WORK/release/control.r1cs.mlir" \
+  "$WORK/release/candidate.r1cs.bridge.mlir" "$WORK/release/control.r1cs.bridge.mlir" \
   "$WORK/release/candidate.r1cs" "$WORK/release/control.r1cs" \
   "$WORK/release/candidate.witness.json" "$WORK/release/circuit_final.zkey" \
   "$WORK/release/candidate.proof.json" "$WORK/release/candidate.public.json" \
@@ -180,7 +198,7 @@ candidate/control R1CS IR: preserved for inspection; linear term print order may
 main/release candidate R1CS binary: byte-identical after exact-main serialization
 main/release witness JSON: semantically identical
 PLONK setup, witness check, proof, and verification: passed independently for both revisions
-release caveat: v2.1.2 ships no R1CS binary exporter or WTNS writer; exact release R1CS IR and witness JSON were bridged through the exact-main serializer only after the byte/semantic equality checks above
+release caveat: v2.1.2 ships no R1CS binary exporter or WTNS writer; its exact R1CS output retains a stale llzk.main struct reference after lowering, so the bridge removes only that invalid module attribute, verifies the normalized R1CS with exact-main llzk-opt, and uses the exact-main serializer after the relation checks above
 EOF
 (cd "$ARTIFACTS" && find . -type f ! -name SHA256SUMS -print0 | sort -z | xargs -0 sha256sum) \
   > "$ARTIFACTS/SHA256SUMS"
