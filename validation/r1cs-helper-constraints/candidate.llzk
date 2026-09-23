@@ -1,6 +1,6 @@
 module attributes {llzk.lang, llzk.main = !struct.type<@Main>} {
   function.def @force_zero(%value: !felt.type<"bn128">) attributes {function.allow_constraint} {
-    %zero = felt.const 0
+    %zero = felt.const 0 : <"bn128">
     constrain.eq %value, %zero : !felt.type<"bn128">, !felt.type<"bn128">
     function.return
   }
@@ -15,7 +15,7 @@ module attributes {llzk.lang, llzk.main = !struct.type<@Main>} {
     }
 
     function.def @constrain(%self: !struct.type<@Main>, %input: !felt.type<"bn128">) attributes {function.allow_constraint} {
-      %one = felt.const 1
+      %one = felt.const 1 : <"bn128">
       constrain.eq %input, %one : !felt.type<"bn128">, !felt.type<"bn128">
       %out = struct.readm %self[@out] : !struct.type<@Main>, !felt.type<"bn128">
       constrain.eq %out, %input : !felt.type<"bn128">, !felt.type<"bn128">
