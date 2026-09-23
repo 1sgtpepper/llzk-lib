@@ -146,7 +146,7 @@ def body_values(lower, upper, step):
         value = (value + step) % P
     raise SystemExit("source loop did not terminate within the bounded oracle")
 
-wrapped = body_values(1, P - 2, P - 1)
+wrapped = body_values(1, 2, P - 1)
 control = body_values(1, 2, 1)
 if wrapped != [1, 0] or control != [1]:
     raise SystemExit(f"unexpected field loop traces: wrapped={wrapped}, control={control}")

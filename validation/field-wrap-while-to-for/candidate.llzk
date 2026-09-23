@@ -12,7 +12,7 @@ module attributes {llzk.lang = "circom", llzk.main = !struct.type<@Main>} {
     function.def @constrain(%self: !struct.type<@Main>) attributes {function.allow_constraint, function.allow_non_native_field_ops} {
       %out = struct.readm %self[@out] : !struct.type<@Main>, !felt.type<"babybear">
       %lower = felt.const 1 <"babybear">
-      %upper = felt.const 2013265919 <"babybear">
+      %upper = felt.const 2 <"babybear">
       %step = felt.const 2013265920 <"babybear">
       %unused = scf.while (%iv = %lower) : (!felt.type<"babybear">) -> !felt.type<"babybear"> {
         %continue = bool.cmp lt(%iv, %upper) : !felt.type<"babybear">, !felt.type<"babybear">

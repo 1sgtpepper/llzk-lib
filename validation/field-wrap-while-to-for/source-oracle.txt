@@ -1,10 +1,10 @@
 BabyBear prime: 2013265921
-Candidate: lower=1, upper=2013265919, step=2013265920 (p-1), public out=1
+Candidate: lower=1, upper=2, step=2013265920 (p-1, field -1), public out=1
 
 Source scf.while execution uses field addition and field-representative comparison:
-  test 1 < p-2: true; constrain out=1; next=(1+p-1) mod p=0
-  test 0 < p-2: true; constrain out=0; next=(0+p-1) mod p=p-1
-  test p-1 < p-2: false
+  test 1 < 2: true; constrain out=1; next=(1+p-1) mod p=0
+  test 0 < 2: true; constrain out=0; next=(0+p-1) mod p=p-1
+  test p-1 < 2: false
 The source relation requires out=1 and out=0, so the compute witness out=1 is invalid.
 
 No-wrap control: lower=1, upper=2, step=1, public out=1. Its sole body value is 1,
