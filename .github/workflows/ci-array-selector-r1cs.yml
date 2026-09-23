@@ -106,18 +106,28 @@ jobs:
           test "$(grep -c 'tableOffset = -1 : index' "$WORK/candidate.llzk")" -eq 1
           test "$(grep -c 'tableOffset' "$WORK/control.llzk" || true)" -eq 0
 
-          # v2.1.2 leaves llzk.main pointing to the erased struct after R1CS
-          # lowering. Remove only that witness-tool entry-point marker for the
-          # release lowering input; main runs both forms and requires identical IR.
-          sed 's/, llzk.main = !struct.type<@Main>//' "$WORK/candidate.llzk" > "$WORK/candidate-lowering.llzk"
-          sed 's/, llzk.main = !struct.type<@Main>//' "$WORK/control.llzk" > "$WORK/control-lowering.llzk"
-          "$BIN/llzk-opt" --verify-each "$WORK/candidate-lowering.llzk" -o "$WORK/candidate-lowering.parsed.mlir"
-          "$BIN/llzk-opt" --verify-each "$WORK/control-lowering.llzk" -o "$WORK/control-lowering.parsed.mlir"
-
-          "$BIN/llzk-opt" --verify-each -llzk-full-r1cs-lowering \
-            "$WORK/candidate-lowering.llzk" -o "$WORK/candidate.r1cs.mlir"
-          "$BIN/llzk-opt" --verify-each -llzk-full-r1cs-lowering \
-            "$WORK/control-lowering.llzk" -o "$WORK/control.r1cs.mlir"
+          if [ "$TARGET_NAME" = release-v2.1.2 ]; then
+            # Keep llzk.main through main-as-root cleanup. v2.1.2 leaves that
+            # marker stale after erasing @Main, so strip it from the completed
+            # output before parsing and verifying the lowered R1CS module.
+            "$BIN/llzk-opt" --disable-verify -llzk-full-r1cs-lowering \
+              "$WORK/candidate.llzk" -o "$WORK/candidate.r1cs.unchecked.mlir"
+            "$BIN/llzk-opt" --disable-verify -llzk-full-r1cs-lowering \
+              "$WORK/control.llzk" -o "$WORK/control.r1cs.unchecked.mlir"
+            sed 's/, llzk.main = !struct.type<@Main>//' \
+              "$WORK/candidate.r1cs.unchecked.mlir" > "$WORK/candidate.r1cs.repaired.mlir"
+            sed 's/, llzk.main = !struct.type<@Main>//' \
+              "$WORK/control.r1cs.unchecked.mlir" > "$WORK/control.r1cs.repaired.mlir"
+            "$BIN/llzk-opt" --verify-each "$WORK/candidate.r1cs.repaired.mlir" \
+              -o "$WORK/candidate.r1cs.mlir"
+            "$BIN/llzk-opt" --verify-each "$WORK/control.r1cs.repaired.mlir" \
+              -o "$WORK/control.r1cs.mlir"
+          else
+            "$BIN/llzk-opt" --verify-each -llzk-full-r1cs-lowering \
+              "$WORK/candidate.llzk" -o "$WORK/candidate.r1cs.mlir"
+            "$BIN/llzk-opt" --verify-each -llzk-full-r1cs-lowering \
+              "$WORK/control.llzk" -o "$WORK/control.r1cs.mlir"
+          fi
 
           CANDIDATE_CONSTRAINTS=$(grep -c 'r1cs.constrain' "$WORK/candidate.r1cs.mlir")
           CONTROL_CONSTRAINTS=$(grep -c 'r1cs.constrain' "$WORK/control.r1cs.mlir")
@@ -130,9 +140,6 @@ jobs:
             --output-scope=full-witness > "$WORK/current-witness.json"
 
           if [ "$TARGET_NAME" != release-v2.1.2 ]; then
-            "$BIN/llzk-opt" --verify-each -llzk-full-r1cs-lowering \
-              "$WORK/candidate.llzk" -o "$WORK/candidate-with-main-attr.r1cs.mlir"
-            cmp "$WORK/candidate.r1cs.mlir" "$WORK/candidate-with-main-attr.r1cs.mlir"
             "$BIN/llzk-witgen" "$WORK/candidate.llzk" --inputs "$WORK/current-input.json" \
               --output-scope=full-witness --output-wtns "$WORK/current.wtns" \
               > "$WORK/current-witness-with-wtns.json"
@@ -158,7 +165,9 @@ jobs:
             printf 'witgen_input=[1,2]\n'
             printf 'array_to_scalar_candidate_equals_control=yes\n'
             printf 'array_to_scalar_output_has_no_tableOffset=yes\n'
-            printf 'lowering_input_drops_only_llzk_main_attr=yes\n'
+            if [ "$TARGET_NAME" = release-v2.1.2 ]; then
+              printf 'stale_llzk_main_removed_after_cleanup=yes\n'
+            fi
           } > "$WORK/$TARGET_NAME-summary.txt"
 
       - name: Generate and verify main-revision Groth16 proof
@@ -214,15 +223,16 @@ jobs:
             ${{ runner.temp }}/array-selector-r1cs/candidate.llzk
             ${{ runner.temp }}/array-selector-r1cs/control.llzk
             ${{ runner.temp }}/array-selector-r1cs/source-twin.diff
-            ${{ runner.temp }}/array-selector-r1cs/candidate-lowering.llzk
-            ${{ runner.temp }}/array-selector-r1cs/control-lowering.llzk
             ${{ runner.temp }}/array-selector-r1cs/candidate.parsed.mlir
             ${{ runner.temp }}/array-selector-r1cs/control.parsed.mlir
             ${{ runner.temp }}/array-selector-r1cs/candidate.array-to-scalar.mlir
             ${{ runner.temp }}/array-selector-r1cs/control.array-to-scalar.mlir
             ${{ runner.temp }}/array-selector-r1cs/candidate.r1cs.mlir
             ${{ runner.temp }}/array-selector-r1cs/control.r1cs.mlir
-            ${{ runner.temp }}/array-selector-r1cs/candidate-with-main-attr.r1cs.mlir
+            ${{ runner.temp }}/array-selector-r1cs/candidate.r1cs.unchecked.mlir
+            ${{ runner.temp }}/array-selector-r1cs/control.r1cs.unchecked.mlir
+            ${{ runner.temp }}/array-selector-r1cs/candidate.r1cs.repaired.mlir
+            ${{ runner.temp }}/array-selector-r1cs/control.r1cs.repaired.mlir
             ${{ runner.temp }}/array-selector-r1cs/candidate.r1cs
             ${{ runner.temp }}/array-selector-r1cs/control.r1cs
             ${{ runner.temp }}/array-selector-r1cs/current-input.json
