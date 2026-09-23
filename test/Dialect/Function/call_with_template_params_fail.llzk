@@ -813,3 +813,24 @@ module attributes {llzk.lang} {
     function.return %value : index
   }
 }
+
+// -----
+
+// A concrete operand mismatch cannot be deferred just because the explicit target parameter is a
+// type variable.
+module attributes {llzk.lang} {
+  poly.template @TypeTarget {
+    poly.param @T : !poly.tvar<@T>
+
+    function.def @both(%first: !poly.tvar<@T>, %second: !poly.tvar<@T>) {
+      function.return
+    }
+  }
+
+  function.def @concrete_type_conflict(%fielded: !felt.type, %integer: index) {
+    // expected-error@+1 {{'function.call' op template instantiation value '!felt.type' for parameter "@T" conflicts with value 'index' inferred from function type signature}}
+    function.call @TypeTarget::@both<[!felt.type]>(%fielded, %integer) :
+        (!felt.type, index) -> ()
+    function.return
+  }
+}

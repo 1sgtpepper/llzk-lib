@@ -742,8 +742,17 @@ LogicalResult verifyTemplateParamsMatchInferred(
         continue;
       }
       if (requiredType && llvm::isa<TypeVarType>(*requiredType)) {
-        // Explicit type arguments select the specialization; defer conflicting signature types
-        // until substitution makes the operand types concrete.
+        // Preserve unresolved symbolic candidates, but compare each with the explicit type so
+        // concrete signature conflicts are rejected before any later specialization.
+        for (Attribute inferredCandidate : inferredCandidates) {
+          if (!templateParamValuesUnify(attr, inferredCandidate, requiredType)) {
+            return origin->emitOpError().append(
+                "template instantiation value '", attr, "' for parameter \"@", paramOp.getName(),
+                "\" conflicts with value '", inferredCandidate, "' inferred from ",
+                signatureDescription, " type signature"
+            );
+          }
+        }
         continue;
       }
       return origin->emitOpError().append(
