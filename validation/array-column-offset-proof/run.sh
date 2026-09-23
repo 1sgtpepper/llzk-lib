@@ -4,8 +4,8 @@ set -euo pipefail
 readonly MAIN_COMMIT=d1198631dbe9906cb149d1ddcd0dd1ca071dae6b
 readonly RELEASE_COMMIT=b1b8d52ca4e6114cdd9a80417f96342a9f9e8b6c
 readonly BN254_PRIME=21888242871839275222246405745257275088548364400416034343698204186575808495617
-readonly PTAU_URL=https://storage.googleapis.com/zkevm/ptau/powersOfTau28_hez_final_08.ptau
-readonly PTAU_SHA512=d6a8fb3a04feb600096c3b791f936a578c4e664d262e4aa24beed1b7a9a96aa5eb72864d628db247e9293384b74b36ffb52ca8d148d6e1b8b51e279fdf57b583
+readonly PTAU_URL=https://raw.githubusercontent.com/rdi-berkeley/zkp-mooc-lab/57ccb29e757214cf246b425f009b60e2443f1378/powersOfTau28_hez_final_08.ptau
+readonly PTAU_BLAKE2B=d6a8fb3a04feb600096c3b791f936a578c4e664d262e4aa24beed1b7a9a96aa5eb72864d628db247e9293384b74b36ffb52ca8d148d6e1b8b51e279fdf57b583
 readonly FIXTURES=$GITHUB_WORKSPACE/validation/array-column-offset-proof
 readonly WORK=$RUNNER_TEMP/llzk-array-column-offset-proof
 readonly SOURCES=$WORK/sources
@@ -112,6 +112,8 @@ cmp "$WORK/main/candidate.r1cs" "$WORK/main/control.r1cs"
   --output-wtns "$WORK/main/control.wtns" > "$WORK/main/control.witness.json"
 cmp "$WORK/main/candidate.witness.json" "$WORK/main/control.witness.json"
 cmp "$WORK/main/candidate.wtns" "$WORK/main/control.wtns"
+cp "$WORK/main/candidate.witness.json" "$WORK/main/control.witness.json" \
+  "$WORK/main/candidate.wtns" "$WORK/main/control.wtns" "$ARTIFACTS/main/"
 
 git -C "$GITHUB_WORKSPACE" rev-parse "$RELEASE_COMMIT^{commit}"
 git -C "$GITHUB_WORKSPACE" archive "$RELEASE_COMMIT" | tar -x -C "$SOURCES/release"
@@ -161,6 +163,7 @@ with open(sys.argv[2], encoding="utf-8") as release_file:
 if main != release:
     raise SystemExit("main and release full-witness JSON differ")
 PY
+cp "$WORK/release/candidate.witness.json" "$ARTIFACTS/release/"
 
 "$MAIN_BIN/llzk-translate" --r1cs-to-binary --r1cs-prime="$BN254_PRIME" \
   "$WORK/release/candidate.r1cs.bridge.mlir" -o "$WORK/release/candidate.r1cs"
@@ -168,13 +171,17 @@ PY
   "$WORK/release/control.r1cs.bridge.mlir" -o "$WORK/release/control.r1cs"
 cmp "$WORK/release/candidate.r1cs" "$WORK/release/control.r1cs"
 cmp "$WORK/main/candidate.r1cs" "$WORK/release/candidate.r1cs"
+cp "$WORK/main/candidate.r1cs" "$WORK/main/control.r1cs" "$ARTIFACTS/main/"
+cp "$WORK/release/candidate.r1cs" "$WORK/release/control.r1cs" \
+  "$WORK/release/candidate.r1cs.bridge.mlir" "$WORK/release/control.r1cs.bridge.mlir" \
+  "$ARTIFACTS/release/"
 
 npm install --prefix "$WORK/npm" --no-save snarkjs@0.7.5
 SNARKJS="$WORK/npm/node_modules/.bin/snarkjs"
 curl --fail --location --retry 3 "$PTAU_URL" -o "$WORK/powersoftau.ptau"
-actual_ptau_sha512=$(sha512sum "$WORK/powersoftau.ptau" | cut -d ' ' -f1)
-if [[ "$actual_ptau_sha512" != "$PTAU_SHA512" ]]; then
-  echo "unexpected Powers of Tau checksum: $actual_ptau_sha512" >&2
+actual_ptau_blake2b=$(b2sum "$WORK/powersoftau.ptau" | cut -d ' ' -f1)
+if [[ "$actual_ptau_blake2b" != "$PTAU_BLAKE2B" ]]; then
+  echo "unexpected Powers of Tau BLAKE2b checksum: $actual_ptau_blake2b" >&2
   exit 1
 fi
 "$SNARKJS" powersoftau verify "$WORK/powersoftau.ptau"
@@ -213,7 +220,7 @@ cat > "$ARTIFACTS/validation-summary.txt" <<EOF
 main revision: $MAIN_COMMIT
 release revision: $RELEASE_COMMIT
 Powers of Tau URL: $PTAU_URL
-Powers of Tau SHA-512: $actual_ptau_sha512
+Powers of Tau BLAKE2b: $actual_ptau_blake2b
 candidate/control ArrayToScalar output: both constrain values_0 == out at both revisions
 candidate/control R1CS binary: byte-identical at both revisions after canonical serialization
 candidate/control R1CS IR: preserved for inspection; linear term print order may differ
