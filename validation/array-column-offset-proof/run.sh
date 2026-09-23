@@ -53,7 +53,11 @@ text = open(source, encoding="utf-8").read()
 stale_main = ", llzk.main = !struct.type<@Main>"
 if text.count(stale_main) != 1:
     raise SystemExit(f"{source}: expected one stale llzk.main type reference")
-if 'llzk.lang = "r1cs"' not in text or "r1cs.circuit @Main" not in text:
+if (
+    'llzk.lang = "r1cs"' not in text
+    or text.count('"r1cs.circuit"') != 1
+    or 'sym_name = "Main"' not in text
+):
     raise SystemExit(f"{source}: not the expected lowered Main R1CS module")
 normalized = text.replace(stale_main, "", 1)
 if "llzk.main" in normalized:
