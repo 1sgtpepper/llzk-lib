@@ -108,9 +108,12 @@ cp "$WORK/release/candidate.scalar.mlir" "$WORK/release/control.scalar.mlir" \
   "$ARTIFACTS/release/"
 assert_scalar_relation "$WORK/release/candidate.scalar.mlir"
 assert_scalar_relation "$WORK/release/control.scalar.mlir"
-"$RELEASE_BIN/llzk-opt" -llzk-full-r1cs-lowering \
+# The release pipeline leaves llzk.main pointing at a struct after replacing it
+# with an R1CS circuit. Disable its verifier only while capturing that output;
+# the exact-main verifier checks the module after the stale attribute is removed.
+"$RELEASE_BIN/llzk-opt" --verify-each=0 -llzk-full-r1cs-lowering \
   "$WORK/release/candidate.scalar.mlir" -o "$WORK/release/candidate.r1cs.mlir"
-"$RELEASE_BIN/llzk-opt" -llzk-full-r1cs-lowering \
+"$RELEASE_BIN/llzk-opt" --verify-each=0 -llzk-full-r1cs-lowering \
   "$WORK/release/control.scalar.mlir" -o "$WORK/release/control.r1cs.mlir"
 cp "$WORK/release/candidate.r1cs.mlir" "$WORK/release/control.r1cs.mlir" \
   "$ARTIFACTS/release/"
