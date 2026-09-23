@@ -46,6 +46,7 @@ PY
 
 normalize_release_r1cs_header() {
   python3 - "$1" "$2" <<'PY'
+import re
 import sys
 
 source, destination = sys.argv[1:]
@@ -59,9 +60,22 @@ if (
     or 'sym_name = "Main"' not in text
 ):
     raise SystemExit(f"{source}: not the expected lowered Main R1CS module")
-normalized = text.replace(stale_main, "", 1)
+label_pattern = re.compile(r'("r1cs[.]def"[(][)] [{]label = )([0-9]+)( : ui32)')
+labels = [int(match.group(2)) for match in label_pattern.finditer(text)]
+if labels != list(range(len(labels))):
+    raise SystemExit(f"{source}: expected release labels to be unique and zero-based: {labels}")
+if not labels or labels[-1] == (1 << 32) - 1:
+    raise SystemExit(f"{source}: release labels cannot be remapped into the nonzero u32 range")
+
+normalized = label_pattern.sub(
+    lambda match: f"{match.group(1)}{int(match.group(2)) + 1}{match.group(3)}", text
+)
+normalized = normalized.replace(stale_main, "", 1)
 if "llzk.main" in normalized:
     raise SystemExit(f"{source}: unexpected remaining llzk.main metadata")
+normalized_labels = [int(match.group(2)) for match in label_pattern.finditer(normalized)]
+if normalized_labels != [label + 1 for label in labels]:
+    raise SystemExit(f"{source}: failed to preserve the release label identity map")
 open(destination, "w", encoding="utf-8").write(normalized)
 PY
 }
@@ -128,10 +142,11 @@ normalize_release_r1cs_header "$WORK/release/control.r1cs.mlir" \
 "$MAIN_BIN/llzk-opt" --verify-each "$WORK/release/candidate.r1cs.bridge.mlir" -o /dev/null
 "$MAIN_BIN/llzk-opt" --verify-each "$WORK/release/control.r1cs.bridge.mlir" -o /dev/null
 
-# v2.1.2 has no R1CS binary exporter or WTNS writer. The exact release R1CS IR
-# retains an invalid llzk.main reference to a struct replaced by an R1CS
-# circuit. The bridge removes only that module attribute, verifies the result
-# with exact-main llzk-opt, and serializes it only after the relation checks.
+# v2.1.2 has no R1CS binary exporter or WTNS writer. Its lowering starts signal
+# labels at zero, while the binary format reserves label zero for the implicit
+# one wire. The bridge shifts the unique zero-based labels by one and removes
+# the stale llzk.main reference to the replaced struct; exact-main llzk-opt
+# verifies the normalized IR before serialization.
 "$RELEASE_BIN/llzk-witgen" "$WORK/release/candidate.scalar.mlir" \
   --inputs "$FIXTURES/inputs.json" --output-scope=full-witness \
   > "$WORK/release/candidate.witness.json"
@@ -205,7 +220,7 @@ candidate/control R1CS IR: preserved for inspection; linear term print order may
 main/release candidate R1CS binary: byte-identical after exact-main serialization
 main/release witness JSON: semantically identical
 PLONK setup, witness check, proof, and verification: passed independently for both revisions
-release caveat: v2.1.2 ships no R1CS binary exporter or WTNS writer; its exact R1CS output retains a stale llzk.main struct reference after lowering, so the bridge removes only that invalid module attribute, verifies the normalized R1CS with exact-main llzk-opt, and uses the exact-main serializer after the relation checks above
+release caveat: v2.1.2 ships no R1CS binary exporter or WTNS writer; its exact R1CS output retains a stale llzk.main struct reference and uses zero-based signal labels, so the bridge removes that invalid module attribute and shifts the unique labels by one before exact-main verification and serialization
 EOF
 (cd "$ARTIFACTS" && find . -type f ! -name SHA256SUMS -print0 | sort -z | xargs -0 sha256sum) \
   > "$ARTIFACTS/SHA256SUMS"
