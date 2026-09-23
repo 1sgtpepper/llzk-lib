@@ -14,6 +14,15 @@ readonly ARTIFACTS=$FIXTURES/artifacts
 rm -rf "$WORK" "$ARTIFACTS"
 mkdir -p "$SOURCES/main" "$SOURCES/release" "$WORK/main" "$WORK/release" \
   "$ARTIFACTS/main" "$ARTIFACTS/release"
+cp "$FIXTURES/candidate.llzk" "$FIXTURES/control.llzk" "$FIXTURES/inputs.json" \
+  "$FIXTURES/source-oracle.txt" "$ARTIFACTS/"
+
+compare_files() {
+  if ! cmp -s "$1" "$2"; then
+    diff -u "$1" "$2" || true
+    return 1
+  fi
+}
 
 git -C "$GITHUB_WORKSPACE" rev-parse "$MAIN_COMMIT^{commit}"
 git -C "$GITHUB_WORKSPACE" archive "$MAIN_COMMIT" | tar -x -C "$SOURCES/main"
@@ -24,13 +33,15 @@ MAIN_BIN=$(readlink -f "$SOURCES/main/result/bin")
   "$FIXTURES/candidate.llzk" -o "$WORK/main/candidate.scalar.mlir"
 "$MAIN_BIN/llzk-opt" --verify-each -llzk-array-to-scalar \
   "$FIXTURES/control.llzk" -o "$WORK/main/control.scalar.mlir"
-cmp "$WORK/main/candidate.scalar.mlir" "$WORK/main/control.scalar.mlir"
+cp "$WORK/main/candidate.scalar.mlir" "$WORK/main/control.scalar.mlir" "$ARTIFACTS/main/"
+compare_files "$WORK/main/candidate.scalar.mlir" "$WORK/main/control.scalar.mlir"
 
 "$MAIN_BIN/llzk-opt" --verify-each -llzk-full-r1cs-lowering \
   "$FIXTURES/candidate.llzk" -o "$WORK/main/candidate.r1cs.mlir"
 "$MAIN_BIN/llzk-opt" --verify-each -llzk-full-r1cs-lowering \
   "$FIXTURES/control.llzk" -o "$WORK/main/control.r1cs.mlir"
-cmp "$WORK/main/candidate.r1cs.mlir" "$WORK/main/control.r1cs.mlir"
+cp "$WORK/main/candidate.r1cs.mlir" "$WORK/main/control.r1cs.mlir" "$ARTIFACTS/main/"
+compare_files "$WORK/main/candidate.r1cs.mlir" "$WORK/main/control.r1cs.mlir"
 "$MAIN_BIN/llzk-translate" --r1cs-to-binary --r1cs-prime="$BN254_PRIME" \
   "$WORK/main/candidate.r1cs.mlir" -o "$WORK/main/candidate.r1cs"
 "$MAIN_BIN/llzk-translate" --r1cs-to-binary --r1cs-prime="$BN254_PRIME" \
@@ -55,12 +66,16 @@ RELEASE_BIN=$(readlink -f "$SOURCES/release/result/bin")
   "$FIXTURES/candidate.llzk" -o "$WORK/release/candidate.scalar.mlir"
 "$RELEASE_BIN/llzk-opt" --verify-each -llzk-array-to-scalar \
   "$FIXTURES/control.llzk" -o "$WORK/release/control.scalar.mlir"
-cmp "$WORK/release/candidate.scalar.mlir" "$WORK/release/control.scalar.mlir"
+cp "$WORK/release/candidate.scalar.mlir" "$WORK/release/control.scalar.mlir" \
+  "$ARTIFACTS/release/"
+compare_files "$WORK/release/candidate.scalar.mlir" "$WORK/release/control.scalar.mlir"
 "$RELEASE_BIN/llzk-opt" --verify-each -llzk-full-r1cs-lowering \
   "$WORK/release/candidate.scalar.mlir" -o "$WORK/release/candidate.r1cs.mlir"
 "$RELEASE_BIN/llzk-opt" --verify-each -llzk-full-r1cs-lowering \
   "$WORK/release/control.scalar.mlir" -o "$WORK/release/control.r1cs.mlir"
-cmp "$WORK/release/candidate.r1cs.mlir" "$WORK/release/control.r1cs.mlir"
+cp "$WORK/release/candidate.r1cs.mlir" "$WORK/release/control.r1cs.mlir" \
+  "$ARTIFACTS/release/"
+compare_files "$WORK/release/candidate.r1cs.mlir" "$WORK/release/control.r1cs.mlir"
 
 # v2.1.2 has no R1CS binary exporter or WTNS writer. The exact release R1CS IR
 # is passed to the exact-main serializer only after byte comparison proves the
@@ -112,8 +127,6 @@ for revision in main release; do
     "$WORK/$revision/candidate.public.json" "$WORK/$revision/candidate.proof.json"
 done
 
-cp "$FIXTURES/candidate.llzk" "$FIXTURES/control.llzk" "$FIXTURES/inputs.json" \
-  "$FIXTURES/source-oracle.txt" "$ARTIFACTS/"
 cp "$WORK/main/candidate.scalar.mlir" "$WORK/main/control.scalar.mlir" \
   "$WORK/main/candidate.r1cs.mlir" "$WORK/main/control.r1cs.mlir" \
   "$WORK/main/candidate.r1cs" "$WORK/main/control.r1cs" \
