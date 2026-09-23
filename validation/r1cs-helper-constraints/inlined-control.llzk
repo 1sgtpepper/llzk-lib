@@ -1,26 +1,26 @@
 module attributes {llzk.lang, llzk.main = !struct.type<@Main>} {
-  function.def @force_zero(%value: !felt.type) attributes {function.allow_constraint} {
+  function.def @force_zero(%value: !felt.type<"bn128">) attributes {function.allow_constraint} {
     %zero = felt.const 0
-    constrain.eq %value, %zero : !felt.type, !felt.type
+    constrain.eq %value, %zero : !felt.type<"bn128">, !felt.type<"bn128">
     function.return
   }
 
   struct.def @Main {
-    struct.member @out : !felt.type {llzk.pub}
+    struct.member @out : !felt.type<"bn128"> {llzk.pub}
 
-    function.def @compute(%input: !felt.type) -> !struct.type<@Main> attributes {function.allow_witness} {
+    function.def @compute(%input: !felt.type<"bn128">) -> !struct.type<@Main> attributes {function.allow_witness} {
       %self = struct.new : !struct.type<@Main>
-      struct.writem %self[@out] = %input : !struct.type<@Main>, !felt.type
+      struct.writem %self[@out] = %input : !struct.type<@Main>, !felt.type<"bn128">
       function.return %self : !struct.type<@Main>
     }
 
-    function.def @constrain(%self: !struct.type<@Main>, %input: !felt.type) attributes {function.allow_constraint} {
+    function.def @constrain(%self: !struct.type<@Main>, %input: !felt.type<"bn128">) attributes {function.allow_constraint} {
       %one = felt.const 1
-      constrain.eq %input, %one : !felt.type, !felt.type
-      %out = struct.readm %self[@out] : !struct.type<@Main>, !felt.type
-      constrain.eq %out, %input : !felt.type, !felt.type
+      constrain.eq %input, %one : !felt.type<"bn128">, !felt.type<"bn128">
+      %out = struct.readm %self[@out] : !struct.type<@Main>, !felt.type<"bn128">
+      constrain.eq %out, %input : !felt.type<"bn128">, !felt.type<"bn128">
       %zero = felt.const 0
-      constrain.eq %out, %zero : !felt.type, !felt.type
+      constrain.eq %out, %zero : !felt.type<"bn128">, !felt.type<"bn128">
       function.return
     }
   }

@@ -65,11 +65,20 @@ jobs:
 
           "$BIN/llzk-opt" --verify-each "$WORK/candidate.llzk" -o "$WORK/candidate.parsed.mlir"
           "$BIN/llzk-opt" --verify-each "$WORK/inlined-control.llzk" -o "$WORK/control.parsed.mlir"
-          "$BIN/llzk-opt" --verify-each -llzk-full-r1cs-lowering \
-            "$WORK/candidate.llzk" -o "$WORK/candidate.r1cs.mlir"
-          "$BIN/llzk-opt" --verify-each -llzk-full-r1cs-lowering \
-            "$WORK/inlined-control.llzk" -o "$WORK/control.r1cs.mlir"
-          "$BIN/r1cs-opt" "$WORK/control.r1cs.mlir" -o /dev/null
+          if [ "$TARGET_NAME" = upstream-main ]; then
+            "$BIN/llzk-opt" --verify-each -llzk-full-r1cs-lowering \
+              "$WORK/candidate.llzk" -o "$WORK/candidate.r1cs.mlir"
+            "$BIN/llzk-opt" --verify-each -llzk-full-r1cs-lowering \
+              "$WORK/inlined-control.llzk" -o "$WORK/control.r1cs.mlir"
+            "$BIN/r1cs-opt" "$WORK/control.r1cs.mlir" -o /dev/null
+          else
+            # v2.1.2 retains llzk.main after erasing the struct, so --verify-each
+            # rejects the post-lowering module before it can be captured.
+            "$BIN/llzk-opt" -llzk-full-r1cs-lowering \
+              "$WORK/candidate.llzk" -o "$WORK/candidate.r1cs.mlir"
+            "$BIN/llzk-opt" -llzk-full-r1cs-lowering \
+              "$WORK/inlined-control.llzk" -o "$WORK/control.r1cs.mlir"
+          fi
 
           CANDIDATE_CONSTRAINTS=$(grep -c 'r1cs.constrain' "$WORK/candidate.r1cs.mlir")
           CONTROL_CONSTRAINTS=$(grep -c 'r1cs.constrain' "$WORK/control.r1cs.mlir")
@@ -121,8 +130,13 @@ jobs:
             "$BIN/r1cs-opt" "$WORK/candidate.r1cs.mlir" -o /dev/null \
               > "$WORK/candidate-r1cs-opt.log" 2>&1
             R1CS_OPT_STATUS=$?
+            "$BIN/r1cs-opt" "$WORK/control.r1cs.mlir" -o /dev/null \
+              > "$WORK/control-r1cs-opt.log" 2>&1
+            CONTROL_R1CS_OPT_STATUS=$?
             set -e
             printf 'release_r1cs_opt_candidate_status=%s\n' "$R1CS_OPT_STATUS" \
+              >> "$WORK/$TARGET_NAME-summary.txt"
+            printf 'release_r1cs_opt_control_status=%s\n' "$CONTROL_R1CS_OPT_STATUS" \
               >> "$WORK/$TARGET_NAME-summary.txt"
           fi
 
@@ -181,6 +195,7 @@ jobs:
             ${{ runner.temp }}/r1cs-helper-constraints/candidate-after-inlining.r1cs.mlir
             ${{ runner.temp }}/r1cs-helper-constraints/candidate-export.log
             ${{ runner.temp }}/r1cs-helper-constraints/candidate-r1cs-opt.log
+            ${{ runner.temp }}/r1cs-helper-constraints/control-r1cs-opt.log
             ${{ runner.temp }}/r1cs-helper-constraints/control-witness-check.txt
             ${{ runner.temp }}/r1cs-helper-constraints/input.json
             ${{ runner.temp }}/r1cs-helper-constraints/candidate.witness.json
