@@ -1,0 +1,14 @@
+Table-context oracle for the one-dimension selector twin:
+
+  previous row values = [7, 9]
+  current row values  = [1, 5]
+  current row out     = 1
+
+Source candidate relation: previous_row.values[0] == current_row.out, i.e. 7 == 1 (false).
+Current-row control relation: current_row.values[0] == current_row.out, i.e. 1 == 1 (true).
+
+The source relation is evaluated over a table trace, so the selector means the
+previous trace row. The one-row R1CS exporter has no table input or row index;
+this file supplies that source-level context independently. Its proof witness is
+only the current-row output (values=[1, 5], out=1), which is exactly the context
+the table selector must not silently replace the previous-row value with.

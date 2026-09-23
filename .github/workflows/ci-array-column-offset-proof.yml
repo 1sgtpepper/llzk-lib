@@ -1,0 +1,46 @@
+name: Validate array column offset lowering
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - validation/array-column-offset-proof
+
+permissions:
+  contents: read
+
+jobs:
+  prove:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - uses: cachix/install-nix-action@d1ca217b388ee87b2507a9a93bf01368bde7cec2
+        with:
+          install_url: https://releases.nixos.org/nix/nix-2.23.3/install
+          github_access_token: "${{ secrets.GITHUB_TOKEN }}"
+
+      - name: Set Git credentials
+        run: |
+          git config --global 'url.https://api@github.com/'.insteadOf 'https://github.com/'
+          git config --global 'url.https://ssh@github.com/'.insteadOf 'ssh://git@github.com/'
+          git config --global 'url.https://git@github.com/'.insteadOf 'git@github.com:'
+
+      - uses: cachix/cachix-action@v17
+        with:
+          name: veridise-public
+          authToken: '${{ secrets.CACHIX_PUBLIC_TOKEN }}'
+
+      - name: Build exact revisions, compare emitted circuits, and prove both
+        run: validation/array-column-offset-proof/run.sh
+
+      - name: Upload lowered circuits, witnesses, and proofs
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: array-column-offset-proof-${{ github.run_id }}
+          path: validation/array-column-offset-proof/artifacts/
