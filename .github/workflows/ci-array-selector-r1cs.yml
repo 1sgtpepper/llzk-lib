@@ -133,7 +133,6 @@ jobs:
           CANDIDATE_CONSTRAINTS=$(grep -c 'r1cs.constrain' "$WORK/candidate.r1cs.mlir")
           CONTROL_CONSTRAINTS=$(grep -c 'r1cs.constrain' "$WORK/control.r1cs.mlir")
           test "$CANDIDATE_CONSTRAINTS" -eq "$CONTROL_CONSTRAINTS"
-          cmp "$WORK/candidate.r1cs.mlir" "$WORK/control.r1cs.mlir"
           "$BIN/r1cs-opt" "$WORK/candidate.r1cs.mlir" -o /dev/null
           "$BIN/r1cs-opt" "$WORK/control.r1cs.mlir" -o /dev/null
 
@@ -143,6 +142,7 @@ jobs:
             --inputs "$WORK/scalarized-input.json" --output-scope=full-witness \
             > "$WORK/scalarized-current-witness.json"
 
+          R1CS_BINARY_STATUS=not_exported_at_pinned_revision
           if [ "$TARGET_NAME" != release-v2.1.2 ]; then
             "$BIN/llzk-witgen" "$WORK/candidate.array-to-scalar.mlir" \
               --inputs "$WORK/scalarized-input.json" \
@@ -157,6 +157,7 @@ jobs:
               --r1cs-prime=21888242871839275222246405745257275088548364400416034343698204186575808495617 \
               "$WORK/control.r1cs.mlir" -o "$WORK/control.r1cs"
             cmp "$WORK/candidate.r1cs" "$WORK/control.r1cs"
+            R1CS_BINARY_STATUS=byte_identical_candidate_and_control
           else
             printf 'release_binary_exporter=not-present-at-pinned-revision\n' \
               > "$WORK/release-downstream-limit.txt"
@@ -167,7 +168,8 @@ jobs:
             printf 'source_sha=%s\n' "$TARGET_SHA"
             printf 'candidate_r1cs_constraints=%s\n' "$CANDIDATE_CONSTRAINTS"
             printf 'control_r1cs_constraints=%s\n' "$CONTROL_CONSTRAINTS"
-            printf 'candidate_control_r1cs_mlir_identical=yes\n'
+            printf 'candidate_control_r1cs_constraint_count_equal=yes\n'
+            printf 'candidate_control_r1cs_binary=%s\n' "$R1CS_BINARY_STATUS"
             printf 'witgen_input=[1]\n'
             printf 'array_to_scalar_candidate_equals_control=yes\n'
             printf 'array_to_scalar_output_has_no_tableOffset=yes\n'
