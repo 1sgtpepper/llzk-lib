@@ -1,0 +1,264 @@
+name: Array selector R1CS proof validation
+
+on:
+  push:
+    branches:
+      - validation/array-selector-r1cs
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - name: upstream-main
+            sha: d1198631dbe9906cb149d1ddcd0dd1ca071dae6b
+          - name: upstream-current-main
+            sha: 0b0f78af688af659ad09f15631199a998f859ce2
+          - name: release-v2.1.2
+            sha: b1b8d52ca4e6114cdd9a80417f96342a9f9e8b6c
+    steps:
+      - name: Checkout fork validation branch
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Install Nix
+        uses: cachix/install-nix-action@d1ca217b388ee87b2507a9a93bf01368bde7cec2
+        with:
+          install_url: https://releases.nixos.org/nix/nix-2.23.3/install
+          github_access_token: "${{ secrets.GITHUB_TOKEN }}"
+
+      - name: Set Git credentials
+        run: |
+          git config --global 'url.https://api@github.com/'.insteadOf 'https://github.com/'
+          git config --global 'url.https://ssh@github.com/'.insteadOf 'ssh://git@github.com/'
+          git config --global 'url.https://git@github.com/'.insteadOf 'git@github.com:'
+
+      - uses: cachix/cachix-action@v17
+        with:
+          name: veridise-public
+          authToken: '${{ secrets.CACHIX_PUBLIC_TOKEN }}'
+
+      - name: Lower exact source revision and capture witnesses
+        env:
+          TARGET_SHA: ${{ matrix.target.sha }}
+          TARGET_NAME: ${{ matrix.target.name }}
+          WORK: ${{ runner.temp }}/array-selector-r1cs
+        run: |
+          set -euo pipefail
+          VALIDATION_ROOT="$GITHUB_WORKSPACE"
+          SOURCE="$RUNNER_TEMP/llzk-source-$TARGET_NAME"
+          mkdir -p "$SOURCE" "$WORK"
+          git rev-parse "$TARGET_SHA^{commit}"
+          git archive "$TARGET_SHA" | tar -x -C "$SOURCE"
+          cp "$VALIDATION_ROOT/validation/array-selector-r1cs/candidate.llzk" "$WORK/"
+          cp "$VALIDATION_ROOT/validation/array-selector-r1cs/control.llzk" "$WORK/"
+          printf '{"v":[1,2]}\n' > "$WORK/current-input.json"
+
+          cd "$SOURCE"
+          nix --print-build-logs build '.#debugGCC'
+          BIN="$SOURCE/result/bin"
+
+          "$BIN/llzk-opt" --verify-each "$WORK/candidate.llzk" -o "$WORK/candidate.parsed.mlir"
+          "$BIN/llzk-opt" --verify-each "$WORK/control.llzk" -o "$WORK/control.parsed.mlir"
+          "$BIN/llzk-opt" --verify-each -llzk-array-to-scalar \
+            "$WORK/candidate.llzk" -o "$WORK/candidate.array-to-scalar.mlir"
+          "$BIN/llzk-opt" --verify-each -llzk-array-to-scalar \
+            "$WORK/control.llzk" -o "$WORK/control.array-to-scalar.mlir"
+          cmp "$WORK/candidate.array-to-scalar.mlir" "$WORK/control.array-to-scalar.mlir"
+          ! grep -q 'tableOffset' "$WORK/candidate.array-to-scalar.mlir"
+          set +e
+          diff -u "$WORK/control.llzk" "$WORK/candidate.llzk" > "$WORK/source-twin.diff"
+          SOURCE_DIFF_STATUS=$?
+          set -e
+          test "$SOURCE_DIFF_STATUS" -eq 1
+          SOURCE_CHANGED_LINES=$(grep -E '^[+-]' "$WORK/source-twin.diff" | grep -v '^---' | grep -v '^+++' | wc -l)
+          test "$SOURCE_CHANGED_LINES" -eq 2
+          test "$(grep -c '^+.*tableOffset = -1 : index' "$WORK/source-twin.diff")" -eq 1
+          test "$(grep -c 'tableOffset = -1 : index' "$WORK/candidate.llzk")" -eq 1
+          test "$(grep -c 'tableOffset' "$WORK/control.llzk" || true)" -eq 0
+
+          # v2.1.2 leaves llzk.main pointing to the erased struct after R1CS
+          # lowering. Remove only that witness-tool entry-point marker for the
+          # release lowering input; main runs both forms and requires identical IR.
+          sed 's/, llzk.main = !struct.type<@Main>//' "$WORK/candidate.llzk" > "$WORK/candidate-lowering.llzk"
+          sed 's/, llzk.main = !struct.type<@Main>//' "$WORK/control.llzk" > "$WORK/control-lowering.llzk"
+          "$BIN/llzk-opt" --verify-each "$WORK/candidate-lowering.llzk" -o "$WORK/candidate-lowering.parsed.mlir"
+          "$BIN/llzk-opt" --verify-each "$WORK/control-lowering.llzk" -o "$WORK/control-lowering.parsed.mlir"
+
+          "$BIN/llzk-opt" --verify-each -llzk-full-r1cs-lowering \
+            "$WORK/candidate-lowering.llzk" -o "$WORK/candidate.r1cs.mlir"
+          "$BIN/llzk-opt" --verify-each -llzk-full-r1cs-lowering \
+            "$WORK/control-lowering.llzk" -o "$WORK/control.r1cs.mlir"
+
+          CANDIDATE_CONSTRAINTS=$(grep -c 'r1cs.constrain' "$WORK/candidate.r1cs.mlir")
+          CONTROL_CONSTRAINTS=$(grep -c 'r1cs.constrain' "$WORK/control.r1cs.mlir")
+          test "$CANDIDATE_CONSTRAINTS" -eq "$CONTROL_CONSTRAINTS"
+          cmp "$WORK/candidate.r1cs.mlir" "$WORK/control.r1cs.mlir"
+          "$BIN/r1cs-opt" "$WORK/candidate.r1cs.mlir" -o /dev/null
+          "$BIN/r1cs-opt" "$WORK/control.r1cs.mlir" -o /dev/null
+
+          "$BIN/llzk-witgen" "$WORK/candidate.llzk" --inputs "$WORK/current-input.json" \
+            --output-scope=full-witness > "$WORK/current-witness.json"
+
+          if [ "$TARGET_NAME" != release-v2.1.2 ]; then
+            "$BIN/llzk-opt" --verify-each -llzk-full-r1cs-lowering \
+              "$WORK/candidate.llzk" -o "$WORK/candidate-with-main-attr.r1cs.mlir"
+            cmp "$WORK/candidate.r1cs.mlir" "$WORK/candidate-with-main-attr.r1cs.mlir"
+            "$BIN/llzk-witgen" "$WORK/candidate.llzk" --inputs "$WORK/current-input.json" \
+              --output-scope=full-witness --output-wtns "$WORK/current.wtns" \
+              > "$WORK/current-witness-with-wtns.json"
+            cmp "$WORK/current-witness.json" "$WORK/current-witness-with-wtns.json"
+            "$BIN/llzk-translate" --r1cs-to-binary \
+              --r1cs-prime=21888242871839275222246405745257275088548364400416034343698204186575808495617 \
+              "$WORK/candidate.r1cs.mlir" -o "$WORK/candidate.r1cs"
+            "$BIN/llzk-translate" --r1cs-to-binary \
+              --r1cs-prime=21888242871839275222246405745257275088548364400416034343698204186575808495617 \
+              "$WORK/control.r1cs.mlir" -o "$WORK/control.r1cs"
+            cmp "$WORK/candidate.r1cs" "$WORK/control.r1cs"
+          else
+            printf 'release_binary_exporter=not-present-at-pinned-revision\n' \
+              > "$WORK/release-downstream-limit.txt"
+          fi
+
+          {
+            printf 'target=%s\n' "$TARGET_NAME"
+            printf 'source_sha=%s\n' "$TARGET_SHA"
+            printf 'candidate_r1cs_constraints=%s\n' "$CANDIDATE_CONSTRAINTS"
+            printf 'control_r1cs_constraints=%s\n' "$CONTROL_CONSTRAINTS"
+            printf 'candidate_control_r1cs_mlir_identical=yes\n'
+            printf 'witgen_input=[1,2]\n'
+            printf 'array_to_scalar_candidate_equals_control=yes\n'
+            printf 'array_to_scalar_output_has_no_tableOffset=yes\n'
+            printf 'lowering_input_drops_only_llzk_main_attr=yes\n'
+          } > "$WORK/$TARGET_NAME-summary.txt"
+
+      - name: Generate and verify main-revision Groth16 proof
+        if: matrix.target.name != 'release-v2.1.2'
+        env:
+          WORK: ${{ runner.temp }}/array-selector-r1cs
+          TARGET_NAME: ${{ matrix.target.name }}
+        run: |
+          set -euo pipefail
+          npm install --prefix "$WORK/npm" --no-save snarkjs@0.7.5
+          SNARKJS="$WORK/npm/node_modules/.bin/snarkjs"
+          "$SNARKJS" r1cs info "$WORK/candidate.r1cs"
+          "$SNARKJS" r1cs info "$WORK/control.r1cs"
+          "$SNARKJS" wtns check "$WORK/candidate.r1cs" "$WORK/current.wtns"
+          "$SNARKJS" wtns check "$WORK/control.r1cs" "$WORK/current.wtns"
+
+          "$SNARKJS" powersoftau new bn128 8 "$WORK/pot_0000.ptau" -v
+          "$SNARKJS" powersoftau contribute "$WORK/pot_0000.ptau" \
+            "$WORK/pot_0001.ptau" --name='CI contribution' -e='array-selector-r1cs-test'
+          "$SNARKJS" powersoftau prepare phase2 "$WORK/pot_0001.ptau" \
+            "$WORK/pot_final.ptau" -v
+          "$SNARKJS" groth16 setup "$WORK/candidate.r1cs" "$WORK/pot_final.ptau" \
+            "$WORK/circuit_0000.zkey"
+          "$SNARKJS" zkey contribute "$WORK/circuit_0000.zkey" \
+            "$WORK/circuit_final.zkey" --name='CI contribution' -e='array-selector-zkey-test'
+          "$SNARKJS" zkey export verificationkey "$WORK/circuit_final.zkey" \
+            "$WORK/verification_key.json"
+          "$SNARKJS" groth16 prove "$WORK/circuit_final.zkey" \
+            "$WORK/current.wtns" "$WORK/proof.json" "$WORK/public.json"
+          "$SNARKJS" groth16 verify "$WORK/verification_key.json" \
+            "$WORK/public.json" "$WORK/proof.json"
+          printf 'proof_verified=yes\n' >> "$WORK/$TARGET_NAME-summary.txt"
+
+      - name: Hash exact-revision artifacts
+        if: always()
+        env:
+          WORK: ${{ runner.temp }}/array-selector-r1cs
+          TARGET_NAME: ${{ matrix.target.name }}
+        run: |
+          set -euo pipefail
+          find "$WORK" -maxdepth 1 -type f ! -name '*-sha256.txt' -print0 \
+            | sort -z | xargs -0 sha256sum > "$WORK/$TARGET_NAME-sha256.txt"
+
+      - name: Upload exact-revision artifacts
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: array-selector-r1cs-${{ matrix.target.name }}
+          path: |
+            ${{ runner.temp }}/array-selector-r1cs/*-summary.txt
+            ${{ runner.temp }}/array-selector-r1cs/*-sha256.txt
+            ${{ runner.temp }}/array-selector-r1cs/release-downstream-limit.txt
+            ${{ runner.temp }}/array-selector-r1cs/candidate.llzk
+            ${{ runner.temp }}/array-selector-r1cs/control.llzk
+            ${{ runner.temp }}/array-selector-r1cs/source-twin.diff
+            ${{ runner.temp }}/array-selector-r1cs/candidate-lowering.llzk
+            ${{ runner.temp }}/array-selector-r1cs/control-lowering.llzk
+            ${{ runner.temp }}/array-selector-r1cs/candidate.parsed.mlir
+            ${{ runner.temp }}/array-selector-r1cs/control.parsed.mlir
+            ${{ runner.temp }}/array-selector-r1cs/candidate.array-to-scalar.mlir
+            ${{ runner.temp }}/array-selector-r1cs/control.array-to-scalar.mlir
+            ${{ runner.temp }}/array-selector-r1cs/candidate.r1cs.mlir
+            ${{ runner.temp }}/array-selector-r1cs/control.r1cs.mlir
+            ${{ runner.temp }}/array-selector-r1cs/candidate-with-main-attr.r1cs.mlir
+            ${{ runner.temp }}/array-selector-r1cs/candidate.r1cs
+            ${{ runner.temp }}/array-selector-r1cs/control.r1cs
+            ${{ runner.temp }}/array-selector-r1cs/current-input.json
+            ${{ runner.temp }}/array-selector-r1cs/current-witness.json
+            ${{ runner.temp }}/array-selector-r1cs/current-witness-with-wtns.json
+            ${{ runner.temp }}/array-selector-r1cs/current.wtns
+            ${{ runner.temp }}/array-selector-r1cs/proof.json
+            ${{ runner.temp }}/array-selector-r1cs/public.json
+            ${{ runner.temp }}/array-selector-r1cs/verification_key.json
+
+  compare-revisions:
+    needs: validate
+    if: needs.validate.result == 'success'
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Download exact-main artifacts
+        uses: actions/download-artifact@v7
+        with:
+          name: array-selector-r1cs-upstream-main
+          path: ${{ runner.temp }}/array-selector-main
+
+      - name: Download exact-release artifacts
+        uses: actions/download-artifact@v7
+        with:
+          name: array-selector-r1cs-release-v2.1.2
+          path: ${{ runner.temp }}/array-selector-release
+
+      - name: Compare released lowering and witness with exact-main proof inputs
+        env:
+          MAIN: ${{ runner.temp }}/array-selector-main
+          RELEASE: ${{ runner.temp }}/array-selector-release
+          OUT: ${{ runner.temp }}/array-selector-cross-revision
+        run: |
+          set -euo pipefail
+          mkdir -p "$OUT"
+          cmp "$MAIN/candidate.r1cs.mlir" "$RELEASE/candidate.r1cs.mlir"
+          cmp "$MAIN/control.r1cs.mlir" "$RELEASE/control.r1cs.mlir"
+          cmp "$MAIN/current-witness.json" "$RELEASE/current-witness.json"
+          cmp "$MAIN/candidate.r1cs" "$MAIN/control.r1cs"
+          cmp "$MAIN/candidate.r1cs.mlir" "$MAIN/control.r1cs.mlir"
+          cp "$MAIN/candidate.r1cs" "$OUT/candidate.r1cs"
+          cp "$MAIN/candidate.r1cs.mlir" "$OUT/candidate.r1cs.mlir"
+          cp "$RELEASE/candidate.r1cs.mlir" "$OUT/release-candidate.r1cs.mlir"
+          cp "$MAIN/current.wtns" "$OUT/current.wtns"
+          cp "$MAIN/proof.json" "$OUT/proof.json"
+          cp "$MAIN/public.json" "$OUT/public.json"
+          cp "$MAIN/verification_key.json" "$OUT/verification_key.json"
+          {
+            printf 'main_r1cs_mlir_equals_release_r1cs_mlir=yes\n'
+            printf 'main_witness_json_equals_release_witness_json=yes\n'
+            printf 'main_exported_r1cs_candidate_equals_control=yes\n'
+            printf 'main_groth16_proof_verified=yes\n'
+            printf 'release_proof_status=equivalent exact-main serializer/proof over byte-identical release lowering and witness\n'
+          } > "$OUT/cross-revision-summary.txt"
+          sha256sum "$OUT"/* > "$OUT/cross-revision-sha256.txt"
+
+      - name: Upload cross-revision proof linkage
+        uses: actions/upload-artifact@v7
+        with:
+          name: array-selector-r1cs-cross-revision
+          path: ${{ runner.temp }}/array-selector-cross-revision/*

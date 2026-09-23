@@ -1,0 +1,28 @@
+!F = !felt.type<"bn128">
+!Trace = !array.type<2 x !F>
+
+module attributes {llzk.lang, llzk.main = !struct.type<@Main>} {
+  struct.def @Main {
+    struct.member @trace : !Trace {column, llzk.pub}
+    struct.member @out : !F {llzk.pub}
+
+    function.def @compute(%v: !Trace {function.arg_name = "v"}) -> !struct.type<@Main> attributes {function.allow_witness} {
+      %self = struct.new : !struct.type<@Main>
+      struct.writem %self[@trace] = %v : !struct.type<@Main>, !Trace
+      %zero = arith.constant 0 : index
+      %first = array.read %v[%zero] : !Trace, !F
+      struct.writem %self[@out] = %first : !struct.type<@Main>, !F
+      function.return %self : !struct.type<@Main>
+    }
+
+    function.def @constrain(%self: !struct.type<@Main>) attributes {function.allow_constraint} {
+      %selected = struct.readm %self[@trace] : !struct.type<@Main>, !Trace {tableOffset = -1 : index}
+      %zero = arith.constant 0 : index
+      %selected_first = array.read %selected[%zero] : !Trace, !F
+      %current = struct.readm %self[@trace] : !struct.type<@Main>, !Trace
+      %current_first = array.read %current[%zero] : !Trace, !F
+      constrain.eq %selected_first, %current_first : !F, !F
+      function.return
+    }
+  }
+}
