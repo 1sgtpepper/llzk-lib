@@ -1,4 +1,5 @@
 // RUN: llzk-opt -I %input_dir -split-input-file -verify-diagnostics %s 2>&1 | FileCheck --enable-var-scope %s
+// Escape one dash in separator checks so the input splitter sees only real boundaries.
 
 module attributes {llzk.lang} {
   struct.def @Top {
@@ -32,7 +33,7 @@ module attributes {llzk.lang} {
 // CHECK-NEXT:      verif.ensure_compute %[[VAL_3]]
 // CHECK-NEXT:    }
 // CHECK-NEXT:  }
-// CHECK:  // -----
+// CHECK:  // {{[-]}}----
 // -----
 
 
@@ -82,7 +83,7 @@ module attributes {llzk.lang} {
 // CHECK-NEXT:      }
 // CHECK-NEXT:    }
 // CHECK-NEXT:  }
-// CHECK:  // -----
+// CHECK:  // {{[-]}}----
 // -----
 
 
@@ -138,7 +139,7 @@ module attributes {llzk.lang} {
 // CHECK-NEXT:      }
 // CHECK-NEXT:    }
 // CHECK-NEXT:  }
-// CHECK:  // -----
+// CHECK:  // {{[-]}}----
 // -----
 
 
@@ -193,7 +194,7 @@ module attributes {llzk.lang} {
 // CHECK-NEXT:      verif.ensure_compute %[[VAL_9]]
 // CHECK-NEXT:    }
 // CHECK-NEXT:  }
-// CHECK:  // -----
+// CHECK:  // {{[-]}}----
 // -----
 
 
@@ -271,7 +272,7 @@ module attributes {llzk.lang} {
 // CHECK-NEXT:      verif.ensure_compute %[[VAL_7]]
 // CHECK-NEXT:    }
 // CHECK-NEXT:  }
-// CHECK:  // -----
+// CHECK:  // {{[-]}}----
 // -----
 
 
@@ -325,7 +326,7 @@ module attributes {llzk.lang} {
 // CHECK-NEXT:      }
 // CHECK-NEXT:    }
 // CHECK-NEXT:  }
-// CHECK:  // -----
+// CHECK:  // {{[-]}}----
 // -----
 
 
@@ -363,7 +364,7 @@ module attributes {llzk.main = !struct.type<@Main>, llzk.lang} {
 // CHECK-NEXT:      verif.require_constrain %[[VAL_6]]
 // CHECK-NEXT:    }
 // CHECK-NEXT:  }
-// CHECK:  // -----
+// CHECK:  // {{[-]}}----
 // -----
 
 
@@ -395,7 +396,7 @@ module attributes {llzk.lang} {
 // CHECK-NEXT:    verif.contract @Foo for @Top (%[[VAL_4:[0-9a-zA-Z_\.]+]]: !struct.type<@Top>, %[[VAL_5:[0-9a-zA-Z_\.]+]]: !felt.type) {
 // CHECK-NEXT:    }
 // CHECK-NEXT:  }
-// CHECK:  // -----
+// CHECK:  // {{[-]}}----
 // -----
 
 
@@ -427,7 +428,7 @@ module attributes {llzk.lang} {
 // CHECK-NEXT:      }
 // CHECK-NEXT:    }
 // CHECK-NEXT:  }
-// CHECK:  // -----
+// CHECK:  // {{[-]}}----
 // -----
 
 
@@ -478,7 +479,7 @@ module attributes {llzk.lang} {
 // CHECK-NEXT:      }
 // CHECK-NEXT:    }
 // CHECK-NEXT:  }
-// CHECK:  // -----
+// CHECK:  // {{[-]}}----
 // -----
 
 
@@ -513,7 +514,7 @@ module attributes {llzk.lang} {
 // CHECK-NEXT:      verif.ensure_compute %[[VAL_4]]
 // CHECK-NEXT:    }
 // CHECK-NEXT:  }
-// CHECK:  // -----
+// CHECK:  // {{[-]}}----
 // -----
 
 
@@ -548,7 +549,7 @@ module attributes {llzk.lang} {
 // CHECK-NEXT:      verif.ensure_compute %[[VAL_2]]
 // CHECK-NEXT:    }
 // CHECK-NEXT:  }
-// CHECK:  // -----
+// CHECK:  // {{[-]}}----
 // -----
 
 
@@ -599,7 +600,7 @@ module attributes {llzk.lang} {
 // CHECK-NEXT:      verif.ensure_compute %[[VAL_8]]
 // CHECK-NEXT:    }
 // CHECK-NEXT:  }
-// CHECK:  // -----
+// CHECK:  // {{[-]}}----
 // -----
 
 
@@ -630,7 +631,7 @@ module attributes {llzk.lang} {
 // CHECK-NEXT:      verif.include @Base(%[[VAL_4]], %[[VAL_5]]) : (index, i1) -> ()
 // CHECK-NEXT:    }
 // CHECK-NEXT:  }
-// CHECK:  // -----
+// CHECK:  // {{[-]}}----
 // -----
 
 
@@ -669,7 +670,7 @@ module attributes {llzk.lang} {
 // CHECK-NEXT:      verif.require_compute %[[VAL_8]]
 // CHECK-NEXT:    }
 // CHECK-NEXT:  }
-// CHECK:  // -----
+// CHECK:  // {{[-]}}----
 // -----
 
 
@@ -702,7 +703,7 @@ module attributes {llzk.lang} {
 // CHECK-NEXT:      verif.require_compute %[[VAL_4]]
 // CHECK-NEXT:    }
 // CHECK-NEXT:  }
-// CHECK:  // -----
+// CHECK:  // {{[-]}}----
 // -----
 
 
@@ -745,7 +746,7 @@ module attributes {llzk.lang} {
 // CHECK-NEXT:      verif.require_compute %[[VAL_9]]
 // CHECK-NEXT:    }
 // CHECK-NEXT:  }
-// CHECK:  // -----
+// CHECK:  // {{[-]}}----
 // -----
 
 
@@ -773,7 +774,7 @@ module attributes {llzk.lang} {
 // CHECK-NEXT:      }
 // CHECK-NEXT:    }
 // CHECK-NEXT:  }
-// CHECK:  // -----
+// CHECK:  // {{[-]}}----
 // -----
 
 
@@ -831,7 +832,7 @@ module attributes {llzk.lang} {
 // CHECK-NEXT:      verif.require_compute %[[VAL_8]]
 // CHECK-NEXT:    }
 // CHECK-NEXT:  }
-// CHECK:  // -----
+// CHECK:  // {{[-]}}----
 // -----
 
 
@@ -864,7 +865,7 @@ module attributes {llzk.lang} {
 // CHECK-NEXT:      verif.ensure_compute %[[VAL_5]]
 // CHECK-NEXT:    }
 // CHECK-NEXT:  }
-// CHECK:  // -----
+// CHECK:  // {{[-]}}----
 // -----
 
 
@@ -912,7 +913,7 @@ module attributes {llzk.lang} {
 // CHECK-NEXT:      verif.ensure_constrain %[[VAL_8]]
 // CHECK-NEXT:    }
 // CHECK-NEXT:  }
-// CHECK:  // -----
+// CHECK:  // {{[-]}}----
 // -----
 
 
@@ -952,7 +953,7 @@ module attributes {llzk.lang} {
 // CHECK-NEXT:      }
 // CHECK-NEXT:    }
 // CHECK-NEXT:  }
-// CHECK:  // -----
+// CHECK:  // {{[-]}}----
 // -----
 
 
@@ -982,7 +983,7 @@ module attributes {llzk.lang} {
 // CHECK-NEXT:      verif.ensure_compute %[[VAL_4]]
 // CHECK-NEXT:    }
 // CHECK-NEXT:  }
-// CHECK:  // -----
+// CHECK:  // {{[-]}}----
 // -----
 
 
@@ -1012,7 +1013,7 @@ module attributes {llzk.lang} {
 // CHECK-NEXT:      verif.ensure_compute %[[VAL_2]]
 // CHECK-NEXT:    }
 // CHECK-NEXT:  }
-// CHECK:  // -----
+// CHECK:  // {{[-]}}----
 // -----
 
 
@@ -1038,7 +1039,7 @@ module attributes {llzk.lang} {
 // CHECK-NEXT:      verif.ensure_compute %[[VAL_4]]
 // CHECK-NEXT:    }
 // CHECK-NEXT:  }
-// CHECK:  // -----
+// CHECK:  // {{[-]}}----
 // -----
 
 
@@ -1064,7 +1065,7 @@ module attributes {llzk.lang} {
 // CHECK-NEXT:      verif.ensure_compute %[[VAL_4]]
 // CHECK-NEXT:    }
 // CHECK-NEXT:  }
-// CHECK:  // -----
+// CHECK:  // {{[-]}}----
 // -----
 
 
@@ -1116,7 +1117,7 @@ module attributes {llzk.main = !struct.type<@Main>, llzk.lang} {
 // CHECK-NEXT:      verif.ensure_compute %[[VAL_10]]
 // CHECK-NEXT:    }
 // CHECK-NEXT:  }
-// CHECK:  // -----
+// CHECK:  // {{[-]}}----
 // -----
 
 
@@ -1144,7 +1145,7 @@ module attributes {llzk.lang} {
 // CHECK-NEXT:      verif.ensure_compute %[[VAL_5]]
 // CHECK-NEXT:    }
 // CHECK-NEXT:  }
-// CHECK:  // -----
+// CHECK:  // {{[-]}}----
 // -----
 
 
@@ -1182,7 +1183,7 @@ module attributes {llzk.lang} {
 // CHECK-NEXT:      verif.ensure_compute %[[VAL_5]]
 // CHECK-NEXT:    }
 // CHECK-NEXT:  }
-// CHECK:  // -----
+// CHECK:  // {{[-]}}----
 // -----
 
 
@@ -1213,7 +1214,7 @@ module attributes {llzk.main = !struct.type<@Main>, llzk.lang} {
 // CHECK-NEXT:      }
 // CHECK-NEXT:    }
 // CHECK-NEXT:  }
-// CHECK:  // -----
+// CHECK:  // {{[-]}}----
 // -----
 
 

@@ -1,4 +1,5 @@
 // RUN: llzk-opt -split-input-file %s | FileCheck %s
+// Escape one dash in separator checks so the input splitter sees only real boundaries.
 
 // A fielded local symbolic argument satisfies a fieldless struct restriction.
 module attributes {llzk.lang} {
@@ -42,7 +43,7 @@ module attributes {llzk.lang} {
 // CHECK-NEXT:      }
 // CHECK-NEXT:    }
 // CHECK-NEXT:  }
-// CHECK:  // -----
+// CHECK:  // {{[-]}}----
 // -----
 
 
@@ -88,7 +89,7 @@ module attributes {llzk.lang} {
 // CHECK-NEXT:      function.return
 // CHECK-NEXT:    }
 // CHECK-NEXT:  }
-// CHECK:  // -----
+// CHECK:  // {{[-]}}----
 // -----
 
 

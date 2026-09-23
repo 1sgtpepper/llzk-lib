@@ -1,4 +1,5 @@
 // RUN: llzk-opt -I %input_dir -split-input-file %s 2>&1 | FileCheck --enable-var-scope %s
+// Escape one dash in separator checks so the input splitter sees only real boundaries.
 
 module attributes {llzk.lang} {
   poly.template @GlobalFunc {
@@ -39,7 +40,7 @@ module attributes {llzk.lang} {
 // CHECK-NEXT:      }
 // CHECK-NEXT:    }
 // CHECK-NEXT:  }
-// CHECK:  // -----
+// CHECK:  // {{[-]}}----
 // -----
 
 // An explicit untyped caller binding remains forwardable to a typed function parameter before
@@ -75,7 +76,7 @@ module attributes {llzk.lang} {
 // CHECK-NEXT:      }
 // CHECK-NEXT:    }
 // CHECK-NEXT:  }
-// CHECK:  // -----
+// CHECK:  // {{[-]}}----
 // -----
 
 // Same-spelled `!poly.tvar` parameters in separate templates are distinct bindings, but a caller
@@ -113,7 +114,7 @@ module attributes {llzk.lang} {
 // CHECK-NEXT:      }
 // CHECK-NEXT:    }
 // CHECK-NEXT:  }
-// CHECK:  // -----
+// CHECK:  // {{[-]}}----
 // -----
 
 // Repeated `!poly.tvar` signature positions accept one concrete type when omitted inference finds
@@ -144,7 +145,7 @@ module attributes {llzk.lang} {
 // CHECK-NEXT:      function.return
 // CHECK-NEXT:    }
 // CHECK-NEXT:  }
-// CHECK:  // -----
+// CHECK:  // {{[-]}}----
 // -----
 
 // A concrete type inferred through a struct parameter satisfies a `!poly.tvar` restriction.
@@ -199,7 +200,7 @@ module attributes {llzk.lang} {
 // CHECK-NEXT:      function.return
 // CHECK-NEXT:    }
 // CHECK-NEXT:  }
-// CHECK:  // -----
+// CHECK:  // {{[-]}}----
 // -----
 
 // Included target signatures use the namespace established by `include.from` for both explicit
@@ -237,7 +238,7 @@ module attributes {llzk.lang} {
 // CHECK-NEXT:      }
 // CHECK-NEXT:    }
 // CHECK-NEXT:  }
-// CHECK:  // -----
+// CHECK:  // {{[-]}}----
 // -----
 
 module attributes {llzk.lang} {
@@ -279,7 +280,7 @@ module attributes {llzk.lang} {
 // CHECK-NEXT:      }
 // CHECK-NEXT:    }
 // CHECK-NEXT:  }
-// CHECK:  // -----
+// CHECK:  // {{[-]}}----
 // -----
 
 module attributes {llzk.lang} {
@@ -321,7 +322,7 @@ module attributes {llzk.lang} {
 // CHECK-NEXT:      }
 // CHECK-NEXT:    }
 // CHECK-NEXT:  }
-// CHECK:  // -----
+// CHECK:  // {{[-]}}----
 // -----
 
 module attributes {llzk.lang} {
@@ -363,7 +364,7 @@ module attributes {llzk.lang} {
 // CHECK-NEXT:      }
 // CHECK-NEXT:    }
 // CHECK-NEXT:  }
-// CHECK:  // -----
+// CHECK:  // {{[-]}}----
 // -----
 
 module attributes {llzk.lang} {
@@ -405,7 +406,7 @@ module attributes {llzk.lang} {
 // CHECK-NEXT:      }
 // CHECK-NEXT:    }
 // CHECK-NEXT:  }
-// CHECK:  // -----
+// CHECK:  // {{[-]}}----
 // -----
 
 module attributes {llzk.lang} {
@@ -447,7 +448,7 @@ module attributes {llzk.lang} {
 // CHECK-NEXT:      }
 // CHECK-NEXT:    }
 // CHECK-NEXT:  }
-// CHECK:  // -----
+// CHECK:  // {{[-]}}----
 // -----
 
 module attributes {llzk.lang} {
@@ -491,7 +492,7 @@ module attributes {llzk.lang} {
 // CHECK-NEXT:      }
 // CHECK-NEXT:    }
 // CHECK-NEXT:  }
-// CHECK:  // -----
+// CHECK:  // {{[-]}}----
 // -----
 
 module attributes {llzk.lang} {
@@ -535,7 +536,7 @@ module attributes {llzk.lang} {
 // CHECK-NEXT:      }
 // CHECK-NEXT:    }
 // CHECK-NEXT:  }
-// CHECK:  // -----
+// CHECK:  // {{[-]}}----
 // -----
 
 // The constraint that @A and @B must agree is deferred until @Caller is instantiated.
