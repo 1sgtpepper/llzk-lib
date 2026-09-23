@@ -1,17 +1,16 @@
 module attributes {llzk.lang, llzk.main = !struct.type<@Main>} {
   struct.def @Main {
-    struct.member @values : !array.type<2 x !felt.type<"bn128">> {column, llzk.pub}
+    struct.member @values : !array.type<1 x !felt.type<"bn128">> {column, llzk.pub}
     struct.member @out : !felt.type<"bn128"> {llzk.pub}
 
     function.def @compute(
       %current0: !felt.type<"bn128"> {function.arg_name = "current0"},
-      %current1: !felt.type<"bn128"> {function.arg_name = "current1"},
       %out: !felt.type<"bn128"> {function.arg_name = "out"}
     ) -> !struct.type<@Main> {
       %self = struct.new : !struct.type<@Main>
-      %values = array.new %current0, %current1 : !array.type<2 x !felt.type<"bn128">>
+      %values = array.new %current0 : !array.type<1 x !felt.type<"bn128">>
       struct.writem %self[@values] = %values :
-          !struct.type<@Main>, !array.type<2 x !felt.type<"bn128">>
+          !struct.type<@Main>, !array.type<1 x !felt.type<"bn128">>
       struct.writem %self[@out] = %out : !struct.type<@Main>, !felt.type<"bn128">
       function.return %self : !struct.type<@Main>
     }
@@ -19,15 +18,14 @@ module attributes {llzk.lang, llzk.main = !struct.type<@Main>} {
     function.def @constrain(
       %self: !struct.type<@Main>,
       %current0: !felt.type<"bn128">,
-      %current1: !felt.type<"bn128">,
       %outInput: !felt.type<"bn128">
     ) {
       %values = struct.readm %self[@values] :
-          !struct.type<@Main>, !array.type<2 x !felt.type<"bn128">>
+          !struct.type<@Main>, !array.type<1 x !felt.type<"bn128">>
           {tableOffset = -1 : index}
       %zero = arith.constant 0 : index
       %selected = array.read %values[%zero] :
-          !array.type<2 x !felt.type<"bn128">>, !felt.type<"bn128">
+          !array.type<1 x !felt.type<"bn128">>, !felt.type<"bn128">
       %output = struct.readm %self[@out] : !struct.type<@Main>, !felt.type<"bn128">
       constrain.eq %selected, %output : !felt.type<"bn128">
       function.return
