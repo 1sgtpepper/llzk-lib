@@ -1,0 +1,195 @@
+name: R1CS helper constraint validation
+
+on:
+  push:
+    branches:
+      - validation/r1cs-helper-constraints
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - name: upstream-main
+            sha: 0b0f78af688af659ad09f15631199a998f859ce2
+          - name: release-v2.1.2
+            sha: b1b8d52ca4e6114cdd9a80417f96342a9f9e8b6c
+    steps:
+      - name: Checkout fork validation branch
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Install Nix
+        uses: cachix/install-nix-action@d1ca217b388ee87b2507a9a93bf01368bde7cec2
+        with:
+          install_url: https://releases.nixos.org/nix/nix-2.23.3/install
+          github_access_token: "${{ secrets.GITHUB_TOKEN }}"
+
+      - name: Set Git credentials
+        run: |
+          git config --global 'url.https://api@github.com/'.insteadOf 'https://github.com/'
+          git config --global 'url.https://ssh@github.com/'.insteadOf 'ssh://git@github.com/'
+          git config --global 'url.https://git@github.com/'.insteadOf 'git@github.com:'
+
+      - uses: cachix/cachix-action@v17
+        with:
+          name: veridise-public
+          authToken: '${{ secrets.CACHIX_PUBLIC_TOKEN }}'
+
+      - name: Lower exact source revision
+        env:
+          TARGET_SHA: ${{ matrix.target.sha }}
+          TARGET_NAME: ${{ matrix.target.name }}
+          WORK: ${{ runner.temp }}/r1cs-helper-constraints
+        run: |
+          set -euo pipefail
+          VALIDATION_ROOT="$GITHUB_WORKSPACE"
+          SOURCE="$RUNNER_TEMP/llzk-source-$TARGET_NAME"
+          mkdir -p "$SOURCE" "$WORK"
+          git rev-parse "$TARGET_SHA^{commit}"
+          git archive "$TARGET_SHA" | tar -x -C "$SOURCE"
+          cp "$VALIDATION_ROOT/validation/r1cs-helper-constraints/candidate.llzk" "$WORK/"
+          cp "$VALIDATION_ROOT/validation/r1cs-helper-constraints/inlined-control.llzk" "$WORK/"
+          printf '[1]\n' > "$WORK/input.json"
+
+          cd "$SOURCE"
+          nix --print-build-logs build '.#debugGCC'
+          BIN="$SOURCE/result/bin"
+
+          "$BIN/llzk-opt" --verify-each "$WORK/candidate.llzk" -o "$WORK/candidate.parsed.mlir"
+          "$BIN/llzk-opt" --verify-each "$WORK/inlined-control.llzk" -o "$WORK/control.parsed.mlir"
+          "$BIN/llzk-opt" --verify-each -llzk-full-r1cs-lowering \
+            "$WORK/candidate.llzk" -o "$WORK/candidate.r1cs.mlir"
+          "$BIN/llzk-opt" --verify-each -llzk-full-r1cs-lowering \
+            "$WORK/inlined-control.llzk" -o "$WORK/control.r1cs.mlir"
+          "$BIN/r1cs-opt" "$WORK/control.r1cs.mlir" -o /dev/null
+
+          CANDIDATE_CONSTRAINTS=$(grep -c 'r1cs.constrain' "$WORK/candidate.r1cs.mlir")
+          CONTROL_CONSTRAINTS=$(grep -c 'r1cs.constrain' "$WORK/control.r1cs.mlir")
+          test "$CANDIDATE_CONSTRAINTS" -eq 2
+          test "$CONTROL_CONSTRAINTS" -eq 3
+          {
+            printf 'target=%s\n' "$TARGET_NAME"
+            printf 'source_sha=%s\n' "$TARGET_SHA"
+            printf 'candidate_r1cs_constraints=%s\n' "$CANDIDATE_CONSTRAINTS"
+            printf 'inlined_control_r1cs_constraints=%s\n' "$CONTROL_CONSTRAINTS"
+          } > "$WORK/$TARGET_NAME-summary.txt"
+
+          if [ "$TARGET_NAME" = upstream-main ]; then
+            "$BIN/llzk-opt" --verify-each -llzk-full-inlining -llzk-full-r1cs-lowering \
+              "$WORK/candidate.llzk" -o "$WORK/candidate-after-inlining.r1cs.mlir"
+            INLINE_CONSTRAINTS=$(grep -c 'r1cs.constrain' "$WORK/candidate-after-inlining.r1cs.mlir")
+            test "$INLINE_CONSTRAINTS" -eq 3
+            printf 'candidate_after_full_inlining_r1cs_constraints=%s\n' "$INLINE_CONSTRAINTS" \
+              >> "$WORK/$TARGET_NAME-summary.txt"
+            "$BIN/llzk-translate" --r1cs-to-binary \
+              --r1cs-prime=21888242871839275222246405745257275088548364400416034343698204186575808495617 \
+              "$WORK/candidate-after-inlining.r1cs.mlir" -o "$WORK/candidate-after-inlining.r1cs"
+            "$BIN/r1cs-opt" "$WORK/candidate-after-inlining.r1cs.mlir" -o /dev/null
+
+            "$BIN/llzk-witgen" "$WORK/candidate.llzk" --inputs "$WORK/input.json" \
+              --output-scope=full-witness --output-wtns "$WORK/candidate.wtns" \
+              > "$WORK/candidate.witness.json"
+            "$BIN/llzk-witgen" "$WORK/inlined-control.llzk" --inputs "$WORK/input.json" \
+              --output-scope=full-witness --output-wtns "$WORK/control.wtns" \
+              > "$WORK/control.witness.json"
+            set +e
+            "$BIN/llzk-translate" --r1cs-to-binary \
+              --r1cs-prime=21888242871839275222246405745257275088548364400416034343698204186575808495617 \
+              "$WORK/candidate.r1cs.mlir" -o "$WORK/candidate.r1cs" \
+              > "$WORK/candidate-export.log" 2>&1
+            EXPORT_STATUS=$?
+            set -e
+            if [ "$EXPORT_STATUS" -ne 0 ]; then
+              cat "$WORK/candidate-export.log" >&2
+              exit "$EXPORT_STATUS"
+            fi
+            "$BIN/llzk-translate" --r1cs-to-binary \
+              --r1cs-prime=21888242871839275222246405745257275088548364400416034343698204186575808495617 \
+              "$WORK/control.r1cs.mlir" -o "$WORK/control.r1cs"
+          else
+            printf 'release_r1cs_binary_exporter=not-present-at-pinned-revision\n' \
+              >> "$WORK/$TARGET_NAME-summary.txt"
+            set +e
+            "$BIN/r1cs-opt" "$WORK/candidate.r1cs.mlir" -o /dev/null \
+              > "$WORK/candidate-r1cs-opt.log" 2>&1
+            R1CS_OPT_STATUS=$?
+            set -e
+            printf 'release_r1cs_opt_candidate_status=%s\n' "$R1CS_OPT_STATUS" \
+              >> "$WORK/$TARGET_NAME-summary.txt"
+          fi
+
+          sha256sum "$WORK"/* > "$WORK/$TARGET_NAME-sha256.txt"
+
+      - name: Generate and check exact-main Groth16 proof
+        if: matrix.target.name == 'upstream-main'
+        env:
+          WORK: ${{ runner.temp }}/r1cs-helper-constraints
+        run: |
+          set -euo pipefail
+          npm install --prefix "$WORK/npm" --no-save snarkjs@0.7.5
+          SNARKJS="$WORK/npm/node_modules/.bin/snarkjs"
+          "$SNARKJS" r1cs info "$WORK/candidate.r1cs"
+          "$SNARKJS" r1cs info "$WORK/control.r1cs"
+          "$SNARKJS" wtns check "$WORK/candidate.r1cs" "$WORK/candidate.wtns"
+          if "$SNARKJS" wtns check "$WORK/control.r1cs" "$WORK/control.wtns" \
+              > "$WORK/control-witness-check.txt" 2>&1; then
+            echo 'The inlined control unexpectedly accepts the candidate witness.' >&2
+            exit 1
+          fi
+          echo 'The inlined control rejects the same witness, as expected.' \
+            >> "$WORK/control-witness-check.txt"
+
+          "$SNARKJS" powersoftau new bn128 8 "$WORK/pot_0000.ptau" -v
+          "$SNARKJS" powersoftau contribute "$WORK/pot_0000.ptau" \
+            "$WORK/pot_0001.ptau" --name='CI contribution' -e='llzk-helper-constraint-test'
+          "$SNARKJS" powersoftau prepare phase2 "$WORK/pot_0001.ptau" \
+            "$WORK/pot_final.ptau" -v
+          "$SNARKJS" groth16 setup "$WORK/candidate.r1cs" "$WORK/pot_final.ptau" \
+            "$WORK/circuit_0000.zkey"
+          "$SNARKJS" zkey contribute "$WORK/circuit_0000.zkey" \
+            "$WORK/circuit_final.zkey" --name='CI contribution' -e='llzk-helper-zkey-test'
+          "$SNARKJS" zkey export verificationkey "$WORK/circuit_final.zkey" \
+            "$WORK/verification_key.json"
+          "$SNARKJS" groth16 prove "$WORK/circuit_final.zkey" \
+            "$WORK/candidate.wtns" "$WORK/proof.json" "$WORK/public.json"
+          "$SNARKJS" groth16 verify "$WORK/verification_key.json" \
+            "$WORK/public.json" "$WORK/proof.json"
+          grep -F '"1"' "$WORK/public.json"
+
+      - name: Upload exact-revision artifacts
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: r1cs-helper-constraints-${{ matrix.target.name }}
+          path: |
+            ${{ runner.temp }}/r1cs-helper-constraints/*-summary.txt
+            ${{ runner.temp }}/r1cs-helper-constraints/*-sha256.txt
+            ${{ runner.temp }}/r1cs-helper-constraints/candidate.llzk
+            ${{ runner.temp }}/r1cs-helper-constraints/inlined-control.llzk
+            ${{ runner.temp }}/r1cs-helper-constraints/candidate.parsed.mlir
+            ${{ runner.temp }}/r1cs-helper-constraints/control.parsed.mlir
+            ${{ runner.temp }}/r1cs-helper-constraints/candidate.r1cs.mlir
+            ${{ runner.temp }}/r1cs-helper-constraints/control.r1cs.mlir
+            ${{ runner.temp }}/r1cs-helper-constraints/candidate-after-inlining.r1cs.mlir
+            ${{ runner.temp }}/r1cs-helper-constraints/candidate-export.log
+            ${{ runner.temp }}/r1cs-helper-constraints/candidate-r1cs-opt.log
+            ${{ runner.temp }}/r1cs-helper-constraints/control-witness-check.txt
+            ${{ runner.temp }}/r1cs-helper-constraints/input.json
+            ${{ runner.temp }}/r1cs-helper-constraints/candidate.witness.json
+            ${{ runner.temp }}/r1cs-helper-constraints/control.witness.json
+            ${{ runner.temp }}/r1cs-helper-constraints/candidate.r1cs
+            ${{ runner.temp }}/r1cs-helper-constraints/control.r1cs
+            ${{ runner.temp }}/r1cs-helper-constraints/candidate-after-inlining.r1cs
+            ${{ runner.temp }}/r1cs-helper-constraints/candidate.wtns
+            ${{ runner.temp }}/r1cs-helper-constraints/control.wtns
+            ${{ runner.temp }}/r1cs-helper-constraints/proof.json
+            ${{ runner.temp }}/r1cs-helper-constraints/public.json
+            ${{ runner.temp }}/r1cs-helper-constraints/verification_key.json
