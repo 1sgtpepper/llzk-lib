@@ -16,7 +16,12 @@ module attributes {llzk.lang, llzk.main = !struct.type<@Main>} {
       function.return %self : !struct.type<@Main>
     }
 
-    function.def @constrain(%self: !struct.type<@Main>) {
+    function.def @constrain(
+      %self: !struct.type<@Main>,
+      %current0: !felt.type<"bn128">,
+      %current1: !felt.type<"bn128">,
+      %outInput: !felt.type<"bn128">
+    ) {
       %values = struct.readm %self[@values] :
           !struct.type<@Main>, !array.type<2 x !felt.type<"bn128">>
       %zero = arith.constant 0 : index
