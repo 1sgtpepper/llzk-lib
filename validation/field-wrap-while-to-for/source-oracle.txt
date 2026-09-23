@@ -1,0 +1,20 @@
+BabyBear prime: 2013265921
+Candidate: lower=1, upper=2013265919, step=2013265920 (p-1), public out=1
+
+Source scf.while execution uses field addition and field-representative comparison:
+  test 1 < p-2: true; constrain out=1; next=(1+p-1) mod p=0
+  test 0 < p-2: true; constrain out=0; next=(0+p-1) mod p=p-1
+  test p-1 < p-2: false
+The source relation requires out=1 and out=0, so the compute witness out=1 is invalid.
+
+No-wrap control: lower=1, upper=2, step=1, public out=1. Its sole body value is 1,
+so the compute witness is valid.
+
+The explicit source-reference fixture encodes the candidate's two body constraints
+directly. It is a falsifier for any claim that the expected candidate constraint
+has more than one source iteration.
+
+Expected emitted R1CS: candidate and no-wrap control each contain one equality
+out=1; the explicit source reference contains both out=1 and out=0. This validation
+uses BabyBear R1CS/WTNS and a generic constraint evaluator. It is not a cryptographic
+SNARK proof, and it does not claim a shipped BabyBear proof backend.

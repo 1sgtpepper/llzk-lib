@@ -1,0 +1,29 @@
+module attributes {llzk.lang = "circom", llzk.main = !struct.type<@Main>} {
+  struct.def @Main {
+    struct.member @out : !felt.type<"babybear"> {llzk.pub}
+
+    function.def @compute() -> !struct.type<@Main> {
+      %self = struct.new : !struct.type<@Main>
+      %one = felt.const 1 <"babybear">
+      struct.writem %self[@out] = %one : !struct.type<@Main>, !felt.type<"babybear">
+      function.return %self : !struct.type<@Main>
+    }
+
+    function.def @constrain(%self: !struct.type<@Main>) attributes {function.allow_constraint, function.allow_non_native_field_ops} {
+      %out = struct.readm %self[@out] : !struct.type<@Main>, !felt.type<"babybear">
+      %lower = felt.const 1 <"babybear">
+      %upper = felt.const 2 <"babybear">
+      %step = felt.const 1 <"babybear">
+      %unused = scf.while (%iv = %lower) : (!felt.type<"babybear">) -> !felt.type<"babybear"> {
+        %continue = bool.cmp lt(%iv, %upper) : !felt.type<"babybear">, !felt.type<"babybear">
+        scf.condition(%continue) %iv : !felt.type<"babybear">
+      } do {
+      ^bb0(%iv: !felt.type<"babybear">):
+        constrain.eq %out, %iv : !felt.type<"babybear">
+        %next = felt.add %iv, %step : !felt.type<"babybear">, !felt.type<"babybear">
+        scf.yield %next : !felt.type<"babybear">
+      }
+      function.return
+    }
+  }
+}
