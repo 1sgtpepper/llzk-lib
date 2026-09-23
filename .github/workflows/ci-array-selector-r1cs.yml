@@ -71,8 +71,30 @@ jobs:
             "$WORK/candidate.llzk" -o "$WORK/candidate.array-to-scalar.mlir"
           "$BIN/llzk-opt" --verify-each -llzk-array-to-scalar \
             "$WORK/control.llzk" -o "$WORK/control.array-to-scalar.mlir"
-          cmp "$WORK/candidate.array-to-scalar.mlir" "$WORK/control.array-to-scalar.mlir"
           ! grep -q 'tableOffset' "$WORK/candidate.array-to-scalar.mlir"
+          python - "$WORK/candidate.array-to-scalar.mlir" "$WORK/control.array-to-scalar.mlir" <<'PY'
+          import re
+          import sys
+          from pathlib import Path
+
+          def constrained_member(path):
+              text = Path(path).read_text()
+              block = text.split("function.def @constrain", 1)[1].split("function.return", 1)[0]
+              reads = dict(re.findall(
+                  r"^\s*(%[\w.]+) = struct.readm %[\w.]+\[@([^]]+)\]",
+                  block,
+                  re.MULTILINE,
+              ))
+              equality = re.search(r"constrain.eq\s+(%[\w.]+),\s*(%[\w.]+)", block)
+              assert equality, f"no equality found in {path}"
+              return reads[equality.group(1)], equality.group(2)
+
+          candidate = constrained_member(sys.argv[1])
+          control = constrained_member(sys.argv[2])
+          assert candidate == control, (candidate, control)
+          assert candidate[0] == "trace_0", candidate
+          print(f"split selector result: {candidate[0]} == {candidate[1]}")
+          PY
           set +e
           diff -u "$WORK/control.llzk" "$WORK/candidate.llzk" > "$WORK/source-twin.diff"
           SOURCE_DIFF_STATUS=$?
