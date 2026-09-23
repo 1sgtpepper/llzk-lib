@@ -817,6 +817,13 @@ private:
       }
       assert(symRef);
       assert(attr);
+      if (candidateRecorder) {
+        // Preserve candidate evidence without changing type unification's one-sided map entries.
+        candidateRecorder(symRef, side, attr);
+        if (SymbolRefAttr otherSymAttr = dyn_cast<SymbolRefAttr>(attr)) {
+          candidateRecorder(otherSymAttr, reverse(side), symRef);
+        }
+      }
       track(*unifications, side, symRef, attr);
     }
   }
