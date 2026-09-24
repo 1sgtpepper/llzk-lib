@@ -1,0 +1,2 @@
+fixed:
+  - Reject call and include template arguments that conflict with an inferred felt field or value

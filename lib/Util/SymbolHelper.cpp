@@ -271,6 +271,11 @@ LogicalResult verifyTemplateSymbolType(
   return success();
 }
 
+FailureOr<bool> resolvedTemplateParamValuesUnify(
+    SymbolTableCollection &tables, Operation *origin, Attribute explicitValue,
+    Attribute inferredValue, std::optional<Type> requiredParamType
+);
+
 } // namespace
 
 llvm::SmallVector<StringRef> getNames(SymbolRefAttr ref) {
@@ -639,7 +644,17 @@ LogicalResult verifyTemplateParamsMatchInferred(
         failed(verifyTemplateParamValueCompatibility(origin, it->second, paramOp))) {
       return failure();
     }
-    if (it != unifications.end() && it->second && !typeParamsUnify({attr}, {it->second})) {
+    bool valuesUnify = true;
+    if (it != unifications.end() && it->second) {
+      SymbolTableCollection tables;
+      FailureOr<bool> resolved =
+          resolvedTemplateParamValuesUnify(tables, origin, attr, it->second, paramOp.getTypeOpt());
+      if (failed(resolved)) {
+        return failure();
+      }
+      valuesUnify = *resolved;
+    }
+    if (!valuesUnify) {
       return origin->emitOpError().append(
           "template instantiation value '", attr, "' for parameter \"@", paramOp.getName(),
           "\" conflicts with value '", it->second, "' inferred from ", signature, " type signature"
@@ -738,6 +753,155 @@ LogicalResult verifyParamsOfType(
   }
   return paramCheckResult;
 }
+
+namespace {
+
+/// Type and value facts established by resolving one symbolic template argument.
+struct TemplateParamSymbolEvidence {
+  std::optional<Type> restriction;
+  Attribute concreteValue;
+};
+
+/// Resolve a local template binding or qualified global without rejecting genuinely unknown refs.
+FailureOr<std::optional<TemplateParamSymbolEvidence>> resolveTemplateParamSymbolEvidence(
+    SymbolTableCollection &tables, Operation *origin, SymbolRefAttr symbol
+) {
+  if (symbol.getNestedReferences().empty()) {
+    FailureOr<TemplateOp> parent = getConstResolutionTemplate(tables, origin);
+    if (failed(parent)) {
+      return failure();
+    }
+    if (*parent) {
+      auto binding =
+          parent->getConstNamed<TemplateSymbolBindingOpInterface>(symbol.getRootReference());
+      if (binding) {
+        return std::make_optional(TemplateParamSymbolEvidence {binding.getTypeOpt(), Attribute()});
+      }
+    }
+  }
+
+  auto global = lookupTopLevelSymbol<GlobalDefOp>(tables, symbol, origin, false);
+  if (succeeded(global)) {
+    GlobalDefOp globalOp = global->get();
+    if (!globalOp.isConstant()) {
+      return origin->emitError() << "template parameter symbol \"" << symbol
+                                 << "\" refers to a global that is not marked as 'const'";
+    }
+    return std::make_optional(
+        TemplateParamSymbolEvidence {
+            globalOp.getType(),
+            globalOp.getInitialValueAttr(),
+        }
+    );
+  }
+  return std::optional<TemplateParamSymbolEvidence>();
+}
+
+/// Return whether two known felt restrictions require different explicit fields.
+bool feltRestrictionsConflict(std::optional<Type> lhs, std::optional<Type> rhs) {
+  if (!lhs || !rhs) {
+    return false;
+  }
+  auto lhsFelt = llvm::dyn_cast<felt::FeltType>(*lhs);
+  auto rhsFelt = llvm::dyn_cast<felt::FeltType>(*rhs);
+  return lhsFelt && rhsFelt && lhsFelt.hasField() && rhsFelt.hasField() && lhsFelt != rhsFelt;
+}
+
+/// Compare explicit and signature-inferred template values. For a felt restriction, local template
+/// bindings contribute type evidence and qualified globals contribute type and concrete-value
+/// evidence. Return `false` for a known field or value conflict, or when contextual materialization
+/// rejects a value. Preserve the context-free unifier's result when either symbol has no resolvable
+/// evidence. Return failure when the enclosing template scope cannot be resolved or a resolved
+/// global is mutable. Non-felt restrictions always use the context-free unifier.
+FailureOr<bool> resolvedTemplateParamValuesUnify(
+    SymbolTableCollection &tables, Operation *origin, Attribute explicitValue,
+    Attribute inferredValue, std::optional<Type> requiredParamType
+) {
+  bool contextFreeResult =
+      templateParamValuesUnify(explicitValue, inferredValue, requiredParamType);
+  if (!requiredParamType || !llvm::isa<felt::FeltType>(*requiredParamType)) {
+    return contextFreeResult;
+  }
+
+  SymbolRefAttr explicitSymbol = llvm::dyn_cast<SymbolRefAttr>(explicitValue);
+  SymbolRefAttr inferredSymbol = llvm::dyn_cast<SymbolRefAttr>(inferredValue);
+  if (!explicitSymbol && !inferredSymbol) {
+    return contextFreeResult;
+  }
+
+  std::optional<TemplateParamSymbolEvidence> explicitEvidence;
+  std::optional<TemplateParamSymbolEvidence> inferredEvidence;
+  if (explicitSymbol) {
+    FailureOr<std::optional<TemplateParamSymbolEvidence>> resolved =
+        resolveTemplateParamSymbolEvidence(tables, origin, explicitSymbol);
+    if (failed(resolved)) {
+      return failure();
+    }
+    explicitEvidence = *resolved;
+  }
+  if (inferredSymbol) {
+    FailureOr<std::optional<TemplateParamSymbolEvidence>> resolved =
+        resolveTemplateParamSymbolEvidence(tables, origin, inferredSymbol);
+    if (failed(resolved)) {
+      return failure();
+    }
+    inferredEvidence = *resolved;
+  }
+
+  // Unresolved references retain the generic unifier's deferral rule.
+  if ((explicitSymbol && !explicitEvidence) || (inferredSymbol && !inferredEvidence)) {
+    return contextFreeResult;
+  }
+  if (explicitEvidence && inferredEvidence &&
+      feltRestrictionsConflict(explicitEvidence->restriction, inferredEvidence->restriction)) {
+    return false;
+  }
+
+  // Replace a resolved global with its value; local bindings retain only their type evidence.
+  auto materializeEvidence = [](
+                                 Attribute fallback, SymbolRefAttr symbol,
+                                 const std::optional<TemplateParamSymbolEvidence> &evidence
+                             ) -> FailureOr<std::optional<Attribute>> {
+    if (!symbol) {
+      return std::make_optional(fallback);
+    }
+    if (!evidence || !evidence->concreteValue) {
+      return std::optional<Attribute>();
+    }
+    FailureOr<Attribute> materialized =
+        materializeTemplateParamValue(evidence->concreteValue, evidence->restriction);
+    if (failed(materialized)) {
+      return failure();
+    }
+    return std::make_optional(*materialized);
+  };
+
+  FailureOr<std::optional<Attribute>> explicitConcrete =
+      materializeEvidence(explicitValue, explicitSymbol, explicitEvidence);
+  FailureOr<std::optional<Attribute>> inferredConcrete =
+      materializeEvidence(inferredValue, inferredSymbol, inferredEvidence);
+  if (failed(explicitConcrete) || failed(inferredConcrete)) {
+    return false;
+  }
+  if (*explicitConcrete && *inferredConcrete) {
+    return templateParamValuesUnify(
+        explicitConcrete->value(), inferredConcrete->value(), requiredParamType
+    );
+  }
+  if (*explicitConcrete && inferredEvidence && inferredEvidence->restriction) {
+    return succeeded(
+        materializeTemplateParamValue(explicitConcrete->value(), inferredEvidence->restriction)
+    );
+  }
+  if (*inferredConcrete && explicitEvidence && explicitEvidence->restriction) {
+    return succeeded(
+        materializeTemplateParamValue(inferredConcrete->value(), explicitEvidence->restriction)
+    );
+  }
+  return contextFreeResult;
+}
+
+} // namespace
 
 FailureOr<StructDefOp>
 verifyStructTypeResolution(SymbolTableCollection &tables, StructType ty, Operation *origin) {
