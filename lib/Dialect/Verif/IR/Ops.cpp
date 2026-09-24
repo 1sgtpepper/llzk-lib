@@ -878,10 +878,12 @@ private:
     }
     for (unsigned i = 0, e = tgtTypes.size(); i != e; ++i) {
       if (!typesUnify(includeOpTypes[i], tgtTypes[i], includeSymNames)) {
-        return includeOp->emitOpError().append(
-            aspect, " type mismatch: expected type ", tgtTypes[i], ", but found ",
-            includeOpTypes[i], " for ", aspect, " number ", i
-        );
+        auto diag =
+            includeOp->emitOpError().append(aspect, " type mismatch: expected type ", tgtTypes[i]);
+        if (!includeSymNames.empty()) {
+          diag.append(" from included target \"", includeOp->getCalleeAttr(), '"');
+        }
+        return diag.append(", but found ", includeOpTypes[i], " for ", aspect, " number ", i);
       }
     }
     return success();
@@ -922,7 +924,7 @@ LogicalResult IncludeOp::verifySymbolUses(SymbolTableCollection &tables) {
   }
 
   // Otherwise, callee must be specified via full path from the root module. Perform the full set of
-  // checks against the known target function.
+  // checks against the known target contract.
   auto tgtOpt = lookupTopLevelSymbol<ContractOp>(
       tables, calleeAttr, getParentOfType<ModuleOp>(getOperation())
   );
