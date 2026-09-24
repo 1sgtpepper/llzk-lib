@@ -2,7 +2,7 @@
 set -euo pipefail
 
 readonly ORIGINAL_MAIN=d1198631dbe9906cb149d1ddcd0dd1ca071dae6b
-readonly CURRENT_MAIN=24250ae61708ee528e5c36ed3ac7a5297ab2088b
+readonly CURRENT_MAIN=7dc4c32bffcca262dd661d5d7f691854c9b04e4c
 readonly RELEASE=b1b8d52ca4e6114cdd9a80417f96342a9f9e8b6c
 readonly BABYBEAR_PRIME=2013265921
 readonly UPSTREAM=https://github.com/project-llzk/llzk-lib.git
