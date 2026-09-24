@@ -4,8 +4,11 @@ set -euo pipefail
 readonly ORIGINAL_MAIN=d1198631dbe9906cb149d1ddcd0dd1ca071dae6b
 readonly CURRENT_MAIN=7dc4c32bffcca262dd661d5d7f691854c9b04e4c
 readonly RELEASE=b1b8d52ca4e6114cdd9a80417f96342a9f9e8b6c
+readonly LLZK_RS_REV=429d80f6f3b9b07cdb7490aba98fb860c95de989
+readonly LLZK_RS_LLZK_LIB_REV=0df855c0481224e331ceea687980bcfaaa73d2b6
 readonly BABYBEAR_PRIME=2013265921
 readonly UPSTREAM=https://github.com/project-llzk/llzk-lib.git
+readonly LLZK_RS=https://github.com/project-llzk/llzk-rs.git
 readonly FIXTURES=$GITHUB_WORKSPACE/validation/field-wrap-while-to-for
 readonly WORK=$RUNNER_TEMP/llzk-field-wrap-while-to-for
 readonly SOURCES=$WORK/sources
@@ -15,7 +18,8 @@ rm -rf "$WORK" "$ARTIFACTS"
 mkdir -p "$SOURCES" "$WORK" "$ARTIFACTS"
 cp "$FIXTURES/candidate.llzk" "$FIXTURES/no-wrap-control.llzk" \
   "$FIXTURES/source-reference.llzk" "$FIXTURES/inputs.json" \
-  "$FIXTURES/source-oracle.txt" "$ARTIFACTS/"
+  "$FIXTURES/source-oracle.txt" "$FIXTURES/while_wrap_validation.rs" \
+  "$ARTIFACTS/"
 
 git -C "$GITHUB_WORKSPACE" fetch --no-tags "$UPSTREAM" \
   main:refs/remotes/validation/upstream-main
@@ -168,6 +172,54 @@ ORIGINAL_BIN=$(cat "$ARTIFACTS/original-main/toolchain-bin.txt")
 readonly ORIGINAL_BIN
 source_revision release-v2.1.2 "$RELEASE" release
 
+rust_source="$SOURCES/llzk-rs"
+git init -q "$rust_source"
+git -C "$rust_source" remote add origin "$LLZK_RS"
+git -C "$rust_source" fetch --no-tags --depth=1 origin "$LLZK_RS_REV"
+git -C "$rust_source" checkout --detach FETCH_HEAD
+if [[ $(git -C "$rust_source" rev-parse HEAD) != "$LLZK_RS_REV" ]]; then
+  echo "llzk-rs checkout did not match $LLZK_RS_REV" >&2
+  exit 1
+fi
+python3 - "$rust_source/flake.lock" "$LLZK_RS_LLZK_LIB_REV" <<'PY'
+import json
+import sys
+
+lock_path, expected = sys.argv[1:]
+with open(lock_path, encoding="utf-8") as lock_file:
+    actual = json.load(lock_file)["nodes"]["llzk-lib"]["locked"]["rev"]
+if actual != expected:
+    raise SystemExit(f"llzk-rs pins llzk-lib {actual}, expected {expected}")
+PY
+printf '%s\n' "$LLZK_RS_REV" > "$ARTIFACTS/llzk-rs-source-revision.txt"
+printf '%s\n' "$LLZK_RS_LLZK_LIB_REV" > "$ARTIFACTS/llzk-rs-llzk-lib-revision.txt"
+cp "$FIXTURES/while_wrap_validation.rs" \
+  "$rust_source/llzk/examples/while_wrap_validation.rs"
+(
+  cd "$rust_source"
+  nix develop --command cargo run --quiet --locked --package llzk \
+    --example while_wrap_validation
+) > "$ARTIFACTS/rust-api-source.llzk"
+
+api_output="$ARTIFACTS/rust-api/current-main"
+mkdir -p "$api_output"
+printf '%s\n' "$CURRENT_MAIN" > "$api_output/llzk-lib-source-revision.txt"
+"$CURRENT_BIN/llzk-opt" --verify-each --llzk-while-to-for \
+  "$ARTIFACTS/rust-api-source.llzk" -o "$api_output/after-while-to-for.mlir"
+"$CURRENT_BIN/llzk-opt" --verify-each --llzk-full-r1cs-lowering \
+  "$ARTIFACTS/rust-api-source.llzk" -o "$api_output/r1cs.mlir"
+"$CURRENT_BIN/llzk-translate" --r1cs-to-binary --r1cs-prime="$BABYBEAR_PRIME" \
+  "$api_output/r1cs.mlir" -o "$api_output/r1cs"
+"$CURRENT_BIN/llzk-witgen" "$ARTIFACTS/rust-api-source.llzk" \
+  --inputs "$FIXTURES/inputs.json" --output-scope=full-witness \
+  --output-wtns "$api_output/witness.wtns" > "$api_output/witness.json"
+python3 "$FIXTURES/check_r1cs_wtns.py" \
+  --candidate "$api_output/r1cs" \
+  --control "$WORK/current-main/no-wrap-control.r1cs" \
+  --reference "$WORK/current-main/source-reference.r1cs" \
+  --witness "$api_output/witness.wtns" \
+  | tee "$api_output/direct-r1cs-check.txt"
+
 for name in original-main current-main release-v2.1.2; do
   cmp "$WORK/$name/candidate.r1cs" "$WORK/$name/no-wrap-control.r1cs"
 done
@@ -240,6 +292,7 @@ Release path: exact release llzk-while-to-for, canonicalize, and llzk-flatten ru
 Release witness interpretation: v2.1.2 llzk-witgen JSON is checked against exact-release R1CS dialect MLIR by check_release_r1cs_ir.py; the main binary exporter is only a cross-check
 Main witness interpretation: the emitted BabyBear R1CS/WTNS is checked by the standard R1CS equation evaluator in check_r1cs_wtns.py
 Proof limitation: no cryptographic proof or shipped BabyBear prover is claimed
+Supported Rust API path: llzk-rs $LLZK_RS_REV generated rust-api-source.llzk; its pinned LLZK dependency is $LLZK_RS_LLZK_LIB_REV; latest-main $CURRENT_MAIN parsed, transformed, lowered, witness-generated, and relation-checked that source
 EOF
 find "$ARTIFACTS" -type f ! -name SHA256SUMS -print0 | sort -z | \
   xargs -0 sha256sum > "$ARTIFACTS/SHA256SUMS"
