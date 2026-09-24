@@ -1,0 +1,32 @@
+// RUN: llzk-opt -verify-diagnostics %s
+
+// A concrete operand mismatch cannot be deferred just because the explicit target parameter is a
+// type variable.
+module attributes {llzk.lang} {
+  poly.template @TypeTarget {
+    poly.param @T : !poly.tvar<@T>
+
+    function.def @both(%first: !poly.tvar<@T>, %second: !poly.tvar<@T>) {
+      function.return
+    }
+    verif.contract @Base for @TypeTarget::@both (
+        %first: !poly.tvar<@T>, %second: !poly.tvar<@T>
+    ) {
+      %ok = arith.constant true
+      verif.ensure_compute %ok
+    }
+  }
+
+  function.def @concrete_type_conflict(%fielded: !felt.type, %integer: index) {
+    function.return
+  }
+  verif.contract @Wrapper for @concrete_type_conflict (
+      %fielded: !felt.type, %integer: index
+  ) {
+    // expected-error@+1 {{'verif.include' op template instantiation value '!felt.type' for parameter "@T" conflicts with value 'index' inferred from contract type signature}}
+    verif.include @TypeTarget::@Base<[!felt.type]>(%fielded, %integer) :
+        (!felt.type, index) -> ()
+    %ok = arith.constant true
+    verif.ensure_compute %ok
+  }
+}

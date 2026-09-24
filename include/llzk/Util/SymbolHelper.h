@@ -244,6 +244,15 @@ mlir::LogicalResult verifyTemplateParamsMatchInferred(
     const UnificationMap &unifications
 );
 
+/// Check every signature candidate against explicit or omitted template arguments. The lookup
+/// retains values that a conflicting unification map entry would otherwise discard.
+mlir::LogicalResult verifyTemplateParamsMatchInferred(
+    mlir::Operation *origin, mlir::ArrayAttr explicitParams,
+    llvm::iterator_range<mlir::Region::op_iterator<polymorphic::TemplateParamOp>> targetParamDefs,
+    const UnificationMap &unifications,
+    llvm::function_ref<mlir::ArrayRef<mlir::Attribute>(mlir::SymbolRefAttr, Side)> candidates
+);
+
 /// Verify known function or contract template arguments. Included target
 /// type names are resolved under `targetNamespace`; the actual signature belongs to the caller.
 mlir::LogicalResult verifyKnownTargetTemplateParams(

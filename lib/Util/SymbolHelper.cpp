@@ -277,14 +277,6 @@ FailureOr<bool> resolvedTemplateParamValuesUnify(
     Attribute inferredValue, std::optional<Type> requiredParamType
 );
 
-/// Preserve each signature candidate when checking explicit or omitted template arguments.
-LogicalResult verifyTemplateParamsMatchInferredWithCandidates(
-    Operation *origin, ArrayAttr explicitParams,
-    llvm::iterator_range<Region::op_iterator<TemplateParamOp>> targetParamDefs,
-    const UnificationMap &unifications,
-    llvm::function_ref<ArrayRef<Attribute>(SymbolRefAttr, Side)> candidates
-);
-
 /// Check repeated felt values against their restriction, each other, and any explicit argument.
 LogicalResult verifyRepeatedFeltCandidates(
     Operation *origin, TemplateParamOp paramOp, ArrayRef<Attribute> inferredCandidates,
@@ -644,14 +636,12 @@ LogicalResult verifyKnownTargetTemplateParams(
       )) {
     return failure();
   }
-  return verifyTemplateParamsMatchInferredWithCandidates(
+  return verifyTemplateParamsMatchInferred(
       origin, explicitParams, targetParamDefs, unifications, getCandidates
   );
 }
 
-namespace {
-
-LogicalResult verifyTemplateParamsMatchInferredWithCandidates(
+LogicalResult verifyTemplateParamsMatchInferred(
     Operation *origin, ArrayAttr explicitParams,
     llvm::iterator_range<Region::op_iterator<TemplateParamOp>> targetParamDefs,
     const UnificationMap &unifications,
@@ -702,8 +692,8 @@ LogicalResult verifyTemplateParamsMatchInferredWithCandidates(
     }
     FlatSymbolRefAttr name = FlatSymbolRefAttr::get(paramOp.getNameAttr());
     auto it = unifications.find({name, Side::RHS});
-    if (it != unifications.end() && !it->second && candidates) {
-      ArrayRef<Attribute> values = candidates(name, Side::RHS);
+    if (it != unifications.end() && !it->second) {
+      ArrayRef<Attribute> values = candidates ? candidates(name, Side::RHS) : ArrayRef<Attribute>();
       std::optional<Type> restriction = paramOp.getTypeOpt();
       if (values.size() > 1 && restriction && llvm::isa<felt::FeltType>(*restriction)) {
         if (failed(verifyRepeatedFeltCandidates(origin, paramOp, values, signature, attr))) {
@@ -711,7 +701,23 @@ LogicalResult verifyTemplateParamsMatchInferredWithCandidates(
         }
         continue;
       }
-      // Other ambiguous symbolic bindings remain deferred for later specialization.
+      if (!values.empty() && restriction && llvm::isa<TypeVarType>(*restriction)) {
+        // Symbolic candidates remain deferred, but every concrete type must agree with the
+        // explicit argument before specialization can discard the candidate set.
+        for (Attribute value : values) {
+          if (!templateParamValuesUnify(attr, value, restriction)) {
+            return origin->emitOpError().append(
+                "template instantiation value '", attr, "' for parameter \"@", paramOp.getName(),
+                "\" conflicts with value '", value, "' inferred from ", signature, " type signature"
+            );
+          }
+        }
+        continue;
+      }
+      return origin->emitOpError().append(
+          "cannot infer a unique template instantiation value for parameter \"@", paramOp.getName(),
+          "\" from ", signature, " type signature"
+      );
     }
     if (it != unifications.end() && it->second &&
         failed(verifyTemplateParamValueCompatibility(origin, it->second, paramOp))) {
@@ -737,14 +743,12 @@ LogicalResult verifyTemplateParamsMatchInferredWithCandidates(
   return success();
 }
 
-} // namespace
-
 LogicalResult verifyTemplateParamsMatchInferred(
     Operation *origin, ArrayAttr explicitParams,
     llvm::iterator_range<Region::op_iterator<TemplateParamOp>> targetParamDefs,
     const UnificationMap &unifications
 ) {
-  return verifyTemplateParamsMatchInferredWithCandidates(
+  return verifyTemplateParamsMatchInferred(
       origin, explicitParams, targetParamDefs, unifications, nullptr
   );
 }

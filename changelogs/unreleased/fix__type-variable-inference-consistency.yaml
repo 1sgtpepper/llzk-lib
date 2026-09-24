@@ -1,0 +1,2 @@
+fixed:
+  - Reject type-variable instantiations that conflict with repeated signature positions after inference
