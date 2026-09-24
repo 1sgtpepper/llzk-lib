@@ -1,0 +1,71 @@
+// RUN: llzk-opt -I %input_dir -split-input-file -verify-diagnostics %s
+
+// Affine maps may parameterize struct types, but a direct free-function template argument for an
+// index parameter must be an integer value.
+#map = affine_map<(i) -> (i)>
+module attributes {llzk.lang} {
+  poly.template @T {
+    poly.param @N : index
+
+    function.def @value() -> index {
+      %n = poly.read_const @N : index
+      function.return %n : index
+    }
+  }
+
+  function.def @use() -> index {
+    // expected-error@+1 {{'function.call' op instantiation value 'affine_map<(d0) -> (d0)>' is not compatible with parameter "@N" type restriction 'index'}}
+    %value = function.call @T::@value<[#map]>() : () -> index
+    function.return %value : index
+  }
+}
+
+// -----
+
+// A TypeAttr call argument must contain a valid LLZK type.
+module attributes {llzk.lang} {
+  poly.template @TypeTarget {
+    poly.param @T : !poly.tvar<@T>
+
+    function.def @id() -> index {
+      %value = arith.constant 0 : index
+      function.return %value : index
+    }
+  }
+
+  function.def @invalid_builtin_type_argument() -> index {
+    // expected-error@+1 {{'function.call' op expected a valid LLZK type but found 'i8'}}
+    %value = function.call @TypeTarget::@id<[i8]>() : () -> index
+    function.return %value : index
+  }
+}
+
+// -----
+
+// An untyped caller binding can be forwarded to a fieldless felt parameter, but it does not
+// establish the field required by a fielded parameter.
+module attributes {llzk.lang} {
+  poly.template @Fieldless {
+    poly.param @F : !felt.type
+    function.def @id() -> index {
+      %zero = arith.constant 0 : index
+      function.return %zero : index
+    }
+  }
+  poly.template @Fielded {
+    poly.param @F : !felt.type<"bn128">
+    function.def @id() -> index {
+      %zero = arith.constant 0 : index
+      function.return %zero : index
+    }
+  }
+  poly.template @Caller {
+    poly.param @U
+    function.def @use() -> index {
+      %ok = function.call @Fieldless::@id<[@U]>() : () -> index
+      // expected-error@+1 {{'function.call' op instantiation value '@U' is not compatible with parameter "@F" type restriction '!felt.type<"bn128">'}}
+      %bad = function.call @Fielded::@id<[@U]>() : () -> index
+      function.return %ok : index
+    }
+  }
+}

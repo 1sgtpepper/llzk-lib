@@ -1,0 +1,78 @@
+// RUN: llzk-opt -I %input_dir -split-input-file -verify-diagnostics %s
+
+// Affine maps may parameterize struct types, but a direct contract template argument for an index
+// parameter must be an integer value.
+#map = affine_map<(i) -> (i)>
+module attributes {llzk.lang} {
+  poly.template @T {
+    poly.param @N : index
+    function.def @token() { function.return }
+
+    verif.contract @Base for @T::@token () {
+      %ok = arith.constant true
+      verif.ensure_compute %ok
+    }
+  }
+
+  function.def @entry() { function.return }
+
+  verif.contract @Wrapper for @entry () {
+    // expected-error@+1 {{'verif.include' op instantiation value 'affine_map<(d0) -> (d0)>' is not compatible with parameter "@N" type restriction 'index'}}
+    verif.include @T::@Base<[#map]>() : () -> ()
+  }
+}
+
+// -----
+
+// A TypeAttr include argument must contain a valid LLZK type.
+module attributes {llzk.lang} {
+  poly.template @TypeTarget {
+    poly.param @T : !poly.tvar<@T>
+
+    function.def @token() { function.return }
+
+    verif.contract @Base for @TypeTarget::@token () {
+      %ok = arith.constant true
+      verif.ensure_compute %ok
+    }
+  }
+
+  function.def @entry() { function.return }
+
+  verif.contract @InvalidBuiltinTypeArgument for @entry () {
+    // expected-error@+1 {{'verif.include' op expected a valid LLZK type but found 'i8'}}
+    verif.include @TypeTarget::@Base<[i8]>() : () -> ()
+  }
+}
+
+// -----
+
+// An untyped caller binding can be forwarded to a fieldless felt parameter, but it does not
+// establish the field required by a fielded parameter.
+module attributes {llzk.lang} {
+  poly.template @Fieldless {
+    poly.param @F : !felt.type
+    function.def @token() { function.return }
+    verif.contract @Base for @Fieldless::@token () {
+      %ok = arith.constant true
+      verif.ensure_compute %ok
+    }
+  }
+  poly.template @Fielded {
+    poly.param @F : !felt.type<"bn128">
+    function.def @token() { function.return }
+    verif.contract @Base for @Fielded::@token () {
+      %ok = arith.constant true
+      verif.ensure_compute %ok
+    }
+  }
+  poly.template @Caller {
+    poly.param @U
+    function.def @entry() { function.return }
+    verif.contract @Wrapper for @Caller::@entry () {
+      verif.include @Fieldless::@Base<[@U]>() : () -> ()
+      // expected-error@+1 {{'verif.include' op instantiation value '@U' is not compatible with parameter "@F" type restriction '!felt.type<"bn128">'}}
+      verif.include @Fielded::@Base<[@U]>() : () -> ()
+    }
+  }
+}
