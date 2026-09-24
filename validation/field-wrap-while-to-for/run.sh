@@ -4,8 +4,8 @@ set -euo pipefail
 readonly ORIGINAL_MAIN=d1198631dbe9906cb149d1ddcd0dd1ca071dae6b
 readonly CURRENT_MAIN=ea08c04e2081a3e16a8114a41e016074ae9322ae
 readonly RELEASE=b1b8d52ca4e6114cdd9a80417f96342a9f9e8b6c
-readonly LLZK_RS_REV=429d80f6f3b9b07cdb7490aba98fb860c95de989
-readonly LLZK_RS_LLZK_LIB_REV=0df855c0481224e331ceea687980bcfaaa73d2b6
+readonly LLZK_RS_REV=e71c8e327d1d850b6a17ef2e3ab82c2b26aafb55
+readonly LLZK_RS_LLZK_LIB_REV=ea08c04e2081a3e16a8114a41e016074ae9322ae
 readonly BABYBEAR_PRIME=2013265921
 readonly UPSTREAM=https://github.com/project-llzk/llzk-lib.git
 readonly LLZK_RS=https://github.com/project-llzk/llzk-rs.git
@@ -210,6 +210,10 @@ printf '%s\n' "$CURRENT_MAIN" > "$api_output/llzk-lib-source-revision.txt"
   "$ARTIFACTS/rust-api-source.llzk" -o "$api_output/r1cs.mlir"
 "$CURRENT_BIN/llzk-translate" --r1cs-to-binary --r1cs-prime="$BABYBEAR_PRIME" \
   "$api_output/r1cs.mlir" -o "$api_output/r1cs"
+cmp "$api_output/r1cs" "$WORK/current-main/candidate.r1cs"
+printf '%s\n' \
+  "Rust API relation is byte-identical to the hand-authored candidate R1CS at $CURRENT_MAIN." \
+  > "$api_output/r1cs-identical-to-text-ir-candidate.txt"
 "$CURRENT_BIN/llzk-witgen" "$ARTIFACTS/rust-api-source.llzk" \
   --inputs "$FIXTURES/inputs.json" --output-scope=full-witness \
   --output-wtns "$api_output/witness.wtns" > "$api_output/witness.json"

@@ -112,7 +112,7 @@ fn main() -> Result<()> {
             });
         }
 
-        Ok(())
+        Ok::<(), LlzkError>(())
     })?;
 
     assert!(
