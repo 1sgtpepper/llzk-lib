@@ -37,8 +37,9 @@ def LLZK_ArrayType
     The dimensions of the array are specified using a list of attributes, one
     per dimension. Each attribute must be one of the following:
       - IntegerAttr (with IndexType), specifying a fixed dimension size
-      - SymbolRefAttr, specifying a dimension size defined by a struct parameter or
-        global constant
+      - SymbolRefAttr, specifying a dimension size by a flat reference to an index-typed
+        `poly.param` or `poly.expr` binding or a fully-qualified reference to an index-typed
+        constant global
       - AffineMapAttr, specifying a dimension size computed from surrounding loop
         induction variables
 
@@ -46,8 +47,8 @@ def LLZK_ArrayType
     // Example array of 5 by 2 elements of `Felt` type.
     !array.type<5,2 x !felt.type>
 
-    // Example array using a struct parameter for one dimension.
-    !array.type<5,@A x index>
+    // Within a template where @N is index-typed:
+    !array.type<5,@N x index>
     ```
   }];
 

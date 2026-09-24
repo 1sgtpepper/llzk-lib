@@ -267,6 +267,20 @@ bool typesUnify(
     UnificationMap *unifications = nullptr
 );
 
+/// Return `true` iff an actual template argument type satisfies a required type restriction.
+/// Unlike `typesUnify`, this check is directional: a fieldless required felt type accepts any
+/// felt field, while a fielded required felt type accepts only the same explicitly fielded type.
+/// A `TypeVarType` restriction is a type-variable restriction and therefore is compatible only
+/// with another `TypeVarType` restriction; it must not inherit the wildcard behavior of ordinary
+/// type unification.
+bool isTemplateParamTypeCompatible(mlir::Type actualType, mlir::Type requiredType);
+
+/// With no actual type, a binding is compatible with a fieldless felt or any non-felt,
+/// non-`TypeVarType` restriction. It is incompatible with a fielded felt or `TypeVarType`
+/// restriction. Direct array dimensions separately require an index-typed binding at their
+/// type-resolution site.
+bool isTemplateParamTypeCompatible(std::optional<mlir::Type> actualType, mlir::Type requiredType);
+
 /// Check a template argument against an optional restriction and return the representation used by
 /// instantiation. With no restriction, return the argument unchanged. A type-variable restriction
 /// accepts only a `TypeAttr`; a felt restriction accepts a compatible felt constant or integer,

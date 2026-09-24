@@ -33,14 +33,16 @@ def LLZK_StructType : StructDialectType<"Struct", "type"> {
       - IntegerAttr (with IndexType), specifying a fixed parameter value; the
         wildcard (`?`) is not allowed
       - FeltConstAttr, specifying a finite-field parameter value.
-      - SymbolRefAttr, specifying a parameter value defined by a struct parameter
-        or global constant
+      - SymbolRefAttr, naming a `poly.param` or `poly.expr` binding or a
+        fully-qualified constant global
       - AffineMapAttr, for an array of struct elements whose template parameters
         vary based on some fixed pattern.
       - TypeAttr, for specifying a type parameter.
     Concrete arguments must satisfy the declared type restriction. A fieldless felt
     constant or integer can satisfy a fielded restriction; an explicitly different
     field fails.
+    Symbolic arguments must have compatible types. Type arguments resolve nested
+    `struct.type` and `array.type` references when the enclosing type is used.
 
     ```llzk
     // Type for struct `A` with no parameters.

@@ -156,6 +156,20 @@ TEST_F(TypeHelperTests, test_functionTypesUnify_Output_Fail) {
   ASSERT_FALSE(functionTypesUnify(a, b));
 }
 
+TEST_F(TypeHelperTests, test_templateParamTypeCompatibility_feltFields) {
+  felt::FeltType fieldless = felt::FeltType::get(&ctx);
+  felt::FeltType bn128 = felt::FeltType::get(&ctx, "bn128");
+  felt::FeltType goldilocks = felt::FeltType::get(&ctx, "goldilocks");
+
+  ASSERT_TRUE(isTemplateParamTypeCompatible(bn128, fieldless));
+  ASSERT_TRUE(isTemplateParamTypeCompatible(fieldless, fieldless));
+  ASSERT_FALSE(isTemplateParamTypeCompatible(fieldless, bn128));
+  ASSERT_TRUE(isTemplateParamTypeCompatible(bn128, bn128));
+  ASSERT_FALSE(isTemplateParamTypeCompatible(goldilocks, bn128));
+  ASSERT_FALSE(isTemplateParamTypeCompatible(IndexType::get(&ctx), bn128));
+  ASSERT_FALSE(isTemplateParamTypeCompatible(std::nullopt, bn128));
+}
+
 TEST_F(TypeHelperTests, test_forceIntToIndexType_fromI1) {
   // create a boolean IntegerAttr
   IntegerAttr a = IntegerAttr::get(IntegerType::get(&ctx, 1), 1);

@@ -942,6 +942,43 @@ bool typesUnify(
   return UnifierImpl(unifications, rhsReversePrefix).typesUnify(lhs, rhs);
 }
 
+bool isTemplateParamTypeCompatible(Type actualType, Type requiredType) {
+  // TypeVarType is a template-argument kind restriction, not an ordinary type wildcard. Keep
+  // that distinction here rather than weakening typesUnify(), whose type-variable behavior is
+  // required for general type inference.
+  bool actualIsTypeVar = isa<TypeVarType>(actualType);
+  bool requiredIsTypeVar = isa<TypeVarType>(requiredType);
+  if (actualIsTypeVar || requiredIsTypeVar) {
+    return actualIsTypeVar && requiredIsTypeVar;
+  }
+
+  FeltType requiredFelt = dyn_cast<FeltType>(requiredType);
+  if (requiredFelt) {
+    FeltType actualFelt = dyn_cast<FeltType>(actualType);
+    if (!actualFelt) {
+      return false;
+    }
+    if (!requiredFelt.hasField()) {
+      return true;
+    }
+    return actualFelt.hasField() && actualFelt == requiredFelt;
+  }
+  return typesUnify(actualType, requiredType);
+}
+
+bool isTemplateParamTypeCompatible(std::optional<Type> actualType, Type requiredType) {
+  if (!actualType) {
+    if (isa<TypeVarType>(requiredType)) {
+      return false;
+    }
+    if (FeltType requiredFelt = dyn_cast<FeltType>(requiredType)) {
+      return !requiredFelt.hasField();
+    }
+    return true;
+  }
+  return isTemplateParamTypeCompatible(*actualType, requiredType);
+}
+
 FailureOr<Attribute>
 materializeTemplateParamValue(Attribute actualValue, std::optional<Type> requiredType) {
   if (!requiredType) {
