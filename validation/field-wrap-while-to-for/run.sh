@@ -55,6 +55,10 @@ source_revision() {
 
   for scenario in candidate no-wrap-control source-reference; do
     local fixture="$FIXTURES/$scenario.llzk"
+    "$bin/llzk-opt" --verify-each --llzk-while-to-for \
+      "$fixture" -o "$work/$scenario.after-while-to-for.mlir"
+    cp "$work/$scenario.after-while-to-for.mlir" \
+      "$output/$scenario.after-while-to-for.mlir"
     "$bin/llzk-opt" --verify-each --llzk-while-to-for --canonicalize \
       --llzk-flatten --canonicalize "$fixture" -o "$work/$scenario.prepared.mlir"
     cp "$work/$scenario.prepared.mlir" "$output/$scenario.prepared.mlir"
