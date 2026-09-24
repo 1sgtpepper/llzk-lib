@@ -1,0 +1,2 @@
+fixed:
+  - Apply the same explicit template argument checks to function calls and contract inclusions

@@ -343,10 +343,9 @@ def CallOp
     function.call @OtherStruct::@constrain(%5, %6) : (!struct.type<@OtherStruct>, !felt.type) -> ()
     ```
 
-    When the return StructType of a `compute()` function uses AffineMapAttr to
-    express struct parameter(s) that depend on a loop variable, the optional
-    instantiation parameter list of this operation must be used to instatiate
-    all AffineMap used as parameters to the StructType.
+    When the return `struct.type` of a `compute()` function uses affine-map parameters that
+    depend on loop values, supply every affine-map operand through this operation's optional
+    affine-map operand list.
 
     Examples:
     ```llzk
@@ -354,14 +353,11 @@ def CallOp
     %r = function.call @A::@compute(%x){(%i)} : (!felt.type) -> !struct.type<@A<[#M]>>
     ```
 
-    When the call targets a free function within a `poly.template` region, the optional
-    template parameter list can be used to instantiate all `poly.param` symbols within
-    the template. If all `poly.param` symbols are used within the function signature,
-    this can be elided. Otherwise, it is required to instantiate the function. The `?`
-    wildcard can be used for any `poly.param` with a `poly.tvar` type restriction, even
-    those that cannot be inferred from the function signature. The wildcard allows for
-    inference of the type within the function body itself during the flattening pass
-    but may fail if the type cannot be inferred from the function body.
+    When the call targets a free function in a `poly.template`, its template argument
+    list supplies one value per `poly.param`. It may be omitted only when every parameter
+    appears in the function signature. Explicit values must satisfy declared restrictions
+    and agree with signature inference. Direct index or integer arguments cannot be affine
+    maps; `?` is reserved for `poly.tvar` parameters whose concrete type will be inferred later.
   }];
 
   // See `VerifySizesForMultiAffineOps` for more explanation of these arguments.

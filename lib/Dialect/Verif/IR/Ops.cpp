@@ -796,74 +796,14 @@ struct KnownTargetVerifier : public IncludeOpVerifier {
   }
 
   LogicalResult verifyTemplateParams() override {
-    Operation *tgtOp = tgt.getOperation();
-    if (TemplateOp tgtOpParent = getParentOfType<TemplateOp>(tgtOp)) {
-      // When the target function is a free function within a TemplateOp, the IncludeOp may have
-      // template parameter instantiations that must be checked against the template parameters.
-      // - If the function type signature references all template parameters, then the parameter
-      //   instantiation list on the IncludeOp is optional, otherwise it's required.
-      // - If present, the instantiation list must provide a value for every template parameter
-      //   and the value must be type-compatible with the parameter's declared type (if any).
-      // - If present, the instantiation list must result in a function type signature that can
-      //   be unified with the IncludeOp's operand and result types.
-      auto realParams = tgtOpParent.getConstOps<TemplateParamOp>();
-      ArrayAttr callParams = includeOp->getTemplateParamsAttr();
-
-      // When there is no instantiation list, just ensure that it's not required.
-      if (isNullOrEmpty(callParams)) {
-        llvm::SmallDenseSet<SymbolRefAttr> referencedInSignature;
-        llzk::getSymbolsUsedIn(tgtType.getInputs(), referencedInSignature);
-        llzk::getSymbolsUsedIn(tgtType.getResults(), referencedInSignature);
-
-        bool allParamsReferenced = llvm::all_of(realParams, [&](TemplateParamOp p) {
-          return referencedInSignature.contains(FlatSymbolRefAttr::get(p.getNameAttr()));
-        });
-        if (allParamsReferenced) {
-          return success();
-        }
-        return includeOp->emitOpError().append(
-            "must provide template instantiation parameters when calling \"@", tgt.getSymName(),
-            "\" because not all template parameters of \"@", tgtOpParent.getSymName(),
-            "\" appear in the function type signature"
-        );
-      }
-
-      // Ensure `forceIntAttrTypes()` was successful on the IncludeOp's template parameters.
-      if (failed(llzk::forceIntAttrTypes(callParams.getValue(), [this] {
-        return llzk::InFlightDiagnosticWrapper(this->includeOp->emitOpError());
-      }))) {
-        return failure();
-      }
-
-      // The instantiation list is present. Check it has exactly one entry per template param.
-      size_t numTemplateParams = llvm::range_size(realParams);
-      if (callParams.size() != numTemplateParams) {
-        return includeOp->emitOpError().append(
-            "template instantiation has ", callParams.size(), " parameter(s) but \"@",
-            tgtOpParent.getSymName(), "\" expects ", numTemplateParams, " template parameter(s)"
-        );
-      }
-
-      // Check type compatibility of each provided value with the declared parameter type (if any).
-      if (failed(includeOp->verifyTemplateParamValuesCompatibility(realParams))) {
-        return failure();
-      }
-
-      // Check that the provided instantiation values are consistent with what type unification
-      // of the target function types against the call's operand and result types would determine.
-      FailureOr<UnificationMap> unifyResult =
-          includeOp->unifyTypeSignatureWithNamespace(tgtType, includeSymNames);
-      // This is already checked by `verifyInputs()`, but `verifyTemplateParams()` is called
-      // even if `verifyInputs()` fails for error aggregation, so we still need to return
-      // early here.
-      if (failed(unifyResult)) {
-        return failure();
-      }
-      return includeOp->verifyTemplateParamsMatchInferred(realParams, unifyResult.value());
-    } else {
-      // Non-template functions cannot contain template parameter instantiations.
-      return verifyNoTemplateInstantiations();
+    if (TemplateOp parent = getParentOfType<TemplateOp>(tgt.getOperation())) {
+      return llzk::verifyKnownTargetTemplateParams(
+          includeOp->getOperation(), includeOp->getTypeSignature(), tgtType, includeSymNames,
+          tgt.getSymName(), parent.getSymName(), includeOp->getTemplateParamsAttr(),
+          parent.getConstOps<TemplateParamOp>()
+      );
     }
+    return verifyNoTemplateInstantiations();
   }
 
 private:
