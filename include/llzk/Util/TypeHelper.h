@@ -218,6 +218,10 @@ uint64_t computeEmitEqCardinality(mlir::Type type);
 /// static concrete values to produce the flattened versions of structs.
 using UnificationMap = mlir::DenseMap<std::pair<mlir::SymbolRefAttr, Side>, mlir::Attribute>;
 
+/// Record each symbol/value candidate encountered while unifying a call or inclusion signature,
+/// without changing `UnificationMap`'s existing `nullptr` conflict behavior.
+using UnificationCandidateFn = llvm::function_ref<void(mlir::SymbolRefAttr, Side, mlir::Attribute)>;
+
 /// Return `true` iff the two ArrayRef instances containing StructType or ArrayType parameters
 /// are equivalent or could be equivalent after full instantiation of template parameters.
 bool typeParamsUnify(
@@ -255,9 +259,14 @@ bool podTypesUnify(
 
 /// Return `true` iff the two FunctionType instances are equivalent or could be equivalent after
 /// full instantiation of template parameters.
+/// If both `unifications` and `recordCandidate` are provided, structurally equal type variables
+/// and parameterized types are traversed and each symbol/value candidate is reported before
+/// repeated conflicting mappings are represented by `nullptr` in `unifications`. Without a
+/// recorder, equal types retain the existing empty-map behavior.
 bool functionTypesUnify(
     mlir::FunctionType lhs, mlir::FunctionType rhs,
-    mlir::ArrayRef<llvm::StringRef> rhsReversePrefix = {}, UnificationMap *unifications = nullptr
+    mlir::ArrayRef<llvm::StringRef> rhsReversePrefix = {}, UnificationMap *unifications = nullptr,
+    UnificationCandidateFn recordCandidate = nullptr
 );
 
 /// Return `true` iff the two Type instances are equivalent or could be equivalent after full

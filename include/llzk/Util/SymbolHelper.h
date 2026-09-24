@@ -235,8 +235,9 @@ mlir::LogicalResult verifyTemplateParamValuesCompatibility(
     llvm::iterator_range<mlir::Region::op_iterator<polymorphic::TemplateParamOp>> targetParamDefs
 );
 
-/// Check explicit template arguments against values inferred from the target signature. The
-/// argument and parameter ranges must have equal sizes.
+/// Check template arguments against values inferred from the target signature. With explicit
+/// arguments, their count must match the parameter declarations; omitted arguments require a
+/// compatible inferred value for every parameter.
 mlir::LogicalResult verifyTemplateParamsMatchInferred(
     mlir::Operation *origin, mlir::ArrayAttr explicitParams,
     llvm::iterator_range<mlir::Region::op_iterator<polymorphic::TemplateParamOp>> targetParamDefs,

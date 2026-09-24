@@ -93,7 +93,8 @@ def LLZKCallLikeOpInterface
                     $_op.getOperation(), $_op.getTemplateParamsAttr(), targetParamDefs);
            }]>,
        InterfaceMethod<
-           [{Checks explicit template parameters against inferred signature values.}],
+           [{Checks explicit template parameters against inferred signature values, or validates
+             inferred values when the argument list is omitted.}],
            "::mlir::LogicalResult", "verifyTemplateParamsMatchInferred",
            (ins "::llvm::iterator_range<::mlir::Region::op_iterator<::llzk::"
                 "polymorphic::TemplateParamOp>>":$targetParamDefs,
