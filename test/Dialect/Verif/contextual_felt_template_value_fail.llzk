@@ -1,0 +1,57 @@
+// RUN: llzk-opt -verify-diagnostics %s
+
+// A local felt binding must agree with a signature-inferred constant field.
+module attributes {llzk.lang} {
+  poly.template @BoxTemplate {
+    poly.param @P
+    struct.def @Box {
+      function.def @compute() -> !struct.type<@BoxTemplate::@Box<[@P]>> {
+        %self = struct.new : <@BoxTemplate::@Box<[@P]>>
+        function.return %self : !struct.type<@BoxTemplate::@Box<[@P]>>
+      }
+      function.def @constrain(%self: !struct.type<@BoxTemplate::@Box<[@P]>>) {
+        function.return
+      }
+    }
+  }
+
+  poly.template @Target {
+    poly.param @F : !felt.type
+    function.def @accept(%value: !struct.type<@BoxTemplate::@Box<[@F]>>) {
+      function.return
+    }
+    verif.contract @Base for @Target::@accept (
+        %value: !struct.type<@BoxTemplate::@Box<[@F]>>
+    ) {
+      %ok = arith.constant true
+      verif.ensure_compute %ok
+    }
+  }
+
+  poly.template @Caller {
+    poly.param @G : !felt.type<"bn128">
+    function.def @field_conflict(
+        %value: !struct.type<@BoxTemplate::@Box<[#felt<const 35 : !felt.type<"goldilocks">>]>>
+    ) {
+      function.return
+    }
+    verif.contract @LocalFieldConflict for @Caller::@field_conflict (
+        %value: !struct.type<@BoxTemplate::@Box<[#felt<const 35 : !felt.type<"goldilocks">>]>>
+    ) {
+      // expected-error@+1 {{'verif.include' op template instantiation value '@G' for parameter "@F" conflicts with value '#felt<const 35 : <"goldilocks">> : !felt.type<"goldilocks">' inferred from contract type signature}}
+      verif.include @Target::@Base<[@G]>(%value) :
+          (!struct.type<@BoxTemplate::@Box<[#felt<const 35 : !felt.type<"goldilocks">>]>>) -> ()
+    }
+    function.def @field_match(
+        %value: !struct.type<@BoxTemplate::@Box<[#felt<const 35 : !felt.type<"bn128">>]>>
+    ) {
+      function.return
+    }
+    verif.contract @LocalFieldMatch for @Caller::@field_match (
+        %value: !struct.type<@BoxTemplate::@Box<[#felt<const 35 : !felt.type<"bn128">>]>>
+    ) {
+      verif.include @Target::@Base<[@G]>(%value) :
+          (!struct.type<@BoxTemplate::@Box<[#felt<const 35 : !felt.type<"bn128">>]>>) -> ()
+    }
+  }
+}

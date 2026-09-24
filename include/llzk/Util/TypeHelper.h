@@ -291,6 +291,16 @@ bool isTemplateParamTypeCompatible(std::optional<mlir::Type> actualType, mlir::T
 mlir::FailureOr<mlir::Attribute>
 materializeTemplateParamValue(mlir::Attribute actualValue, std::optional<mlir::Type> requiredType);
 
+/// Return `true` iff two template argument values are compatible with the same required
+/// restriction. Felt constants and integer attributes are compared by value after applying the
+/// required felt field, independent of APInt storage width. Deferred symbol references use the
+/// generic template-parameter unifier; other values that cannot materialize as the required felt
+/// are incompatible. Non-felt and absent restrictions use the generic unifier unchanged.
+bool templateParamValuesUnify(
+    mlir::Attribute actualValue, mlir::Attribute inferredValue,
+    std::optional<mlir::Type> requiredType
+);
+
 /// Return `true` iff the two lists of Type instances are equivalent or could be equivalent after
 /// full instantiation of template parameters (if applicable within the given types).
 template <typename Iter1, typename Iter2>
