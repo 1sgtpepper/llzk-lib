@@ -235,21 +235,36 @@ public:
 
 LogicalResult verifyTemplateSymbolType(
     TemplateSymbolBindingOpInterface binding, SymbolRefAttr param, Type parameterizedType,
-    Operation *origin, std::optional<Type> requiredParamType
+    Operation *origin, std::optional<Type> requiredParamType,
+    std::optional<Location> requiredParamLoc
 ) {
   if (requiredParamType) {
     std::optional<Type> actualType = binding.getTypeOpt();
-    if (!actualType) {
-      return origin->emitError().append(
-          "ref \"", param, "\" in type ", parameterizedType, " refers to a '", binding->getName(),
-          "' that must have type ", *requiredParamType
-      );
-    }
-    if (*actualType != *requiredParamType) {
-      return origin->emitError().append(
+    // A direct array-dimension symbol must establish its index kind at the use site. Other
+    // template arguments may remain unrestricted until their enclosing template is specialized.
+    bool missingArrayDimensionType = !actualType && llvm::isa<array::ArrayType>(parameterizedType);
+    if (missingArrayDimensionType ||
+        !isTemplateParamTypeCompatible(actualType, *requiredParamType)) {
+      if (!actualType) {
+        auto diag = origin->emitError().append(
+            "ref \"", param, "\" in type ", parameterizedType, " refers to a '", binding->getName(),
+            "' that must have type ", *requiredParamType
+        );
+        diag.attachNote(binding->getLoc()).append("referenced binding declared here");
+        if (requiredParamLoc) {
+          diag.attachNote(requiredParamLoc).append("required parameter declared here");
+        }
+        return diag;
+      }
+      auto diag = origin->emitError().append(
           "ref \"", param, "\" in type ", parameterizedType, " refers to a '", binding->getName(),
           "' with type ", *actualType, " but expected ", *requiredParamType
       );
+      diag.attachNote(binding->getLoc()).append("referenced binding declared here");
+      if (requiredParamLoc) {
+        diag.attachNote(requiredParamLoc).append("required parameter declared here");
+      }
+      return diag;
     }
   }
   return success();
@@ -575,7 +590,7 @@ LogicalResult verifyTemplateParamsMatchInferred(
 
 LogicalResult verifyParamOfType(
     SymbolTableCollection &tables, SymbolRefAttr param, Type parameterizedType, Operation *origin,
-    std::optional<Type> requiredParamType
+    std::optional<Type> requiredParamType, std::optional<Location> requiredParamLoc
 ) {
   // Most often, StructType and ArrayType SymbolRefAttr parameters will be defined as parameters of
   // the template that the current Operation is nested within. These are always flat references
@@ -589,7 +604,9 @@ LogicalResult verifyParamOfType(
     if (*parent) {
       if (auto b =
               parent->getConstNamed<TemplateSymbolBindingOpInterface>(param.getRootReference())) {
-        return verifyTemplateSymbolType(b, param, parameterizedType, origin, requiredParamType);
+        return verifyTemplateSymbolType(
+            b, param, parameterizedType, origin, requiredParamType, requiredParamLoc
+        );
       }
     }
   }
@@ -605,8 +622,23 @@ LogicalResult verifyParamOfType(
                                << "' which is not allowed";
   }
   if (!global.isConstant()) {
-    return origin->emitError() << "ref \"" << param << "\" in type " << parameterizedType
-                               << " refers to a global that is not marked as 'const'";
+    auto diag = origin->emitError() << "ref \"" << param << "\" in type " << parameterizedType
+                                    << " refers to a global that is not marked as 'const'";
+    diag.attachNote(global.getLoc()).append("global defined here");
+    if (requiredParamLoc) {
+      diag.attachNote(requiredParamLoc).append("required parameter declared here");
+    }
+    return diag;
+  }
+  if (requiredParamType && !isTemplateParamTypeCompatible(global.getType(), *requiredParamType)) {
+    auto diag = origin->emitError() << "ref \"" << param << "\" in type " << parameterizedType
+                                    << " refers to a global with type " << global.getType()
+                                    << " but expected " << *requiredParamType;
+    diag.attachNote(global.getLoc()).append("global defined here");
+    if (requiredParamLoc) {
+      diag.attachNote(requiredParamLoc).append("required parameter declared here");
+    }
+    return diag;
   }
   return success();
 }
@@ -664,6 +696,19 @@ verifyStructTypeResolution(SymbolTableCollection &tables, StructType ty, Operati
   }
   // If there are any SymbolRefAttr parameters on the StructType, ensure those refs are valid.
   if (ArrayAttr tyParams = ty.getParams()) {
+    if (TemplateOp parent = getParentOfType<TemplateOp>(defForType.getOperation())) {
+      for (auto [paramOp, value] :
+           llvm::zip_equal(parent.getConstOps<TemplateParamOp>(), tyParams.getValue())) {
+        std::optional<Type> restriction = paramOp.getTypeOpt();
+        if (auto symbolValue = llvm::dyn_cast<SymbolRefAttr>(value);
+            symbolValue && restriction &&
+            failed(
+                verifyParamOfType(tables, symbolValue, ty, origin, restriction, paramOp.getLoc())
+            )) {
+          return failure();
+        }
+      }
+    }
     if (failed(verifyParamsOfType(tables, tyParams.getValue(), ty, origin))) {
       return failure(); // verifyParamsOfType() already emits a sufficient error message
     }

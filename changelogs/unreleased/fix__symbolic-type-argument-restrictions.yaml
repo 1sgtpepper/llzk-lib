@@ -1,0 +1,2 @@
+fixed:
+  - Check symbolic struct and array type arguments against their declared restrictions, including nested type arguments and llzk.main
