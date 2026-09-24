@@ -1118,7 +1118,7 @@ public:
 inline static std::optional<Attribute>
 inferUnifiedParam(const UnificationMap &unifyResult, SymbolRefAttr paramName) {
   auto it = unifyResult.find({paramName, Side::RHS});
-  return (it == unifyResult.end()) ? std::nullopt : std::make_optional(it->second);
+  return (it == unifyResult.end() || !it->second) ? std::nullopt : std::make_optional(it->second);
 }
 
 /// Emit the match failure used when an inferred instantiation violates a template parameter's
@@ -1376,6 +1376,18 @@ public:
                      << parentTemplate.getSymName() << '\n'
     );
 
+    DenseMap<std::pair<SymbolRefAttr, Side>, SmallVector<Attribute, 2>> candidateValues;
+    auto recordCandidate = [&](SymbolRefAttr symbol, Side side, Attribute value) {
+      auto &values = candidateValues[{symbol, side}];
+      if (!llvm::is_contained(values, value)) {
+        values.push_back(value);
+      }
+    };
+    auto getCandidates = [&](SymbolRefAttr symbol, Side side) -> ArrayRef<Attribute> {
+      auto it = candidateValues.find({symbol, side});
+      return it == candidateValues.end() ? ArrayRef<Attribute>() : ArrayRef<Attribute>(it->second);
+    };
+
     // Perform type unification with tracking to infer the instantiated type(s). Even though
     // `CallOp` verification already checked that caller and callee types unify, the progress of
     // instantiation so far may have brought together a chain of calls across templates where each
@@ -1383,7 +1395,8 @@ public:
     // middle but the overall chain does not unify. Hence, this unification may fail and should
     // produce a meaningful error message if it does.
     // See: `test/Transforms/Flattening/instantiate_funcs_fail.llzk`
-    FailureOr<UnificationMap> unifyResult = unifyTypeSignature(op, callTgt, rewriter);
+    FailureOr<UnificationMap> unifyResult =
+        unifyTypeSignature(op, callTgt, callTgtOpt->getNamespace(), recordCandidate, rewriter);
     if (failed(unifyResult)) {
       return failure();
     }
@@ -1395,7 +1408,7 @@ public:
     // Maps template parameter symbols to the instantiation value at the call site.
     DenseMap<Attribute, Attribute> paramNameToConcrete;
     if (failed(collectConcreteTemplateParams(
-            op, rewriter, symTables, callTgt, parentTemplate, unifyResult.value(),
+            op, rewriter, symTables, callTgt, parentTemplate, unifyResult.value(), getCandidates,
             paramNameToConcrete
         ))) {
       return failure();
@@ -1448,13 +1461,18 @@ public:
   }
 
 private:
-  /// Re-run call/callee type unification so flattening can surface a useful error if a chain of
-  /// partially-instantiated calls stops unifying once earlier substitutions have been applied.
-  static FailureOr<UnificationMap>
-  unifyTypeSignature(CallOp op, FuncDefOp callTgt, PatternRewriter &rewriter) {
-    FailureOr<UnificationMap> unifyResult = op.unifyTypeSignature(callTgt.getFunctionType());
-    if (succeeded(unifyResult)) {
-      return unifyResult;
+  /// Re-run call/callee unification after earlier substitutions, retaining each signature value
+  /// so a later type-variable inference cannot hide a conflicting position.
+  static FailureOr<UnificationMap> unifyTypeSignature(
+      CallOp op, FuncDefOp callTgt, ArrayRef<StringRef> rhsReversePrefix,
+      UnificationCandidateFn recordCandidate, PatternRewriter &rewriter
+  ) {
+    UnificationMap unifications;
+    if (functionTypesUnify(
+            op.getTypeSignature(), callTgt.getFunctionType(), rhsReversePrefix, &unifications,
+            recordCandidate
+        )) {
+      return unifications;
     }
     return rewriter.notifyMatchFailure(op, [&](Diagnostic &diag) {
       diag.append("target function type does not unify with call type ")
@@ -1469,6 +1487,7 @@ private:
   static LogicalResult collectConcreteTemplateParams(
       CallOp op, PatternRewriter &rewriter, SymbolTableCollection &symTables, FuncDefOp callTgt,
       TemplateOp parentTemplate, const UnificationMap &unifyResult,
+      llvm::function_ref<ArrayRef<Attribute>(SymbolRefAttr, Side)> getCandidates,
       DenseMap<Attribute, Attribute> &paramNameToConcrete
   ) {
     auto realParams = parentTemplate.getConstOps<TemplateParamOp>();
@@ -1516,15 +1535,16 @@ private:
       return success();
     }
 
-    // As stated earlier, need to run the verification checks again to ensure the
-    // instantiation is valid, except for the size check because that cannot change.
+    // Earlier substitutions may have made symbolic signature candidates concrete.
     assert((callParams.size() == llvm::range_size(realParams)) && "per CallOpVerifier");
     if (failed(op.verifyTemplateParamValuesCompatibility(realParams))) {
       return rewriter.notifyMatchFailure(op, [&](Diagnostic &diag) {
         diag.append("incompatible with specified param type(s)");
       });
     }
-    if (failed(op.verifyTemplateParamsMatchInferred(realParams, unifyResult))) {
+    if (failed(verifyTemplateParamsMatchInferred(
+            op, callParams, realParams, unifyResult, getCandidates
+        ))) {
       return rewriter.notifyMatchFailure(op, [&](Diagnostic &diag) {
         diag.append("incompatible with inferred param value(s)");
       });
@@ -1574,6 +1594,33 @@ private:
           return failure();
         }
       }
+    }
+
+    // A wildcard gains a concrete type only after body inference. Check that choice against
+    // every signature position before using it to specialize the callee.
+    SmallVector<Attribute> inferredCallParams(callParams.begin(), callParams.end());
+    bool resolvedTypeVarWildcard = false;
+    for (auto [paramOp, attr] : llvm::zip_equal(realParams, inferredCallParams)) {
+      std::optional<Type> restriction = paramOp.getTypeOpt();
+      if (classifyAttrConcreteness(attr) != AttrConcreteness::Wildcard || !restriction ||
+          !llvm::isa<TypeVarType>(*restriction)) {
+        continue;
+      }
+      FlatSymbolRefAttr name = FlatSymbolRefAttr::get(paramOp.getSymNameAttr());
+      auto inferred = paramNameToConcrete.find(name);
+      if (inferred == paramNameToConcrete.end()) {
+        continue;
+      }
+      attr = inferred->second;
+      resolvedTypeVarWildcard = true;
+    }
+    if (resolvedTypeVarWildcard && failed(verifyTemplateParamsMatchInferred(
+                                       op, ArrayAttr::get(op.getContext(), inferredCallParams),
+                                       realParams, unifyResult, getCandidates
+                                   ))) {
+      return rewriter.notifyMatchFailure(op, [&](Diagnostic &diag) {
+        diag.append("incompatible with inferred param value(s)");
+      });
     }
     return success();
   }
