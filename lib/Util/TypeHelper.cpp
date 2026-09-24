@@ -611,14 +611,19 @@ struct UnifierImpl {
   ArrayRef<StringRef> rhsRevPrefix;
   UnificationMap *unifications;
   AffineInstantiations *affineToIntTracker;
+  UnificationCandidateFn candidateRecorder;
   bool *staticLhsWithWildcardRhsTracker;
   // This optional function can be used to provide an exception to the standard unification
   // rules and return a true/success result when it otherwise may not.
   llvm::function_ref<bool(Type oldTy, Type newTy)> overrideSuccess;
 
-  UnifierImpl(UnificationMap *unificationMap, ArrayRef<StringRef> rhsReversePrefix = {})
+  UnifierImpl(
+      UnificationMap *unificationMap, ArrayRef<StringRef> rhsReversePrefix = {},
+      UnificationCandidateFn recordCandidate = nullptr
+  )
       : rhsRevPrefix(rhsReversePrefix), unifications(unificationMap), affineToIntTracker(nullptr),
-        staticLhsWithWildcardRhsTracker(nullptr), overrideSuccess(nullptr) {}
+        candidateRecorder(recordCandidate), staticLhsWithWildcardRhsTracker(nullptr),
+        overrideSuccess(nullptr) {}
 
   UnifierImpl &trackAffineToInt(AffineInstantiations *tracker) {
     this->affineToIntTracker = tracker;
@@ -729,18 +734,26 @@ struct UnifierImpl {
 
   bool typesUnify(Type lhs, Type rhs) {
     if (lhs == rhs) {
-      // Equal syntax in an included signature still refers to the included namespace.
-      if (!rhsRevPrefix.empty()) {
-        if (auto lhsStruct = llvm::dyn_cast<StructType>(lhs)) {
+      // Structural equality does not prove that equal symbol paths resolve to the same definition.
+      // Revisit recursive types when qualifying RHS symbols or collecting contextual candidates,
+      // without changing the generic unifier's existing empty-map behavior.
+      if (!rhsRevPrefix.empty() || (unifications && candidateRecorder)) {
+        if (TypeVarType lhsTvar = llvm::dyn_cast<TypeVarType>(lhs)) {
+          if (unifications && candidateRecorder) {
+            track(Side::RHS, llvm::cast<TypeVarType>(rhs).getNameRef(), lhsTvar.getNameRef());
+          }
+          return true;
+        }
+        if (StructType lhsStruct = llvm::dyn_cast<StructType>(lhs)) {
           return structTypesUnify(lhsStruct, llvm::cast<StructType>(rhs));
         }
-        if (auto lhsArray = llvm::dyn_cast<ArrayType>(lhs)) {
+        if (ArrayType lhsArray = llvm::dyn_cast<ArrayType>(lhs)) {
           return arrayTypesUnify(lhsArray, llvm::cast<ArrayType>(rhs));
         }
-        if (auto lhsPod = llvm::dyn_cast<PodType>(lhs)) {
+        if (PodType lhsPod = llvm::dyn_cast<PodType>(lhs)) {
           return podTypesUnify(lhsPod, llvm::cast<PodType>(rhs));
         }
-        if (auto lhsFunction = llvm::dyn_cast<FunctionType>(lhs)) {
+        if (FunctionType lhsFunction = llvm::dyn_cast<FunctionType>(lhs)) {
           return functionTypesUnify(lhsFunction, llvm::cast<FunctionType>(rhs));
         }
       }
@@ -751,7 +764,14 @@ struct UnifierImpl {
     }
     // A type variable can be any type, thus it unifies with anything.
     if (TypeVarType lhsTvar = llvm::dyn_cast<TypeVarType>(lhs)) {
-      track(Side::LHS, lhsTvar.getNameRef(), rhs);
+      if (TypeVarType rhsTvar = llvm::dyn_cast<TypeVarType>(rhs); rhsTvar && candidateRecorder) {
+        // In contextual candidate mode, the caller's LHS binding is also the inferred value for
+        // the target's RHS binding. Preserve both directions without changing generic unification
+        // maps, which intentionally retain their existing one-sided behavior.
+        track(Side::LHS, lhsTvar.getNameRef(), rhsTvar.getNameRef());
+      } else {
+        track(Side::LHS, lhsTvar.getNameRef(), rhs);
+      }
       return true;
     }
     if (TypeVarType rhsTvar = llvm::dyn_cast<TypeVarType>(rhs)) {
@@ -797,6 +817,13 @@ private:
       }
       assert(symRef);
       assert(attr);
+      if (candidateRecorder) {
+        // Preserve candidate evidence without changing type unification's one-sided map entries.
+        candidateRecorder(symRef, side, attr);
+        if (SymbolRefAttr otherSymAttr = dyn_cast<SymbolRefAttr>(attr)) {
+          candidateRecorder(otherSymAttr, reverse(side), symRef);
+        }
+      }
       track(*unifications, side, symRef, attr);
     }
   }
@@ -816,7 +843,15 @@ private:
       // checks on the UnificationMap may do LHS checks, and in the case of both being
       // SymbolRefAttr, unification in either direction is possible.
       if (SymbolRefAttr otherSymAttr = dyn_cast<SymbolRefAttr>(attr)) {
+        if (candidateRecorder) {
+          // Preserve the reverse candidate before the generic tracker may collapse a conflict.
+          candidateRecorder(otherSymAttr, reverse(side), symRef);
+        }
         track(*unifications, reverse(side), otherSymAttr, symRef);
+      }
+      if (candidateRecorder) {
+        // Preserve the candidate before the generic tracker may collapse a conflict.
+        candidateRecorder(symRef, side, attr);
       }
       track(*unifications, side, symRef, attr);
     }
@@ -836,10 +871,16 @@ private:
     assertValidAttrForParamOfType(rhsAttr);
     // Straightforward equality check.
     if (lhsAttr == rhsAttr) {
-      if (!rhsRevPrefix.empty()) {
-        if (auto lhsType = llvm::dyn_cast<TypeAttr>(lhsAttr)) {
-          return typesUnify(lhsType.getValue(), llvm::cast<TypeAttr>(rhsAttr).getValue());
+      if (TypeAttr lhsTy = llvm::dyn_cast<TypeAttr>(lhsAttr)) {
+        if (!rhsRevPrefix.empty() || (unifications && candidateRecorder)) {
+          return typesUnify(lhsTy.getValue(), llvm::cast<TypeAttr>(rhsAttr).getValue());
         }
+      }
+      if (unifications && candidateRecorder && llvm::isa<FlatSymbolRefAttr>(lhsAttr)) {
+        // Equal flat references may belong to different template scopes. Record the RHS-to-LHS
+        // mapping so callers can resolve the mapped symbol in the operation's scope instead of
+        // treating the missing entry as evidence that the parameter was not exposed.
+        track(Side::RHS, llvm::cast<FlatSymbolRefAttr>(rhsAttr), lhsAttr);
       }
       return true;
     }
@@ -951,9 +992,9 @@ bool podTypesUnify(
 
 bool functionTypesUnify(
     FunctionType lhs, FunctionType rhs, ArrayRef<StringRef> rhsReversePrefix,
-    UnificationMap *unifications
+    UnificationMap *unifications, UnificationCandidateFn recordCandidate
 ) {
-  return UnifierImpl(unifications, rhsReversePrefix).functionTypesUnify(lhs, rhs);
+  return UnifierImpl(unifications, rhsReversePrefix, recordCandidate).functionTypesUnify(lhs, rhs);
 }
 
 bool typesUnify(

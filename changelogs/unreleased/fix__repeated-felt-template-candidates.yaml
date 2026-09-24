@@ -1,0 +1,2 @@
+fixed:
+  - Reject conflicting felt arguments inferred from repeated call or include signature positions

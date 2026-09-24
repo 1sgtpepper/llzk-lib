@@ -355,9 +355,10 @@ def CallOp
 
     When the call targets a free function in a `poly.template`, its template argument
     list supplies one value per `poly.param`. It may be omitted only when every parameter
-    appears in the function signature. Explicit values must satisfy declared restrictions
-    and agree with signature inference. Direct index or integer arguments cannot be affine
-    maps; `?` is reserved for `poly.tvar` parameters whose concrete type will be inferred later.
+    appears in the function signature and inferred values agree. Explicit values must satisfy
+    declared restrictions and agree with signature inference. Direct index or integer arguments
+    cannot be affine maps; `?` is reserved for `poly.tvar` parameters whose concrete type will
+    be inferred later.
   }];
 
   // See `VerifySizesForMultiAffineOps` for more explanation of these arguments.

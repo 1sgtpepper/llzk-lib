@@ -31,6 +31,7 @@
 
 #include <llvm/ADT/DenseSet.h>
 #include <llvm/ADT/STLExtras.h>
+#include <llvm/ADT/SetVector.h>
 #include <llvm/ADT/TypeSwitch.h>
 #include <llvm/Support/Debug.h>
 
@@ -274,6 +275,20 @@ LogicalResult verifyTemplateSymbolType(
 FailureOr<bool> resolvedTemplateParamValuesUnify(
     SymbolTableCollection &tables, Operation *origin, Attribute explicitValue,
     Attribute inferredValue, std::optional<Type> requiredParamType
+);
+
+/// Preserve each signature candidate when checking explicit or omitted template arguments.
+LogicalResult verifyTemplateParamsMatchInferredWithCandidates(
+    Operation *origin, ArrayAttr explicitParams,
+    llvm::iterator_range<Region::op_iterator<TemplateParamOp>> targetParamDefs,
+    const UnificationMap &unifications,
+    llvm::function_ref<ArrayRef<Attribute>(SymbolRefAttr, Side)> candidates
+);
+
+/// Check repeated felt values against their restriction, each other, and any explicit argument.
+LogicalResult verifyRepeatedFeltCandidates(
+    Operation *origin, TemplateParamOp paramOp, ArrayRef<Attribute> inferredCandidates,
+    StringRef signature, Attribute explicitValue = nullptr
 );
 
 } // namespace
@@ -580,6 +595,17 @@ LogicalResult verifyKnownTargetTemplateParams(
   StringRef signature = llvm::isa<verif::IncludeOp>(origin) ? "contract" : "function";
   assert((llvm::isa<function::CallOp, verif::IncludeOp>(origin)) && "expected call-like operation");
 
+  using CandidateMap =
+      llvm::DenseMap<std::pair<SymbolRefAttr, Side>, llvm::SmallSetVector<Attribute, 2>>;
+  CandidateMap candidateValues;
+  auto recordCandidate = [&](SymbolRefAttr symbol, Side side, Attribute value) {
+    candidateValues[{symbol, side}].insert(value);
+  };
+  auto getCandidates = [&](SymbolRefAttr symbol, Side side) -> ArrayRef<Attribute> {
+    auto it = candidateValues.find({symbol, side});
+    return it == candidateValues.end() ? ArrayRef<Attribute>() : it->second.getArrayRef();
+  };
+
   if (isNullOrEmpty(explicitParams)) {
     llvm::SmallDenseSet<SymbolRefAttr> referencedInSignature;
     getSymbolsUsedIn(targetType.getInputs(), referencedInSignature);
@@ -587,14 +613,13 @@ LogicalResult verifyKnownTargetTemplateParams(
     bool allParamsReferenced = llvm::all_of(targetParamDefs, [&](TemplateParamOp param) {
       return referencedInSignature.contains(FlatSymbolRefAttr::get(param.getNameAttr()));
     });
-    if (allParamsReferenced) {
-      return success();
+    if (!allParamsReferenced) {
+      return origin->emitOpError().append(
+          "must provide template instantiation parameters when calling \"@", targetName,
+          "\" because not all template parameters of \"@", targetTemplateName, "\" appear in the ",
+          signature, " type signature"
+      );
     }
-    return origin->emitOpError().append(
-        "must provide template instantiation parameters when calling \"@", targetName,
-        "\" because not all template parameters of \"@", targetTemplateName, "\" appear in the ",
-        signature, " type signature"
-    );
   } else {
     if (failed(forceIntAttrTypes(explicitParams.getValue(), [origin] {
       return InFlightDiagnosticWrapper(origin->emitOpError());
@@ -614,20 +639,58 @@ LogicalResult verifyKnownTargetTemplateParams(
   }
 
   UnificationMap unifications;
-  if (!functionTypesUnify(actualType, targetType, targetNamespace, &unifications)) {
+  if (!functionTypesUnify(
+          actualType, targetType, targetNamespace, &unifications, recordCandidate
+      )) {
     return failure();
   }
-  return verifyTemplateParamsMatchInferred(origin, explicitParams, targetParamDefs, unifications);
+  return verifyTemplateParamsMatchInferredWithCandidates(
+      origin, explicitParams, targetParamDefs, unifications, getCandidates
+  );
 }
 
-LogicalResult verifyTemplateParamsMatchInferred(
+namespace {
+
+LogicalResult verifyTemplateParamsMatchInferredWithCandidates(
     Operation *origin, ArrayAttr explicitParams,
     llvm::iterator_range<Region::op_iterator<TemplateParamOp>> targetParamDefs,
-    const UnificationMap &unifications
+    const UnificationMap &unifications,
+    llvm::function_ref<ArrayRef<Attribute>(SymbolRefAttr, Side)> candidates
 ) {
   StringRef signature = llvm::isa<verif::IncludeOp>(origin) ? "contract" : "function";
   assert((llvm::isa<function::CallOp, verif::IncludeOp>(origin)) && "expected call-like operation");
-  assert(!isNullOrEmpty(explicitParams) && "pre-condition");
+
+  if (isNullOrEmpty(explicitParams)) {
+    for (TemplateParamOp paramOp : targetParamDefs) {
+      FlatSymbolRefAttr name = FlatSymbolRefAttr::get(paramOp.getNameAttr());
+      auto it = unifications.find({name, Side::RHS});
+      if (it == unifications.end()) {
+        return origin->emitOpError().append(
+            "cannot infer template instantiation value for parameter \"@", paramOp.getName(),
+            "\" from ", signature, " type signature"
+        );
+      }
+      ArrayRef<Attribute> values = candidates ? candidates(name, Side::RHS) : ArrayRef<Attribute>();
+      std::optional<Type> restriction = paramOp.getTypeOpt();
+      if (values.size() > 1 && restriction && llvm::isa<felt::FeltType>(*restriction)) {
+        if (failed(verifyRepeatedFeltCandidates(origin, paramOp, values, signature))) {
+          return failure();
+        }
+        continue;
+      }
+      if (!it->second) {
+        return origin->emitOpError().append(
+            "cannot infer template instantiation value for parameter \"@", paramOp.getName(),
+            "\" from ", signature, " type signature"
+        );
+      }
+      if (failed(verifyTemplateParamValueCompatibility(origin, it->second, paramOp))) {
+        return failure();
+      }
+    }
+    return success();
+  }
+
   assert((explicitParams.size() == llvm::range_size(targetParamDefs)) && "pre-condition");
 
   for (auto [paramOp, attr] : llvm::zip_equal(targetParamDefs, explicitParams.getValue())) {
@@ -637,9 +700,19 @@ LogicalResult verifyTemplateParamsMatchInferred(
         continue;
       }
     }
-    auto it = unifications.find({FlatSymbolRefAttr::get(paramOp.getNameAttr()), Side::RHS});
-    // A null entry represents conflicting inferred bindings. It may include symbolic values
-    // that become equal after instantiating an enclosing template, so defer validation.
+    FlatSymbolRefAttr name = FlatSymbolRefAttr::get(paramOp.getNameAttr());
+    auto it = unifications.find({name, Side::RHS});
+    if (it != unifications.end() && !it->second && candidates) {
+      ArrayRef<Attribute> values = candidates(name, Side::RHS);
+      std::optional<Type> restriction = paramOp.getTypeOpt();
+      if (values.size() > 1 && restriction && llvm::isa<felt::FeltType>(*restriction)) {
+        if (failed(verifyRepeatedFeltCandidates(origin, paramOp, values, signature, attr))) {
+          return failure();
+        }
+        continue;
+      }
+      // Other ambiguous symbolic bindings remain deferred for later specialization.
+    }
     if (it != unifications.end() && it->second &&
         failed(verifyTemplateParamValueCompatibility(origin, it->second, paramOp))) {
       return failure();
@@ -662,6 +735,18 @@ LogicalResult verifyTemplateParamsMatchInferred(
     }
   }
   return success();
+}
+
+} // namespace
+
+LogicalResult verifyTemplateParamsMatchInferred(
+    Operation *origin, ArrayAttr explicitParams,
+    llvm::iterator_range<Region::op_iterator<TemplateParamOp>> targetParamDefs,
+    const UnificationMap &unifications
+) {
+  return verifyTemplateParamsMatchInferredWithCandidates(
+      origin, explicitParams, targetParamDefs, unifications, nullptr
+  );
 }
 
 LogicalResult verifyParamOfType(
@@ -899,6 +984,88 @@ FailureOr<bool> resolvedTemplateParamValuesUnify(
     );
   }
   return contextFreeResult;
+}
+
+LogicalResult verifyRepeatedFeltCandidates(
+    Operation *origin, TemplateParamOp paramOp, ArrayRef<Attribute> inferredCandidates,
+    StringRef signatureDescription, Attribute explicitValue
+) {
+  for (Attribute candidate : inferredCandidates) {
+    if (failed(verifyTemplateParamValueCompatibility(origin, candidate, paramOp))) {
+      return failure();
+    }
+  }
+
+  SymbolTableCollection tables;
+  if (explicitValue) {
+    for (Attribute inferredCandidate : inferredCandidates) {
+      FailureOr<bool> resolved = resolvedTemplateParamValuesUnify(
+          tables, origin, explicitValue, inferredCandidate, paramOp.getTypeOpt()
+      );
+      if (failed(resolved)) {
+        return failure();
+      }
+      if (!*resolved) {
+        return origin->emitOpError().append(
+            "template instantiation value '", explicitValue, "' for parameter \"@",
+            paramOp.getName(), "\" conflicts with value '", inferredCandidate, "' inferred from ",
+            signatureDescription, " type signature"
+        );
+      }
+    }
+  }
+
+  // A candidate can constrain the field, the value, or both. Keep a witness for each fact:
+  // comparing only to the first candidate would miss conflicts after an unknown binding.
+  // Retain the first candidate for the existing materialization and unresolved-symbol rules.
+  Attribute fieldWitness, valueWitness;
+  for (Attribute candidate : inferredCandidates) {
+    for (Attribute witness : {inferredCandidates.front(), fieldWitness, valueWitness}) {
+      if (!witness || witness == candidate) {
+        continue;
+      }
+      FailureOr<bool> resolved = resolvedTemplateParamValuesUnify(
+          tables, origin, witness, candidate, paramOp.getTypeOpt()
+      );
+      if (failed(resolved)) {
+        return failure();
+      }
+      if (!*resolved) {
+        return origin->emitOpError().append(
+            "cannot infer template instantiation value for parameter \"@", paramOp.getName(),
+            "\" from ", signatureDescription, " type signature"
+        );
+      }
+    }
+
+    Attribute concreteValue = candidate;
+    std::optional<Type> restriction;
+    if (auto symbol = llvm::dyn_cast<SymbolRefAttr>(candidate)) {
+      auto evidence = resolveTemplateParamSymbolEvidence(tables, origin, symbol);
+      if (failed(evidence)) {
+        return failure();
+      }
+      if (!*evidence) {
+        continue;
+      }
+      concreteValue = evidence->value().concreteValue;
+      restriction = evidence->value().restriction;
+    }
+    if (concreteValue && !valueWitness) {
+      valueWitness = candidate;
+    }
+    auto field = restriction ? llvm::dyn_cast<felt::FeltType>(*restriction) : felt::FeltType();
+    if (!field || !field.hasField()) {
+      if (auto typedValue = llvm::dyn_cast_if_present<TypedAttr>(concreteValue)) {
+        field = llvm::dyn_cast<felt::FeltType>(typedValue.getType());
+      }
+    }
+    if (field && field.hasField() && !fieldWitness) {
+      fieldWitness = candidate;
+    }
+  }
+
+  return success();
 }
 
 } // namespace

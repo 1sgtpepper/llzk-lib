@@ -445,9 +445,9 @@ def IncludeOp
 
     For a target in a `poly.template`, the template argument list supplies one value per
     `poly.param`. It may be omitted only when every parameter appears in the contract
-    signature. Explicit values must satisfy declared restrictions and agree with signature
-    inference. Direct index or integer arguments cannot be affine maps; `?` is reserved
-    for `poly.tvar` parameters.
+    signature and inferred values agree. Explicit values must satisfy declared restrictions
+    and agree with signature inference. Direct index or integer arguments cannot be affine
+    maps; `?` is reserved for `poly.tvar` parameters.
   }];
 
   // See `VerifySizesForMultiAffineOps` for more explanation of these arguments.
