@@ -4,11 +4,6 @@ use llzk::{
     builder::{OpBuilder, OpBuilderLike},
     prelude::*,
 };
-use melior::ir::{
-    Block, BlockLike as _, Region, RegionLike as _, Type, ValueLike as _,
-    operation::OperationLike as _,
-};
-
 type Result<T> = std::result::Result<T, LlzkError>;
 
 const MAIN_STRUCT_NAME: &str = "Main";
@@ -87,10 +82,11 @@ fn main() -> Result<()> {
             let before_block = Block::new(&[(field_mlir_type, location)]);
             let before_iv = before_block.argument(0).unwrap();
             let before_builder = OpBuilder::at_block_end(&context, &before_block);
-            let continue_loop = dialect::bool::lt(&before_builder, location, before_iv, upper)?;
+            let continue_loop =
+                dialect::bool::lt(&before_builder, location, before_iv.into(), upper.into())?;
             before_block.append_operation(melior_dialects::scf::condition(
                 continue_loop.result(0)?.into(),
-                &[before_iv],
+                &[before_iv.into()],
                 location,
             ));
             before_region.append_block(before_block);
@@ -100,13 +96,14 @@ fn main() -> Result<()> {
             let after_iv = after_block.argument(0).unwrap();
             let after_builder = OpBuilder::at_block_end(&context, &after_block);
             dialect::constrain::eq(&after_builder, location, out.into(), after_iv.into());
-            let next = dialect::felt::add(&after_builder, location, after_iv, step)?.result(0)?;
+            let next = dialect::felt::add(&after_builder, location, after_iv.into(), step.into())?
+                .result(0)?;
             after_block.append_operation(melior_dialects::scf::r#yield(&[next.into()], location));
             after_region.append_block(after_block);
 
             builder.insert(location, |_, _| {
                 melior_dialects::scf::r#while(
-                    &[lower],
+                    &[lower.into()],
                     &[field_mlir_type],
                     before_region,
                     after_region,
