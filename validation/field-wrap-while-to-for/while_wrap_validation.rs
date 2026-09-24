@@ -1,3 +1,4 @@
+//! Build the field-wrapping `scf.while` used to check supported Rust API reachability.
 #![allow(unused_crate_dependencies)]
 
 use llzk::{
@@ -20,7 +21,7 @@ fn main() -> Result<()> {
     module_builder
         .with_language("rust-api-validation")
         .with_main(main_type);
-    let mut module = module_builder.build();
+    let module = module_builder.build();
     let builder = OpBuilder::at_block_begin(&context, module.body());
 
     dialect::r#struct::def(&builder, location, MAIN_STRUCT_NAME, |builder| {
