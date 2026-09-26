@@ -267,13 +267,11 @@ bool typesUnify(
     UnificationMap *unifications = nullptr
 );
 
-/// Check a template argument against an optional restriction and return the representation used by
-/// instantiation. With no restriction, return the argument unchanged. A type-variable restriction
-/// accepts only a `TypeAttr`; a felt restriction accepts a compatible felt constant or integer,
-/// preserving an explicit field when the restriction is fieldless and otherwise applying the
-/// required field; and an index or integer restriction accepts a valid integer or a single-result
-/// affine map that remains deferred for affine instantiation. Reject every other
-/// attribute/restriction pairing.
+/// Check a template argument against an optional restriction and return a compatible value.
+/// A type-variable restriction accepts only a `TypeAttr`. Numeric restrictions accept a
+/// single-result affine map pending instantiation; felt restrictions also accept a compatible
+/// felt constant or integer, preserving an explicit field or applying the required field.
+/// Reject other attribute/restriction pairings.
 mlir::FailureOr<mlir::Attribute>
 materializeTemplateParamValue(mlir::Attribute actualValue, std::optional<mlir::Type> requiredType);
 

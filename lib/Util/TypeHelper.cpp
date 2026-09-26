@@ -956,6 +956,14 @@ materializeTemplateParamValue(Attribute actualValue, std::optional<Type> require
     return failure();
   }
 
+  if (AffineMapAttr affineValue = dyn_cast<AffineMapAttr>(actualValue)) {
+    if (isa<FeltType, IndexType, IntegerType>(restriction) &&
+        affineValue.getValue().getNumResults() == 1) {
+      return actualValue;
+    }
+    return failure();
+  }
+
   if (FeltType feltType = dyn_cast<FeltType>(restriction)) {
     if (FeltConstAttr feltValue = dyn_cast<FeltConstAttr>(actualValue)) {
       FailureOr<FeltConstAttr> materialized = feltValue.materializeAs(feltType);
@@ -976,12 +984,6 @@ materializeTemplateParamValue(Attribute actualValue, std::optional<Type> require
   if (isa<IndexType, IntegerType>(restriction)) {
     if (IntegerAttr integerValue = dyn_cast<IntegerAttr>(actualValue)) {
       if (isValidConstReadType(integerValue.getType())) {
-        return actualValue;
-      }
-      return failure();
-    }
-    if (AffineMapAttr affineValue = dyn_cast<AffineMapAttr>(actualValue)) {
-      if (affineValue.getValue().getNumResults() == 1) {
         return actualValue;
       }
       return failure();
