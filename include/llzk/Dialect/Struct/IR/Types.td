@@ -27,9 +27,9 @@ class StructDialectType<string name, string typeMnemonic,
 def LLZK_StructType : StructDialectType<"Struct", "type"> {
   let summary = "circuit component";
   let description = [{
-    Type of a `struct.def` instance. For definitions that contain template parameters,
-    the type must contain a list of attributes that instantiate the template
-    parameters, one per parameter. Each attribute must be one of the following:
+    Type of a `struct.def` instance. For definitions with template parameters,
+    an optional argument list instantiates every parameter in declaration order.
+    Each argument must be one of the following:
       - IntegerAttr (with IndexType), specifying a fixed parameter value; the
         wildcard (`?`) is not allowed
       - FeltConstAttr, specifying a finite-field parameter value.
