@@ -1,0 +1,2 @@
+fixed:
+  - Enforce struct template parameter restrictions, rejecting affine arguments to felt-restricted parameters and accepting fieldless felt constants or integers in the required field
