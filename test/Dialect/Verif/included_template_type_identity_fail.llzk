@@ -25,11 +25,11 @@ module attributes {llzk.lang} {
       poly.param @T : !poly.tvar<@T>
 
       struct.def @Box {
-        function.def @compute() -> !struct.type<@Target::@Box<[@T]>> {
-          %self = struct.new : !struct.type<@Target::@Box<[@T]>>
-          function.return %self : !struct.type<@Target::@Box<[@T]>>
+        function.def @compute() -> !struct.type<@Local::@Target::@Box<[@T]>> {
+          %self = struct.new : !struct.type<@Local::@Target::@Box<[@T]>>
+          function.return %self : !struct.type<@Local::@Target::@Box<[@T]>>
         }
-        function.def @constrain(%self: !struct.type<@Target::@Box<[@T]>>) {
+        function.def @constrain(%self: !struct.type<@Local::@Target::@Box<[@T]>>) {
           function.return
         }
       }
@@ -38,7 +38,7 @@ module attributes {llzk.lang} {
         function.return
       }
 
-      verif.contract @Base for @Target::@accept (
+      verif.contract @Base for @Local::@Target::@accept (
           %value: !struct.type<@Target::@Box<[@T]>>
       ) {
         %ok = arith.constant true
