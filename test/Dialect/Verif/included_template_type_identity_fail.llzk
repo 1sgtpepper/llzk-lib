@@ -19,31 +19,14 @@ module attributes {llzk.lang} {
     }
   }
 
-  // A local ModuleOp also contributes a type namespace, but it is not an included target.
+  // ModuleOp path components contribute to the type namespace without making the target included.
   module @Local {
-    poly.template @Target {
-      poly.param @T : !poly.tvar<@T>
-
-      struct.def @Box {
-        function.def @compute() -> !struct.type<@Local::@Target::@Box<[@T]>> {
-          %self = struct.new : !struct.type<@Local::@Target::@Box<[@T]>>
-          function.return %self : !struct.type<@Local::@Target::@Box<[@T]>>
-        }
-        function.def @constrain(%self: !struct.type<@Local::@Target::@Box<[@T]>>) {
-          function.return
-        }
-      }
-
-      function.def @accept(%value: !struct.type<@Target::@Box<[@T]>>) {
-        function.return
-      }
-
-      verif.contract @Base for @Local::@Target::@accept (
-          %value: !struct.type<@Target::@Box<[@T]>>
-      ) {
-        %ok = arith.constant true
-        verif.ensure_compute %ok
-      }
+    function.def @accept(%value: index) {
+      function.return
+    }
+    verif.contract @Base for @accept (%value: index) {
+      %ok = arith.constant true
+      verif.ensure_compute %ok
     }
   }
 
@@ -61,17 +44,13 @@ module attributes {llzk.lang} {
       verif.include @Lib::@Target::@Base<[@T]>(%value) :
           (!struct.type<@Target::@Box<[@T]>>) -> ()
     }
+  }
 
-    function.def @reject_local_module(%value: !struct.type<@Target::@Box<[@T]>>) {
-      function.return
-    }
-
-    verif.contract @RejectLocalModule for @Caller::@reject_local_module (
-        %value: !struct.type<@Target::@Box<[@T]>>
-    ) {
-      // expected-error@+1 {{'verif.include' op operand type mismatch: expected type '!struct.type<@Target::@Box<[@T]>>', but found '!struct.type<@Target::@Box<[@T]>>' for operand number 0}}
-      verif.include @Local::@Target::@Base<[@T]>(%value) :
-          (!struct.type<@Target::@Box<[@T]>>) -> ()
-    }
+  function.def @reject_local_module(%value: !felt.type) {
+    function.return
+  }
+  verif.contract @RejectLocalModule for @reject_local_module (%value: !felt.type) {
+    // expected-error@+1 {{'verif.include' op operand type mismatch: expected type 'index', but found '!felt.type' for operand number 0}}
+    verif.include @Local::@Base(%value) : (!felt.type) -> ()
   }
 }
