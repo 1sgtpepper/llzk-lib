@@ -19,12 +19,40 @@ module attributes {llzk.lang} {
     }
   }
 
+  // A local ModuleOp also contributes a type namespace, but it is not an included target.
+  module @Local {
+    poly.template @Target {
+      poly.param @T : !poly.tvar<@T>
+
+      struct.def @Box {
+        function.def @compute() -> !struct.type<@Target::@Box<[@T]>> {
+          %self = struct.new : !struct.type<@Target::@Box<[@T]>>
+          function.return %self : !struct.type<@Target::@Box<[@T]>>
+        }
+        function.def @constrain(%self: !struct.type<@Target::@Box<[@T]>>) {
+          function.return
+        }
+      }
+
+      function.def @accept(%value: !struct.type<@Target::@Box<[@T]>>) {
+        function.return
+      }
+    }
+  }
+
   poly.template @Caller {
     poly.param @T : !poly.tvar<@T>
 
     function.def @reject_local_box(%value: !struct.type<@Target::@Box<[@T]>>) {
       // expected-error@+1 {{'function.call' op operand type mismatch: expected type '!struct.type<@Target::@Box<[@T]>>' from included target "@Lib::@Target::@accept", but found '!struct.type<@Target::@Box<[@T]>>' for operand number 0}}
       function.call @Lib::@Target::@accept(%value) :
+          (!struct.type<@Target::@Box<[@T]>>) -> ()
+      function.return
+    }
+
+    function.def @reject_local_module(%value: !struct.type<@Target::@Box<[@T]>>) {
+      // expected-error@+1 {{'function.call' op operand type mismatch: expected type '!struct.type<@Target::@Box<[@T]>>', but found '!struct.type<@Target::@Box<[@T]>>' for operand number 0}}
+      function.call @Local::@Target::@accept(%value) :
           (!struct.type<@Target::@Box<[@T]>>) -> ()
       function.return
     }
