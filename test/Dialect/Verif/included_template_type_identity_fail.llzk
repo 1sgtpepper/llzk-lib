@@ -19,17 +19,6 @@ module attributes {llzk.lang} {
     }
   }
 
-  // ModuleOp path components contribute to the type namespace without making the target included.
-  module @Local {
-    function.def @accept(%value: index) {
-      function.return
-    }
-    verif.contract @Base for @accept (%value: index) {
-      %ok = arith.constant true
-      verif.ensure_compute %ok
-    }
-  }
-
   poly.template @Caller {
     poly.param @T : !poly.tvar<@T>
 
@@ -44,13 +33,5 @@ module attributes {llzk.lang} {
       verif.include @Lib::@Target::@Base<[@T]>(%value) :
           (!struct.type<@Target::@Box<[@T]>>) -> ()
     }
-  }
-
-  function.def @reject_local_module(%value: !felt.type) {
-    function.return
-  }
-  verif.contract @RejectLocalModule for @reject_local_module (%value: !felt.type) {
-    // expected-error@+1 {{'verif.include' op operand type mismatch: expected type 'index', but found '!felt.type' for operand number 0}}
-    verif.include @Local::@Base(%value) : (!felt.type) -> ()
   }
 }

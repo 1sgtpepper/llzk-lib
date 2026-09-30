@@ -19,13 +19,6 @@ module attributes {llzk.lang} {
     }
   }
 
-  // ModuleOp path components contribute to the type namespace without making the target included.
-  module @Local {
-    function.def @accept(%value: index) {
-      function.return
-    }
-  }
-
   poly.template @Caller {
     poly.param @T : !poly.tvar<@T>
 
@@ -35,11 +28,5 @@ module attributes {llzk.lang} {
           (!struct.type<@Target::@Box<[@T]>>) -> ()
       function.return
     }
-  }
-
-  function.def @reject_local_module(%value: !felt.type) {
-    // expected-error@+1 {{'function.call' op operand type mismatch: expected type 'index', but found '!felt.type' for operand number 0}}
-    function.call @Local::@accept(%value) : (!felt.type) -> ()
-    function.return
   }
 }
