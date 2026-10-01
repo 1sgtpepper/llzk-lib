@@ -109,6 +109,8 @@ TEST_F(TypeHelperTests, test_structTypesUnify) {
   ASSERT_TRUE(structTypesUnify(a, b));
 }
 
+// Equal raw types can resolve to different symbols under the RHS namespace, including when nested
+// in TypeAttr parameters.
 TEST_F(TypeHelperTests, test_typesUnify_equalRecursiveTypesRespectRhsPrefix) {
   SymbolRefAttr targetBoxName = SymbolRefAttr::get(
       &ctx, "Target", ArrayRef<FlatSymbolRefAttr> {FlatSymbolRefAttr::get(&ctx, "Box")}
