@@ -1,6 +1,6 @@
 // RUN: llzk-opt -split-input-file %s | FileCheck %s
 
-// A fieldless concrete felt can be materialized in the required field.
+// A fieldless concrete felt satisfies a fielded restriction.
 module attributes {llzk.lang, llzk.main = !struct.type<@T::@S<[#felt<const 35>]>>} {
   poly.template @T {
     poly.param @N : !felt.type<"bn128">
@@ -96,7 +96,7 @@ module attributes {llzk.lang, llzk.main = !struct.type<@T::@S<[#felt<const 35 : 
 // -----
 
 
-// An integer argument can also be materialized in the required field.
+// An integer argument also satisfies a fielded felt restriction.
 module attributes {llzk.lang, llzk.main = !struct.type<@T::@S<[35]>>} {
   poly.template @T {
     poly.param @N : !felt.type<"bn128">
