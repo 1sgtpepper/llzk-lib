@@ -1,0 +1,35 @@
+// RUN: llzk-opt -verify-diagnostics %s
+
+// Typed symbols with the required field remain valid struct arguments.
+module attributes {llzk.lang} {
+  global.def const @GlobalValue : !felt.type<"bn128"> = 35
+
+  poly.template @T {
+    poly.param @N : !felt.type<"bn128">
+
+    struct.def @S {
+      function.def @compute() -> !struct.type<@T::@S<[@N]>> {
+        %self = struct.new : !struct.type<@T::@S<[@N]>>
+        function.return %self : !struct.type<@T::@S<[@N]>>
+      }
+      function.def @constrain(%self: !struct.type<@T::@S<[@N]>>) { function.return }
+    }
+  }
+
+  poly.template @Caller {
+    poly.param @LocalValue : !felt.type<"bn128">
+
+    struct.def @Use {
+      struct.member @from_global : !struct.type<@T::@S<[@GlobalValue]>>
+      struct.member @from_binding : !struct.type<@T::@S<[@LocalValue]>>
+
+      function.def @compute() -> !struct.type<@Caller::@Use<[@LocalValue]>> {
+        %self = struct.new : !struct.type<@Caller::@Use<[@LocalValue]>>
+        function.return %self : !struct.type<@Caller::@Use<[@LocalValue]>>
+      }
+      function.def @constrain(%self: !struct.type<@Caller::@Use<[@LocalValue]>>) {
+        function.return
+      }
+    }
+  }
+}

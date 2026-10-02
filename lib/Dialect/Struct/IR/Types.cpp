@@ -11,6 +11,7 @@
 
 #include "llzk/Dialect/Polymorphic/IR/Ops.h"
 #include "llzk/Dialect/Struct/IR/Ops.h"
+#include "llzk/Util/SymbolHelper.h"
 #include "llzk/Util/TypeHelper.h"
 
 using namespace mlir;
@@ -56,7 +57,13 @@ FailureOr<SymbolLookupResult<StructDefOp>> StructType::getDefinition(
       for (auto [paramOp, value] :
            llvm::zip_equal(parent.getConstOps<TemplateParamOp>(), typeParams.getValue())) {
         std::optional<Type> restriction = paramOp.getTypeOpt();
-        if (!restriction || llvm::isa<SymbolRefAttr>(value)) {
+        if (!restriction) {
+          continue;
+        }
+        if (llvm::isa<SymbolRefAttr>(value)) {
+          if (failed(verifyTemplateParamValueCompatibility(op, value, paramOp))) {
+            return failure();
+          }
           continue;
         }
         if (failed(materializeTemplateParamValue(value, restriction))) {

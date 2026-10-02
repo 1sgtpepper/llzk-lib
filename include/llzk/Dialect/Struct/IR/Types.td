@@ -38,9 +38,9 @@ def LLZK_StructType : StructDialectType<"Struct", "type"> {
       - AffineMapAttr, for a varying parameter with no restriction or an index or
         integer restriction.
       - TypeAttr, for specifying a type parameter.
-    Concrete arguments must satisfy the declared type restriction. A fieldless felt
-    constant or integer can satisfy a fielded restriction; an explicitly different
-    field fails.
+    Arguments with known types must satisfy the declared type restriction. A
+    fieldless felt constant or integer can satisfy a fielded restriction; a symbol
+    with a known field must match it.
 
     ```llzk
     // Type for struct `A` with no parameters.

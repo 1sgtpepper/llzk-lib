@@ -30,6 +30,76 @@ module attributes {llzk.lang} {
     }
   }
 }
+
+// -----
+
+// A constant global's declared field must satisfy the struct parameter restriction.
+module attributes {llzk.lang} {
+  global.def const @WrongField : !felt.type<"goldilocks"> = 35
+
+  poly.template @T {
+    poly.param @N : !felt.type<"bn128">
+
+    struct.def @S {
+      function.def @compute() -> !struct.type<@T::@S<[@N]>> {
+        %self = struct.new : !struct.type<@T::@S<[@N]>>
+        function.return %self : !struct.type<@T::@S<[@N]>>
+      }
+      function.def @constrain(%self: !struct.type<@T::@S<[@N]>>) { function.return }
+    }
+  }
+
+  struct.def @Use {
+    // expected-error@+1 {{'struct.member' op instantiation value '@WrongField' is not compatible with parameter "@N" type restriction '!felt.type<"bn128">'}}
+    struct.member @value : !struct.type<@T::@S<[@WrongField]>>
+
+    function.def @compute() -> !struct.type<@Use> {
+      %self = struct.new : !struct.type<@Use>
+      function.return %self : !struct.type<@Use>
+    }
+    function.def @constrain(%self: !struct.type<@Use>) { function.return }
+  }
+}
+
+// -----
+
+// Typed enclosing template bindings must satisfy the struct parameter restriction.
+module attributes {llzk.lang} {
+  poly.template @T {
+    poly.param @N : !felt.type<"bn128">
+
+    struct.def @S {
+      function.def @compute() -> !struct.type<@T::@S<[@N]>> {
+        %self = struct.new : !struct.type<@T::@S<[@N]>>
+        function.return %self : !struct.type<@T::@S<[@N]>>
+      }
+      function.def @constrain(%self: !struct.type<@T::@S<[@N]>>) { function.return }
+    }
+  }
+
+  poly.template @Caller {
+    poly.param @WrongField : !felt.type<"goldilocks">
+    poly.expr @WrongExpression {
+      %value = felt.const 35 : !felt.type<"goldilocks">
+      poly.yield %value : !felt.type<"goldilocks">
+    }
+
+    struct.def @Use {
+      // expected-error@+1 {{'struct.member' op instantiation value '@WrongField' is not compatible with parameter "@N" type restriction '!felt.type<"bn128">'}}
+      struct.member @value : !struct.type<@T::@S<[@WrongField]>>
+      // expected-error@+1 {{'struct.member' op instantiation value '@WrongExpression' is not compatible with parameter "@N" type restriction '!felt.type<"bn128">'}}
+      struct.member @expression : !struct.type<@T::@S<[@WrongExpression]>>
+
+      function.def @compute() -> !struct.type<@Caller::@Use<[@WrongField]>> {
+        %self = struct.new : !struct.type<@Caller::@Use<[@WrongField]>>
+        function.return %self : !struct.type<@Caller::@Use<[@WrongField]>>
+      }
+      function.def @constrain(%self: !struct.type<@Caller::@Use<[@WrongField]>>) {
+        function.return
+      }
+    }
+  }
+}
 // -----
 module attributes {llzk.lang} {
   poly.template @TComponentB1 {
