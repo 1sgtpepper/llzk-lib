@@ -30,8 +30,8 @@ bool isCompatibleTemplateArgument(Attribute value, Type restriction) {
     return isa<TypeAttr>(value);
   }
 
-  if (AffineMapAttr map = dyn_cast<AffineMapAttr>(value)) {
-    return isa<IndexType, IntegerType>(restriction) && map.getValue().getNumResults() == 1;
+  if (isa<AffineMapAttr>(value)) {
+    return isa<IndexType, IntegerType>(restriction);
   }
 
   if (felt::FeltType feltType = dyn_cast<felt::FeltType>(restriction)) {
