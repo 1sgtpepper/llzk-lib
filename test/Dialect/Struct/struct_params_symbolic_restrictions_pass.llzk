@@ -1,4 +1,4 @@
-// RUN: llzk-opt -verify-diagnostics %s
+// RUN: llzk-opt -verify-diagnostics %s | FileCheck %s
 
 // Typed symbols with the required field remain valid struct arguments.
 module attributes {llzk.lang} {
@@ -35,3 +35,35 @@ module attributes {llzk.lang} {
     }
   }
 }
+
+// CHECK-LABEL: module attributes {llzk.lang} {
+// CHECK-NEXT:    global.def const @GlobalValue : !felt.type<"bn128"> =  35 : <"bn128">
+// CHECK-NEXT:    poly.template @T {
+// CHECK-NEXT:      poly.param @N : !felt.type<"bn128">
+// CHECK-NEXT:      struct.def @S {
+// CHECK-NEXT:        function.def @compute() -> !struct.type<@T::@S<[@N]>> attributes {function.allow_witness} {
+// CHECK-NEXT:          %[[VAL_0:[0-9a-zA-Z_\.]+]] = struct.new : <@T::@S<[@N]>>
+// CHECK-NEXT:          function.return %[[VAL_0]] : !struct.type<@T::@S<[@N]>>
+// CHECK-NEXT:        }
+// CHECK-NEXT:        function.def @constrain(%[[VAL_1:[0-9a-zA-Z_\.]+]]: !struct.type<@T::@S<[@N]>>) attributes {function.allow_constraint} {
+// CHECK-NEXT:          function.return
+// CHECK-NEXT:        }
+// CHECK-NEXT:      }
+// CHECK-NEXT:    }
+// CHECK-NEXT:    poly.template @Caller {
+// CHECK-NEXT:      poly.param @LocalValue : !felt.type<"bn128">
+// CHECK-NEXT:      poly.param @DeferredValue
+// CHECK-NEXT:      struct.def @Use {
+// CHECK-NEXT:        struct.member @from_global : !struct.type<@T::@S<[@GlobalValue]>>
+// CHECK-NEXT:        struct.member @from_binding : !struct.type<@T::@S<[@LocalValue]>>
+// CHECK-NEXT:        struct.member @from_deferred_binding : !struct.type<@T::@S<[@DeferredValue]>>
+// CHECK-NEXT:        function.def @compute() -> !struct.type<@Caller::@Use<[@LocalValue, @DeferredValue]>> attributes {function.allow_witness} {
+// CHECK-NEXT:          %[[VAL_2:[0-9a-zA-Z_\.]+]] = struct.new : <@Caller::@Use<[@LocalValue, @DeferredValue]>>
+// CHECK-NEXT:          function.return %[[VAL_2]] : !struct.type<@Caller::@Use<[@LocalValue, @DeferredValue]>>
+// CHECK-NEXT:        }
+// CHECK-NEXT:        function.def @constrain(%[[VAL_3:[0-9a-zA-Z_\.]+]]: !struct.type<@Caller::@Use<[@LocalValue, @DeferredValue]>>) attributes {function.allow_constraint} {
+// CHECK-NEXT:          function.return
+// CHECK-NEXT:        }
+// CHECK-NEXT:      }
+// CHECK-NEXT:    }
+// CHECK-NEXT:  }

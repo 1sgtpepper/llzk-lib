@@ -800,6 +800,90 @@ module attributes {llzk.lang, llzk.main = !struct.type<@T::@S<[35]>>} {
 
 // -----
 
+// A constant global is a value, even when passed by symbol to a type-only parameter.
+module attributes {llzk.lang} {
+  module @globals {
+    global.def const @Value : index = 35
+  }
+  poly.template @T {
+    poly.param @Ty : !poly.tvar<@Ty>
+    struct.def @S {
+      function.def @compute() -> !struct.type<@T::@S<[@Ty]>> {
+        %self = struct.new : !struct.type<@T::@S<[@Ty]>>
+        function.return %self : !struct.type<@T::@S<[@Ty]>>
+      }
+      function.def @constrain(%self: !struct.type<@T::@S<[@Ty]>>) { function.return }
+    }
+  }
+  struct.def @Use {
+    // expected-error@+1 {{instantiation value '@globals::@Value' is not compatible with parameter "@Ty" type restriction '!poly.tvar<@Ty>'}}
+    struct.member @value : !struct.type<@T::@S<[@globals::@Value]>>
+    function.def @compute() -> !struct.type<@Use> {
+      %self = struct.new : !struct.type<@Use>
+      function.return %self : !struct.type<@Use>
+    }
+    function.def @constrain(%self: !struct.type<@Use>) { function.return }
+  }
+}
+
+// -----
+
+// A value-valued template binding cannot instantiate a type-only parameter.
+module attributes {llzk.lang} {
+  poly.template @T {
+    poly.param @Ty : !poly.tvar<@Ty>
+    struct.def @S {
+      function.def @compute() -> !struct.type<@T::@S<[@Ty]>> {
+        %self = struct.new : !struct.type<@T::@S<[@Ty]>>
+        function.return %self : !struct.type<@T::@S<[@Ty]>>
+      }
+      function.def @constrain(%self: !struct.type<@T::@S<[@Ty]>>) { function.return }
+    }
+  }
+  poly.template @Caller {
+    poly.param @Value : index
+    struct.def @Use {
+      // expected-error@+1 {{instantiation value '@Value' is not compatible with parameter "@Ty" type restriction '!poly.tvar<@Ty>'}}
+      struct.member @value : !struct.type<@T::@S<[@Value]>>
+      function.def @compute() -> !struct.type<@Caller::@Use<[@Value]>> {
+        %self = struct.new : !struct.type<@Caller::@Use<[@Value]>>
+        function.return %self : !struct.type<@Caller::@Use<[@Value]>>
+      }
+      function.def @constrain(%self: !struct.type<@Caller::@Use<[@Value]>>) { function.return }
+    }
+  }
+}
+
+// -----
+
+// A type-valued template binding cannot instantiate a felt value parameter.
+module attributes {llzk.lang} {
+  poly.template @T {
+    poly.param @N : !felt.type<"bn128">
+    struct.def @S {
+      function.def @compute() -> !struct.type<@T::@S<[@N]>> {
+        %self = struct.new : !struct.type<@T::@S<[@N]>>
+        function.return %self : !struct.type<@T::@S<[@N]>>
+      }
+      function.def @constrain(%self: !struct.type<@T::@S<[@N]>>) { function.return }
+    }
+  }
+  poly.template @Caller {
+    poly.param @Ty : !poly.tvar<@Ty>
+    struct.def @Use {
+      // expected-error@+1 {{instantiation value '@Ty' is not compatible with parameter "@N" type restriction '!felt.type<"bn128">'}}
+      struct.member @value : !struct.type<@T::@S<[@Ty]>>
+      function.def @compute() -> !struct.type<@Caller::@Use<[@Ty]>> {
+        %self = struct.new : !struct.type<@Caller::@Use<[@Ty]>>
+        function.return %self : !struct.type<@Caller::@Use<[@Ty]>>
+      }
+      function.def @constrain(%self: !struct.type<@Caller::@Use<[@Ty]>>) { function.return }
+    }
+  }
+}
+
+// -----
+
 // A TypeAttr cannot instantiate an index parameter.
 // expected-error@+1 {{instantiation value '!felt.type' is not compatible with parameter "@N" type restriction 'index'}}
 module attributes {llzk.lang, llzk.main = !struct.type<@T::@S<[!felt.type]>>} {
