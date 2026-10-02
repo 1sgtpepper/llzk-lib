@@ -9,6 +9,8 @@
 
 #include "llzk/Dialect/Struct/IR/Types.h"
 
+#include "llzk/Dialect/Felt/IR/Attrs.h"
+#include "llzk/Dialect/Felt/IR/Types.h"
 #include "llzk/Dialect/Polymorphic/IR/Ops.h"
 #include "llzk/Dialect/Struct/IR/Ops.h"
 #include "llzk/Util/TypeHelper.h"
@@ -17,6 +19,40 @@ using namespace mlir;
 using namespace llzk::polymorphic;
 
 namespace llzk::component {
+
+namespace {
+
+/// Check a concrete struct argument against its declared restriction. Deferred affine maps are
+/// valid only for integer-like restrictions; a fieldless felt value can take a required field.
+bool isCompatibleTemplateArgument(Attribute value, Type restriction) {
+  if (isa<TypeVarType>(restriction)) {
+    return isa<TypeAttr>(value);
+  }
+
+  if (AffineMapAttr map = dyn_cast<AffineMapAttr>(value)) {
+    return isa<IndexType, IntegerType>(restriction) && map.getValue().getNumResults() == 1;
+  }
+
+  if (felt::FeltType feltType = dyn_cast<felt::FeltType>(restriction)) {
+    if (felt::FeltConstAttr feltValue = dyn_cast<felt::FeltConstAttr>(value)) {
+      felt::FeltType valueType = feltValue.getType();
+      return !feltType.hasField() || !valueType.hasField() || valueType == feltType;
+    }
+    if (IntegerAttr integerValue = dyn_cast<IntegerAttr>(value)) {
+      return isValidConstReadType(integerValue.getType());
+    }
+    return false;
+  }
+
+  if (isa<IndexType, IntegerType>(restriction)) {
+    if (IntegerAttr integerValue = dyn_cast<IntegerAttr>(value)) {
+      return isValidConstReadType(integerValue.getType());
+    }
+  }
+  return false;
+}
+
+} // namespace
 
 LogicalResult StructType::verify(
     function_ref<InFlightDiagnostic()> emitError, SymbolRefAttr /*nameRef*/, ArrayAttr params
@@ -59,7 +95,7 @@ FailureOr<SymbolLookupResult<StructDefOp>> StructType::getDefinition(
         if (!restriction || llvm::isa<SymbolRefAttr>(value)) {
           continue;
         }
-        if (failed(materializeTemplateParamValue(value, restriction))) {
+        if (!isCompatibleTemplateArgument(value, *restriction)) {
           return op->emitError() << "instantiation value '" << value
                                  << "' is not compatible with parameter \"@" << paramOp.getName()
                                  << "\" type restriction " << *restriction;

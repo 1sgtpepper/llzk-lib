@@ -18,15 +18,4 @@ StringAttr FeltConstAttr::getFieldName() const {
   return ft ? ft.getFieldName() : StringAttr();
 }
 
-FailureOr<FeltConstAttr> FeltConstAttr::materializeAs(FeltType expectedType) const {
-  if (!expectedType.hasField()) {
-    return *this;
-  }
-  FeltType valueType = getType();
-  if (valueType.hasField() && valueType != expectedType) {
-    return failure();
-  }
-  return FeltConstAttr::get(getContext(), getValue(), expectedType);
-}
-
 } // namespace llzk::felt
