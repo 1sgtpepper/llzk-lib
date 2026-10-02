@@ -253,7 +253,7 @@ module attributes {llzk.lang} {
   }
 
   poly.template @TExplicitForeignSymbolConflictCaller {
-    poly.param @N : index
+    poly.param @N : !poly.tvar<@N>
 
     function.def @forward(%arg: !felt.type) -> !felt.type {
       // expected-error@+1 {{explicit template argument for inferred parameter @T must match inferred type '!felt.type', but found @N}}
