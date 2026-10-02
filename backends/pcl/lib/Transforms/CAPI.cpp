@@ -2,7 +2,7 @@
 //
 // Part of the LLZK Project, under the Apache License v2.0.
 // See LICENSE.txt for license information.
-// Copyright 2025 Veridise Inc.
+// Copyright 2026 Project LLZK
 // SPDX-License-Identifier: Apache-2.0
 //
 //===----------------------------------------------------------------------===//
@@ -12,7 +12,7 @@
 ///
 //===----------------------------------------------------------------------===//
 
-#include "pcl/Conversion/ConversionPasses.h" // IWYU pragma: keep
+#include "pcl/Transforms/TransformationPasses.h" // IWYU pragma: keep
 
 #include "llzk-c/Target/PCL.h"
 
@@ -20,4 +20,7 @@
 
 using namespace pcl;
 
-#include "pcl/Conversion/ConversionPasses.capi.cpp.inc"
+/// Adapt the C API group name to the C++ transformation pass registration function.
+static inline void registerPCLTransformationPasses() { registerTransformationPasses(); }
+
+#include "pcl/Transforms/TransformationPasses.capi.cpp.inc"

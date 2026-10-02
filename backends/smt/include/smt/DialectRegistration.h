@@ -8,7 +8,7 @@
 //===----------------------------------------------------------------------===//
 //
 /// \file
-/// Declares dialect and pass registration functions for PCL backend.
+/// Declares dialect and pass registration functions for SMT backend.
 //
 //===----------------------------------------------------------------------===//
 
@@ -18,12 +18,13 @@ namespace mlir {
 class DialectRegistry;
 } // namespace mlir
 
-namespace pcl {
+namespace llzk::smt {
 
-/// Register the PCL and MLIR func dialects in \p registry.
+/// Register the MLIR smt and LLZK smt_info metadata dialects in \p registry.
 void registerDialects(mlir::DialectRegistry &registry);
 
-/// Register PCL conversion and transformation passes in the global pass registry.
+/// Register SMT conversion passes in the global pass registry.
+/// Add the MLIR func inlining extension to \p registry for SMT lowering.
 void registerPasses(mlir::DialectRegistry &registry);
 
-} // namespace pcl
+} // namespace llzk::smt
