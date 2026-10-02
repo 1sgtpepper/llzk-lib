@@ -485,10 +485,9 @@ LogicalResult verifyTemplateParamValueCompatibility(
           std::optional<Type> bindingType = binding.getTypeOpt();
           // Type variables unify with value types, but type-only and value parameters
           // must not exchange symbolic arguments.
-          compatible = !bindingType ||
-                       (llvm::isa<TypeVarType>(*bindingType) ==
-                            llvm::isa<TypeVarType>(*declaredType) &&
-                        typesUnify(*bindingType, *declaredType));
+          compatible = !bindingType || (llvm::isa<TypeVarType>(*bindingType) ==
+                                            llvm::isa<TypeVarType>(*declaredType) &&
+                                        typesUnify(*bindingType, *declaredType));
         }
       }
     }
@@ -502,8 +501,8 @@ LogicalResult verifyTemplateParamValueCompatibility(
       }
       auto global = llvm::cast<GlobalDefOp>(lookupRes->get());
       assert(global.isConstant() && "already verified by verifyTemplateParamSymbol");
-      compatible = !llvm::isa<TypeVarType>(*declaredType) &&
-                   typesUnify(global.getType(), *declaredType);
+      compatible =
+          !llvm::isa<TypeVarType>(*declaredType) && typesUnify(global.getType(), *declaredType);
     }
     if (!compatible) {
       return origin->emitOpError().append(
