@@ -664,6 +664,15 @@ verifyStructTypeResolution(SymbolTableCollection &tables, StructType ty, Operati
   }
   // If there are any SymbolRefAttr parameters on the StructType, ensure those refs are valid.
   if (ArrayAttr tyParams = ty.getParams()) {
+    if (TemplateOp parent = defForType.getParentOfType<TemplateOp>()) {
+      for (auto [targetParam, value] :
+           llvm::zip_equal(parent.getConstOps<TemplateParamOp>(), tyParams.getValue())) {
+        if (targetParam.getTypeOpt() && llvm::isa<SymbolRefAttr>(value) &&
+            failed(verifyTemplateParamValueCompatibility(origin, value, targetParam))) {
+          return failure();
+        }
+      }
+    }
     if (failed(verifyParamsOfType(tables, tyParams.getValue(), ty, origin))) {
       return failure(); // verifyParamsOfType() already emits a sufficient error message
     }
