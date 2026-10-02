@@ -74,9 +74,9 @@ def LLZK_FeltConstAttr
     /// if no type is stored.
     ::mlir::StringAttr getFieldName() const;
 
-    /// Return a new constant with a compatible materialized type; this attribute is not mutated.
-    /// A fieldless expected type preserves an explicit field, while a fielded expected type is
-    /// applied to a fieldless constant. Materialization fails only when both fields differ.
+    /// Return a compatible constant; this attribute is not mutated. A fieldless expected type
+    /// returns the original constant, while a fielded expected type is applied to a fieldless
+    /// constant. Materialization fails only when both fields differ.
     ::mlir::FailureOr<FeltConstAttr> materializeAs(FeltType expectedType) const;
   }];
 }

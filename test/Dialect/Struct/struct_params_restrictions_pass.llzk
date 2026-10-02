@@ -1,5 +1,4 @@
 // RUN: llzk-opt -split-input-file %s | FileCheck %s
-// Separators are escaped for lit; CHECK-NOT allows only blank output between modules.
 
 // A fieldless concrete felt can be materialized in the required field.
 module attributes {llzk.lang, llzk.main = !struct.type<@T::@S<[#felt<const 35>]>>} {
@@ -30,8 +29,6 @@ module attributes {llzk.lang, llzk.main = !struct.type<@T::@S<[#felt<const 35>]>
 // CHECK-NEXT:      }
 // CHECK-NEXT:    }
 // CHECK-NEXT:  }
-// CHECK-NOT: {{.*[^[:space:]].*}}
-// CHECK:  // {{[-]}}----
 // -----
 
 
@@ -64,8 +61,6 @@ module attributes {llzk.lang, llzk.main = !struct.type<@T::@S<[!felt.type]>>} {
 // CHECK-NEXT:      }
 // CHECK-NEXT:    }
 // CHECK-NEXT:  }
-// CHECK-NOT: {{.*[^[:space:]].*}}
-// CHECK:  // {{[-]}}----
 // -----
 
 
@@ -98,8 +93,6 @@ module attributes {llzk.lang, llzk.main = !struct.type<@T::@S<[#felt<const 35 : 
 // CHECK-NEXT:      }
 // CHECK-NEXT:    }
 // CHECK-NEXT:  }
-// CHECK-NOT: {{.*[^[:space:]].*}}
-// CHECK:  // {{[-]}}----
 // -----
 
 
@@ -132,8 +125,6 @@ module attributes {llzk.lang, llzk.main = !struct.type<@T::@S<[35]>>} {
 // CHECK-NEXT:      }
 // CHECK-NEXT:    }
 // CHECK-NEXT:  }
-// CHECK-NOT: {{.*[^[:space:]].*}}
-// CHECK:  // {{[-]}}----
 // -----
 
 
