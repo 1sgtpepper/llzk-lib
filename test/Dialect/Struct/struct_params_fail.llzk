@@ -856,6 +856,41 @@ module attributes {llzk.lang} {
 
 // -----
 
+// A template expression is a value even when its result has a type-variable type.
+module attributes {llzk.lang} {
+  poly.template @T {
+    poly.param @Ty : !poly.tvar<@Ty>
+    struct.def @S {
+      function.def @compute() -> !struct.type<@T::@S<[@Ty]>> {
+        %self = struct.new : !struct.type<@T::@S<[@Ty]>>
+        function.return %self : !struct.type<@T::@S<[@Ty]>>
+      }
+      function.def @constrain(%self: !struct.type<@T::@S<[@Ty]>>) { function.return }
+    }
+  }
+  poly.template @Caller {
+    poly.param @Unknown
+    poly.param @Ty : !poly.tvar<@Ty>
+    poly.expr @Value {
+      %value = poly.read_const @Unknown : !poly.tvar<@Ty>
+      poly.yield %value : !poly.tvar<@Ty>
+    }
+    struct.def @Use {
+      // expected-error@+1 {{instantiation value '@Value' is not compatible with parameter "@Ty" type restriction '!poly.tvar<@Ty>'}}
+      struct.member @value : !struct.type<@T::@S<[@Value]>>
+      function.def @compute() -> !struct.type<@Caller::@Use<[@Unknown, @Ty]>> {
+        %self = struct.new : !struct.type<@Caller::@Use<[@Unknown, @Ty]>>
+        function.return %self : !struct.type<@Caller::@Use<[@Unknown, @Ty]>>
+      }
+      function.def @constrain(%self: !struct.type<@Caller::@Use<[@Unknown, @Ty]>>) {
+        function.return
+      }
+    }
+  }
+}
+
+// -----
+
 // A type-valued template binding cannot instantiate a felt value parameter.
 module attributes {llzk.lang} {
   poly.template @T {

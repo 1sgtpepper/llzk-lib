@@ -483,10 +483,10 @@ LogicalResult verifyTemplateParamValueCompatibility(
         if (binding) {
           resolvedLocal = true;
           std::optional<Type> bindingType = binding.getTypeOpt();
-          // Type variables unify with value types, but type-only and value parameters
-          // must not exchange symbolic arguments.
-          compatible = !bindingType || (llvm::isa<TypeVarType>(*bindingType) ==
-                                            llvm::isa<TypeVarType>(*declaredType) &&
+          // A poly.expr is a value even if its result has a type-variable type.
+          bool typeBinding = bindingType && llvm::isa<TemplateParamOp>(binding.getOperation()) &&
+                             llvm::isa<TypeVarType>(*bindingType);
+          compatible = !bindingType || (typeBinding == llvm::isa<TypeVarType>(*declaredType) &&
                                         typesUnify(*bindingType, *declaredType));
         }
       }
