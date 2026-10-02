@@ -25,11 +25,11 @@ module attributes {llzk.lang} {
       struct.member @from_binding : !struct.type<@T::@S<[@LocalValue]>>
       struct.member @from_deferred_binding : !struct.type<@T::@S<[@DeferredValue]>>
 
-      function.def @compute() -> !struct.type<@Caller::@Use<[@LocalValue]>> {
-        %self = struct.new : !struct.type<@Caller::@Use<[@LocalValue]>>
-        function.return %self : !struct.type<@Caller::@Use<[@LocalValue]>>
+      function.def @compute() -> !struct.type<@Caller::@Use<[@LocalValue, @DeferredValue]>> {
+        %self = struct.new : !struct.type<@Caller::@Use<[@LocalValue, @DeferredValue]>>
+        function.return %self : !struct.type<@Caller::@Use<[@LocalValue, @DeferredValue]>>
       }
-      function.def @constrain(%self: !struct.type<@Caller::@Use<[@LocalValue]>>) {
+      function.def @constrain(%self: !struct.type<@Caller::@Use<[@LocalValue, @DeferredValue]>>) {
         function.return
       }
     }
