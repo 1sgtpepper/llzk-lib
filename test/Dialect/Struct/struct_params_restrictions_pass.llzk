@@ -30,7 +30,7 @@ module attributes {llzk.lang, llzk.main = !struct.type<@T::@S<[#felt<const 35>]>
 // CHECK-NEXT:      }
 // CHECK-NEXT:    }
 // CHECK-NEXT:  }
-// CHECK:  // {{[-]}}----
+// CHECK-NEXT:  // {{[-]}}----
 // -----
 
 
@@ -63,7 +63,7 @@ module attributes {llzk.lang, llzk.main = !struct.type<@T::@S<[!felt.type]>>} {
 // CHECK-NEXT:      }
 // CHECK-NEXT:    }
 // CHECK-NEXT:  }
-// CHECK:  // {{[-]}}----
+// CHECK-NEXT:  // {{[-]}}----
 // -----
 
 
@@ -96,7 +96,7 @@ module attributes {llzk.lang, llzk.main = !struct.type<@T::@S<[#felt<const 35 : 
 // CHECK-NEXT:      }
 // CHECK-NEXT:    }
 // CHECK-NEXT:  }
-// CHECK:  // {{[-]}}----
+// CHECK-NEXT:  // {{[-]}}----
 // -----
 
 
@@ -129,7 +129,7 @@ module attributes {llzk.lang, llzk.main = !struct.type<@T::@S<[35]>>} {
 // CHECK-NEXT:      }
 // CHECK-NEXT:    }
 // CHECK-NEXT:  }
-// CHECK:  // {{[-]}}----
+// CHECK-NEXT:  // {{[-]}}----
 // -----
 
 
