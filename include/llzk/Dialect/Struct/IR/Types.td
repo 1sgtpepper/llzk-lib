@@ -34,7 +34,7 @@ def LLZK_StructType : StructDialectType<"Struct", "type"> {
 
     For definitions with template parameters, an optional argument list instantiates
     every parameter in declaration order. Each argument must be one of the following:
-      - IntegerAttr (with IndexType), specifying a fixed parameter value; the
+      - IntegerAttr (with index or i1 type), specifying a fixed parameter value; the
         wildcard (`?`) is not allowed
       - FeltConstAttr, specifying a finite-field parameter value.
       - SymbolRefAttr, specifying a parameter value defined by a struct parameter
