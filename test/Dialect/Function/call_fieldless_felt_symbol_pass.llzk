@@ -1,4 +1,4 @@
-// RUN: llzk-opt -verify-diagnostics %s
+// RUN: llzk-opt -verify-diagnostics %s | FileCheck %s
 
 // A fieldless restriction accepts known-field symbols from a global or enclosing template.
 module attributes {llzk.lang} {
@@ -21,3 +21,22 @@ module attributes {llzk.lang} {
     }
   }
 }
+
+// CHECK-LABEL: module attributes {llzk.lang} {
+// CHECK-NEXT:    global.def const @GlobalValue : !felt.type<"bn128"> =  35 : <"bn128">
+// CHECK-NEXT:    poly.template @Target {
+// CHECK-NEXT:      poly.param @N : !felt.type
+// CHECK-NEXT:      function.def @id() -> index {
+// CHECK-NEXT:        %[[VAL_0:[0-9a-zA-Z_\.]+]] = arith.constant 0 : index
+// CHECK-NEXT:        function.return %[[VAL_0]] : index
+// CHECK-NEXT:      }
+// CHECK-NEXT:    }
+// CHECK-NEXT:    poly.template @Caller {
+// CHECK-NEXT:      poly.param @LocalValue : !felt.type<"bn128">
+// CHECK-NEXT:      function.def @use() -> index {
+// CHECK-NEXT:        %[[VAL_1:[0-9a-zA-Z_\.]+]] = function.call @Target::@id<[@GlobalValue]>() : () -> index
+// CHECK-NEXT:        %[[VAL_2:[0-9a-zA-Z_\.]+]] = function.call @Target::@id<[@LocalValue]>() : () -> index
+// CHECK-NEXT:        function.return %[[VAL_2]] : index
+// CHECK-NEXT:      }
+// CHECK-NEXT:    }
+// CHECK-NEXT:  }
