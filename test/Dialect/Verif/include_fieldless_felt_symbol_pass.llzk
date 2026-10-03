@@ -1,0 +1,28 @@
+// RUN: llzk-opt -verify-diagnostics %s
+
+// A fieldless restriction accepts known-field symbols in contract inclusions.
+module attributes {llzk.lang} {
+  global.def const @GlobalValue : !felt.type<"bn128"> = 35
+
+  poly.template @Spec {
+    poly.param @N : !felt.type
+    function.def @token() { function.return }
+    verif.contract @Base for @Spec::@token () {
+      %ok = arith.constant true
+      verif.ensure_compute %ok
+    }
+  }
+
+  function.def @entry() { function.return }
+  verif.contract @Wrapper for @entry () {
+    verif.include @Spec::@Base<[@GlobalValue]>() : () -> ()
+  }
+
+  poly.template @Caller {
+    poly.param @LocalValue : !felt.type<"bn128">
+    function.def @local_entry() { function.return }
+    verif.contract @LocalWrapper for @Caller::@local_entry () {
+      verif.include @Spec::@Base<[@LocalValue]>() : () -> ()
+    }
+  }
+}

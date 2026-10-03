@@ -469,8 +469,8 @@ LogicalResult verifyTemplateParamValueCompatibility(
     if (!declaredType) {
       return success();
     }
-    // A fieldless felt restriction accepts any known felt field; a fielded restriction requires
-    // the symbol to name that field. Type unification alone requires both types to be identical.
+    // A fieldless felt restriction accepts any known felt field; a known field must match a
+    // fielded restriction. Type unification alone requires both felt types to be identical.
     auto typeCompatible = [declaredType](Type sourceType) {
       if (auto targetFelt = llvm::dyn_cast<FeltType>(*declaredType)) {
         if (auto sourceFelt = llvm::dyn_cast<FeltType>(sourceType)) {

@@ -66,6 +66,18 @@ module attributes {llzk.lang} {
 // CHECK-NEXT:        }
 // CHECK-NEXT:      }
 // CHECK-NEXT:    }
+// CHECK-NEXT:    poly.template @AnyField {
+// CHECK-NEXT:      poly.param @N : !felt.type
+// CHECK-NEXT:      struct.def @S {
+// CHECK-NEXT:        function.def @compute() -> !struct.type<@AnyField::@S<[@N]>> attributes {function.allow_witness} {
+// CHECK-NEXT:          %[[VAL_2:[0-9a-zA-Z_\.]+]] = struct.new : <@AnyField::@S<[@N]>>
+// CHECK-NEXT:          function.return %[[VAL_2]] : !struct.type<@AnyField::@S<[@N]>>
+// CHECK-NEXT:        }
+// CHECK-NEXT:        function.def @constrain(%[[VAL_3:[0-9a-zA-Z_\.]+]]: !struct.type<@AnyField::@S<[@N]>>) attributes {function.allow_constraint} {
+// CHECK-NEXT:          function.return
+// CHECK-NEXT:        }
+// CHECK-NEXT:      }
+// CHECK-NEXT:    }
 // CHECK-NEXT:    poly.template @Caller {
 // CHECK-NEXT:      poly.param @LocalValue : !felt.type<"bn128">
 // CHECK-NEXT:      poly.param @DeferredValue
@@ -73,11 +85,14 @@ module attributes {llzk.lang} {
 // CHECK-NEXT:        struct.member @from_global : !struct.type<@T::@S<[@GlobalValue]>>
 // CHECK-NEXT:        struct.member @from_binding : !struct.type<@T::@S<[@LocalValue]>>
 // CHECK-NEXT:        struct.member @from_deferred_binding : !struct.type<@T::@S<[@DeferredValue]>>
+// CHECK-NEXT:        struct.member @from_concrete_any_field : !struct.type<@AnyField::@S<[#felt<const 35 : <"bn128">>]>>
+// CHECK-NEXT:        struct.member @from_global_any_field : !struct.type<@AnyField::@S<[@GlobalValue]>>
+// CHECK-NEXT:        struct.member @from_binding_any_field : !struct.type<@AnyField::@S<[@LocalValue]>>
 // CHECK-NEXT:        function.def @compute() -> !struct.type<@Caller::@Use<[@LocalValue, @DeferredValue]>> attributes {function.allow_witness} {
-// CHECK-NEXT:          %[[VAL_2:[0-9a-zA-Z_\.]+]] = struct.new : <@Caller::@Use<[@LocalValue, @DeferredValue]>>
-// CHECK-NEXT:          function.return %[[VAL_2]] : !struct.type<@Caller::@Use<[@LocalValue, @DeferredValue]>>
+// CHECK-NEXT:          %[[VAL_4:[0-9a-zA-Z_\.]+]] = struct.new : <@Caller::@Use<[@LocalValue, @DeferredValue]>>
+// CHECK-NEXT:          function.return %[[VAL_4]] : !struct.type<@Caller::@Use<[@LocalValue, @DeferredValue]>>
 // CHECK-NEXT:        }
-// CHECK-NEXT:        function.def @constrain(%[[VAL_3:[0-9a-zA-Z_\.]+]]: !struct.type<@Caller::@Use<[@LocalValue, @DeferredValue]>>) attributes {function.allow_constraint} {
+// CHECK-NEXT:        function.def @constrain(%[[VAL_5:[0-9a-zA-Z_\.]+]]: !struct.type<@Caller::@Use<[@LocalValue, @DeferredValue]>>) attributes {function.allow_constraint} {
 // CHECK-NEXT:          function.return
 // CHECK-NEXT:        }
 // CHECK-NEXT:      }
