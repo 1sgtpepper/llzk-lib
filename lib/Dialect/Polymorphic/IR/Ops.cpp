@@ -192,7 +192,7 @@ Type TemplateExprOp::getType() {
 }
 
 std::optional<Type> TemplateExprOp::getTypeOpt() {
-  // A symbol user may be verified before this expression's initializer region.
+  // A symbol user may be verified before this expression's initializer region is verified.
   Region &region = getInitializerRegion();
   if (!region.hasOneBlock() || region.front().empty()) {
     return std::nullopt;

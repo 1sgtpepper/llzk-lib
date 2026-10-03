@@ -21,9 +21,9 @@ namespace llzk::component {
 
 namespace {
 
-/// Check a concrete struct argument against its declared restriction. Deferred affine maps are
-/// valid only for integer-like restrictions; a fieldless felt value satisfies a fielded
-/// restriction. StructType::verify has already checked IntegerAttr types.
+/// Check a concrete struct argument against its declared restriction. With a restriction,
+/// affine maps are valid only for index or integer parameters; a fieldless felt constant satisfies
+/// a fielded felt restriction. StructType::verify has already checked IntegerAttr types.
 bool isCompatibleTemplateArgument(Attribute value, Type restriction) {
   if (isa<TypeVarType>(restriction)) {
     return isa<TypeAttr>(value);

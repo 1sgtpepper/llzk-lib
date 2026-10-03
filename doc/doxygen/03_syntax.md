@@ -34,7 +34,24 @@ module attributes {llzk.lang = "circom"} {
 - `index`: (MLIR builtin) Machine integer.
 - `felt.type`: Finite field element.
 - `array.type<N x E>`: Aggregate type with indexed [pseudo-homogeneous](\ref pseudo-homogeneous) elements. Element type cannot be another array type, instead multi-dimensional arrays are specified with a comma-separated list of dimension sizes. Each dimension size can be specified as an integer literal, a symbol (referring to a template parameter within a templated `struct.def`), or an [affine_map](https://mlir.llvm.org/docs/Dialects/Affine/#polyhedral-structures) (used when creating arrays within a loop where the dimension size depends on the loop iteration variable).
-- `struct.type<@Name<[...]>>`: Identity-bearing, pointer-like handle to a mutable component instance defined by `struct.def @Name`, rather than a bag of member values. Copying a struct value preserves the identity of the referenced component and does not duplicate its members, signals, or tables. Structs generally correlate to components/functions in the source language; constituent elements may be local variables, subcomponents, or called functions. For a definition in a `poly.template`, optional instantiation arguments correspond to its `poly.param` declarations in order. Arguments may be integers, felt constants, symbols, types for `poly.tvar` parameters, or [affine maps](https://mlir.llvm.org/docs/Dialects/Affine/#polyhedral-structures). Arguments with known types must satisfy the declared restriction. When a restriction is present, an affine map can remain deferred only for `index` or integer restrictions. A fieldless felt restriction accepts any known felt field. For a fielded restriction, a fieldless felt constant or integer is accepted, while a symbol with a known field must name that field.
+- `struct.type<@Name<[...]>>`: Identity-bearing, pointer-like handle to a mutable component
+  instance defined by `struct.def @Name`, rather than a bag of member values. Copying a struct
+  value preserves the identity of the referenced component and does not duplicate its members,
+  signals, or tables. Structs generally correlate to components/functions in the source language;
+  constituent elements may be local variables, subcomponents, or called functions.
+
+  For a definition in a `poly.template`, a supplied argument list has one entry per `poly.param`
+  in declaration order. Arguments may be integers, felt constants, references to template
+  bindings or constant globals, types (required by `poly.tvar` restrictions), or
+  [affine maps](https://mlir.llvm.org/docs/Dialects/Affine/#polyhedral-structures). With a
+  restriction, an affine map is allowed only for `index` or integer parameters. The wildcard `?`
+  is not a valid `struct.type` argument.
+
+  A felt restriction accepts integer arguments. A fieldless felt restriction also accepts felt
+  values with any field. A fielded felt restriction accepts fieldless felt constants; explicitly
+  fielded constants and typed felt symbols must have the matching field. A symbol typed as fieldless
+  felt cannot satisfy it; an untyped local template binding remains deferred.
+
 - `pod.type<..>`: Plain Old Data aggregate type with named heterogeneous elements. Unlike `struct.type`, there is no associated named declaration, the type itself specifies all constituent element types. It can be used more freely than `struct.type` since it has fewer restrictions on modifications.
 - `poly.tvar<@N>`: Placeholder type variable within a templated `struct.def` that may be instantiated with different types.
 - `string.type`: Sequence of characters.
