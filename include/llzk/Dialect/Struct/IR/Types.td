@@ -27,16 +27,26 @@ class StructDialectType<string name, string typeMnemonic,
 def LLZK_StructType : StructDialectType<"Struct", "type"> {
   let summary = "circuit component";
   let description = [{
-    Type of a `struct` op instance. For structs that contain template parameters,
-    the type must contain a list of attributes that instantiate the template
-    parameters, one per parameter. Each attribute must be one of the following:
-      - IntegerAttr (with IndexType), specifying a fixed parameter value; the
+    Type of a `struct.def` instance. Struct values are identity-bearing, pointer-like
+    handles to mutable component instances rather than bags of member values. Copying
+    a struct value copies the handle and preserves the identity of the referenced
+    component; it does not duplicate the component's members, signals, or tables.
+
+    For a definition in a `poly.template`, a supplied argument list has one entry
+    per `poly.param` in declaration order. Each argument must be one of the following:
+      - IntegerAttr (with index or i1 type), specifying a fixed parameter value; the
         wildcard (`?`) is not allowed
-      - SymbolRefAttr, specifying a parameter value defined by a struct parameter
-        or global constant
-      - AffineMapAttr, for an array of struct elements whose template parameters
-        vary based on some fixed pattern.
-      - TypeAttr, for specifying a type parameter.
+      - FeltConstAttr, specifying a finite-field parameter value.
+      - SymbolRefAttr, referencing a template binding or constant global.
+      - AffineMapAttr, for a varying parameter that is unrestricted or restricted
+        to `index` or `i1`.
+      - TypeAttr, specifying a type; a `!poly.tvar` restriction also accepts a
+        symbol naming a type-valued `poly.param`.
+    A felt restriction accepts integer arguments. A fieldless felt restriction
+    also accepts felt values with any field. A fielded felt restriction accepts
+    fieldless felt constants; explicitly fielded constants and typed felt symbols
+    must have the matching field. A symbol typed as fieldless felt cannot satisfy
+    it; an untyped local template binding remains deferred.
 
     ```llzk
     // Type for struct `A` with no parameters.

@@ -266,7 +266,9 @@ module attributes {llzk.lang} {
 // target's function signature.
 module attributes {llzk.lang} {
   poly.template @IncludeLocalParamTypeMismatch {
+    // expected-note@+1 {{argument symbol defined here}}
     poly.param @N : index
+    // expected-note@+1 {{parameter restriction declared here}}
     poly.param @F : !felt.type
 
     function.def @token() {
@@ -291,8 +293,10 @@ module attributes {llzk.lang} {
 // poly.param.
 module attributes {llzk.lang} {
   poly.template @IncludeLocalExprTypeMismatch {
+    // expected-note@+1 {{parameter restriction declared here}}
     poly.param @F : !felt.type
 
+    // expected-note@+1 {{argument symbol defined here}}
     poly.expr @Index {
       %index = arith.constant 0 : index
       poly.yield %index : index
@@ -368,7 +372,7 @@ module attributes {llzk.lang} {
   }
 
   function.def @illegal_include() {
-    // expected-error@+1 {{'verif.include' op must have an ancestor of type 'verif.contract'}}
+    // expected-error@+1 {{'verif.include' op expects ancestor op 'verif.contract'}}
     verif.include @Base() : () -> ()
   }
 }
@@ -711,11 +715,12 @@ module attributes {llzk.lang} {
   verif.contract @CheckRegionVerification for @GateBox (%self: !struct.type<@GateBox>, %gate: i1) {
     %true = arith.constant true
     %member_gate = struct.readm %self[@gate] : !struct.type<@GateBox>, i1
-    // expected-error@+1 {{'scf.while' op  region control flow edge from Region #1 to Region #0: source has 1 operands, but target successor needs 0}}
+    // expected-error@+1 {{'scf.while' op along control flow edge from Operation scf.yield to Region #0: region branch point has 1 operands, but region successor needs 0 inputs}}
     %selected = scf.while : () -> i1 {
       scf.condition(%true) %true : i1
     } do {
     ^bb0(%iter : i1):
+      // expected-note@+1 {{region branch point}}
       scf.yield %member_gate : i1
     }
     verif.require_constrain %selected
@@ -1335,9 +1340,11 @@ module attributes {llzk.lang} {
 // A constant global must satisfy a template parameter restriction even when
 // that parameter cannot be inferred from the included contract's signature.
 module attributes {llzk.lang} {
+  // expected-note@+1 {{argument symbol defined here}}
   global.def const @F : !felt.type = 7
 
   poly.template @SpecTemplate {
+    // expected-note@+1 {{parameter restriction declared here}}
     poly.param @N : index
 
     function.def @token() {
