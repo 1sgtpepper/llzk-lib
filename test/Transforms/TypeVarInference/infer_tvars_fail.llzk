@@ -245,6 +245,7 @@ module attributes {llzk.lang} {
 // A value-valued foreign symbol is rejected before type inference.
 module attributes {llzk.lang} {
   poly.template @TExplicitForeignSymbolConflictCallee {
+    // expected-note@+1 {{parameter restriction declared here}}
     poly.param @T : !poly.tvar<@T>
 
     function.def @f(%arg: !poly.tvar<@T>) -> !poly.tvar<@T> {
@@ -254,6 +255,7 @@ module attributes {llzk.lang} {
   }
 
   poly.template @TExplicitForeignSymbolConflictCaller {
+    // expected-note@+1 {{argument symbol defined here}}
     poly.param @N : index
 
     function.def @forward(%arg: !felt.type) -> !felt.type {

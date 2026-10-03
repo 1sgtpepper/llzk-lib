@@ -22,6 +22,7 @@ module attributes {llzk.lang} {
 // A value-valued global cannot instantiate a type-only include parameter.
 module attributes {llzk.lang} {
   poly.template @Spec {
+    // expected-note@+1 {{parameter restriction declared here}}
     poly.param @Ty : !poly.tvar<@Ty>
     function.def @entry() { function.return }
     verif.contract @Base for @Spec::@entry () {
@@ -29,6 +30,7 @@ module attributes {llzk.lang} {
       verif.ensure_compute %ok
     }
   }
+  // expected-note@+1 {{argument symbol defined here}}
   global.def const @Value : index = 35
   function.def @wrapper_entry() { function.return }
   verif.contract @Wrapper for @wrapper_entry () {

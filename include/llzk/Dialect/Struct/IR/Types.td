@@ -43,8 +43,9 @@ def LLZK_StructType : StructDialectType<"Struct", "type"> {
         integer restriction.
       - TypeAttr, for specifying a type parameter.
     Arguments with known types must satisfy the declared type restriction. A
-    fieldless felt constant or integer can satisfy a fielded restriction; a symbol
-    with a known field must match it.
+    fieldless felt restriction accepts any known felt field. For a fielded
+    restriction, a fieldless felt constant or integer is accepted, while a
+    symbol with a known field must name that field.
 
     ```llzk
     // Type for struct `A` with no parameters.

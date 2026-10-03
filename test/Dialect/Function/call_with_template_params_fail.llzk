@@ -291,9 +291,11 @@ module attributes {llzk.lang} {
 // A constant global must satisfy a template parameter restriction even when
 // that parameter cannot be inferred from the callee's function signature.
 module attributes {llzk.lang} {
+  // expected-note@+1 {{argument symbol defined here}}
   global.def const @F : !felt.type = 7
 
   poly.template @GlobalFunc {
+    // expected-note@+1 {{parameter restriction declared here}}
     poly.param @N : index
 
     function.def @id() -> index {
@@ -313,9 +315,11 @@ module attributes {llzk.lang} {
 
 // A value-valued global cannot instantiate a type-only call parameter.
 module attributes {llzk.lang} {
+  // expected-note@+1 {{argument symbol defined here}}
   global.def const @Value : index = 35
 
   poly.template @GlobalFunc {
+    // expected-note@+1 {{parameter restriction declared here}}
     poly.param @Ty : !poly.tvar<@Ty>
     function.def @id() -> index {
       %zero = arith.constant 0 : index

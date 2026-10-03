@@ -469,8 +469,19 @@ LogicalResult verifyTemplateParamValueCompatibility(
     if (!declaredType) {
       return success();
     }
+    // A fieldless felt restriction accepts any known felt field; a fielded restriction requires
+    // the symbol to name that field. Type unification alone requires both types to be identical.
+    auto typeCompatible = [declaredType](Type sourceType) {
+      if (auto targetFelt = llvm::dyn_cast<FeltType>(*declaredType)) {
+        if (auto sourceFelt = llvm::dyn_cast<FeltType>(sourceType)) {
+          return !targetFelt.hasField() || sourceFelt == targetFelt;
+        }
+      }
+      return typesUnify(sourceType, *declaredType);
+    };
     bool resolvedLocal = false;
     bool compatible = false;
+    Operation *symbolDef = nullptr;
     if (symbol.getNestedReferences().empty()) {
       FailureOr<TemplateOp> parentTemplate = getConstResolutionTemplate(tables, origin);
       if (failed(parentTemplate)) {
@@ -482,12 +493,13 @@ LogicalResult verifyTemplateParamValueCompatibility(
         );
         if (binding) {
           resolvedLocal = true;
+          symbolDef = binding.getOperation();
           std::optional<Type> bindingType = binding.getTypeOpt();
           // A poly.expr is a value even if its result has a type-variable type.
           bool typeBinding = bindingType && llvm::isa<TemplateParamOp>(binding.getOperation()) &&
                              llvm::isa<TypeVarType>(*bindingType);
           compatible = !bindingType || (typeBinding == llvm::isa<TypeVarType>(*declaredType) &&
-                                        typesUnify(*bindingType, *declaredType));
+                                        typeCompatible(*bindingType));
         }
       }
     }
@@ -501,14 +513,18 @@ LogicalResult verifyTemplateParamValueCompatibility(
       }
       auto global = llvm::cast<GlobalDefOp>(lookupRes->get());
       assert(global.isConstant() && "already verified by verifyTemplateParamSymbol");
-      compatible =
-          !llvm::isa<TypeVarType>(*declaredType) && typesUnify(global.getType(), *declaredType);
+      symbolDef = global.getOperation();
+      compatible = !llvm::isa<TypeVarType>(*declaredType) && typeCompatible(global.getType());
     }
     if (!compatible) {
-      return origin->emitOpError().append(
+      assert(symbolDef && "symbol resolved by compatibility check");
+      auto diag = origin->emitOpError().append(
           "instantiation value '", value, "' is not compatible with parameter \"@",
           targetParam.getName(), "\" type restriction ", *declaredType
       );
+      diag.attachNote(symbolDef->getLoc()).append("argument symbol defined here");
+      diag.attachNote(targetParam.getLoc()).append("parameter restriction declared here");
+      return diag;
     }
     return success();
   }

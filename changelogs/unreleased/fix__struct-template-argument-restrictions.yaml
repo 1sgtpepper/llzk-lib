@@ -1,2 +1,2 @@
 fixed:
-  - Enforce struct template parameter restrictions, rejecting mismatched typed symbols and affine arguments to felt-restricted parameters while accepting fieldless felt constants or integers in the required field
+  - Enforce struct template parameter restrictions while accepting known felt fields for fieldless restrictions and rejecting mismatched known fields for fielded restrictions

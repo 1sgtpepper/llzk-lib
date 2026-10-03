@@ -35,9 +35,11 @@ module attributes {llzk.lang} {
 
 // A constant global's declared field must satisfy the struct parameter restriction.
 module attributes {llzk.lang} {
+  // expected-note@+1 {{argument symbol defined here}}
   global.def const @WrongField : !felt.type<"goldilocks"> = 35
 
   poly.template @T {
+    // expected-note@+1 {{parameter restriction declared here}}
     poly.param @N : !felt.type<"bn128">
 
     struct.def @S {
@@ -53,6 +55,36 @@ module attributes {llzk.lang} {
     // expected-error@+1 {{'struct.member' op instantiation value '@WrongField' is not compatible with parameter "@N" type restriction '!felt.type<"bn128">'}}
     struct.member @value : !struct.type<@T::@S<[@WrongField]>>
 
+    function.def @compute() -> !struct.type<@Use> {
+      %self = struct.new : !struct.type<@Use>
+      function.return %self : !struct.type<@Use>
+    }
+    function.def @constrain(%self: !struct.type<@Use>) { function.return }
+  }
+}
+
+// -----
+
+// A symbol without a known field cannot establish a fielded restriction.
+module attributes {llzk.lang} {
+  // expected-note@+1 {{argument symbol defined here}}
+  global.def const @Unspecified : !felt.type = 35
+
+  poly.template @T {
+    // expected-note@+1 {{parameter restriction declared here}}
+    poly.param @N : !felt.type<"bn128">
+    struct.def @S {
+      function.def @compute() -> !struct.type<@T::@S<[@N]>> {
+        %self = struct.new : !struct.type<@T::@S<[@N]>>
+        function.return %self : !struct.type<@T::@S<[@N]>>
+      }
+      function.def @constrain(%self: !struct.type<@T::@S<[@N]>>) { function.return }
+    }
+  }
+
+  struct.def @Use {
+    // expected-error@+1 {{'struct.member' op instantiation value '@Unspecified' is not compatible with parameter "@N" type restriction '!felt.type<"bn128">'}}
+    struct.member @value : !struct.type<@T::@S<[@Unspecified]>>
     function.def @compute() -> !struct.type<@Use> {
       %self = struct.new : !struct.type<@Use>
       function.return %self : !struct.type<@Use>
@@ -124,6 +156,7 @@ module attributes {llzk.lang} {
 // Typed enclosing template parameters must satisfy the struct parameter restriction.
 module attributes {llzk.lang} {
   poly.template @T {
+    // expected-note@+1 {{parameter restriction declared here}}
     poly.param @N : !felt.type<"bn128">
 
     struct.def @S {
@@ -136,6 +169,7 @@ module attributes {llzk.lang} {
   }
 
   poly.template @Caller {
+    // expected-note@+1 {{argument symbol defined here}}
     poly.param @WrongField : !felt.type<"goldilocks">
 
     struct.def @Use {
@@ -861,9 +895,11 @@ module attributes {llzk.lang, llzk.main = !struct.type<@T::@S<[35]>>} {
 // A constant global is a value, even when passed by symbol to a type-only parameter.
 module attributes {llzk.lang} {
   module @globals {
+    // expected-note@+1 {{argument symbol defined here}}
     global.def const @Value : index = 35
   }
   poly.template @T {
+    // expected-note@+1 {{parameter restriction declared here}}
     poly.param @Ty : !poly.tvar<@Ty>
     struct.def @S {
       function.def @compute() -> !struct.type<@T::@S<[@Ty]>> {
@@ -889,6 +925,7 @@ module attributes {llzk.lang} {
 // A value-valued template binding cannot instantiate a type-only parameter.
 module attributes {llzk.lang} {
   poly.template @T {
+    // expected-note@+1 {{parameter restriction declared here}}
     poly.param @Ty : !poly.tvar<@Ty>
     struct.def @S {
       function.def @compute() -> !struct.type<@T::@S<[@Ty]>> {
@@ -899,6 +936,7 @@ module attributes {llzk.lang} {
     }
   }
   poly.template @Caller {
+    // expected-note@+1 {{argument symbol defined here}}
     poly.param @Value : index
     struct.def @Use {
       // expected-error@+1 {{instantiation value '@Value' is not compatible with parameter "@Ty" type restriction '!poly.tvar<@Ty>'}}
@@ -917,6 +955,7 @@ module attributes {llzk.lang} {
 // A template expression is a value even when its result has a type-variable type.
 module attributes {llzk.lang} {
   poly.template @T {
+    // expected-note@+1 {{parameter restriction declared here}}
     poly.param @Ty : !poly.tvar<@Ty>
     struct.def @S {
       function.def @compute() -> !struct.type<@T::@S<[@Ty]>> {
@@ -929,6 +968,7 @@ module attributes {llzk.lang} {
   poly.template @Caller {
     poly.param @Unknown
     poly.param @Ty : !poly.tvar<@Ty>
+    // expected-note@+1 {{argument symbol defined here}}
     poly.expr @Value {
       %value = poly.read_const @Unknown : !poly.tvar<@Ty>
       poly.yield %value : !poly.tvar<@Ty>
@@ -952,6 +992,7 @@ module attributes {llzk.lang} {
 // A type-valued template binding cannot instantiate a felt value parameter.
 module attributes {llzk.lang} {
   poly.template @T {
+    // expected-note@+1 {{parameter restriction declared here}}
     poly.param @N : !felt.type<"bn128">
     struct.def @S {
       function.def @compute() -> !struct.type<@T::@S<[@N]>> {
@@ -962,6 +1003,7 @@ module attributes {llzk.lang} {
     }
   }
   poly.template @Caller {
+    // expected-note@+1 {{argument symbol defined here}}
     poly.param @Ty : !poly.tvar<@Ty>
     struct.def @Use {
       // expected-error@+1 {{instantiation value '@Ty' is not compatible with parameter "@N" type restriction '!felt.type<"bn128">'}}
