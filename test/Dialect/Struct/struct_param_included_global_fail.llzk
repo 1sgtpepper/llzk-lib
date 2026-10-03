@@ -17,6 +17,8 @@ module attributes {llzk.lang} {
   }
 
   struct.def @Use {
+    // The matching included global is accepted; the mismatched one must fail.
+    struct.member @good : !struct.type<@T::@S<[@Lib::@CorrectField]>>
     // expected-error@+1 {{'struct.member' op instantiation value '@Lib::@WrongField' is not compatible with parameter "@N" type restriction '!felt.type<"bn128">'}}
     struct.member @bad : !struct.type<@T::@S<[@Lib::@WrongField]>>
     function.def @compute() -> !struct.type<@Use> {
