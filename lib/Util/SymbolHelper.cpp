@@ -414,9 +414,8 @@ namespace {
 
 /// Resolve a template argument to an enclosing binding or constant global. Keep the lookup
 /// result alive while inspecting a global from an included module.
-FailureOr<SymbolLookupResultUntyped> resolveTemplateParamSymbol(
-    SymbolTableCollection &tables, SymbolRefAttr symbol, Operation *origin
-) {
+FailureOr<SymbolLookupResultUntyped>
+resolveTemplateParamSymbol(SymbolTableCollection &tables, SymbolRefAttr symbol, Operation *origin) {
   if (symbol.getNestedReferences().empty()) {
     FailureOr<TemplateOp> parent = getConstResolutionTemplate(tables, origin);
     if (failed(parent)) {
