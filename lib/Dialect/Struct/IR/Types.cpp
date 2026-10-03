@@ -13,7 +13,6 @@
 #include "llzk/Dialect/Felt/IR/Types.h"
 #include "llzk/Dialect/Polymorphic/IR/Ops.h"
 #include "llzk/Dialect/Struct/IR/Ops.h"
-#include "llzk/Util/TypeHelper.h"
 
 using namespace mlir;
 using namespace llzk::polymorphic;
@@ -24,7 +23,7 @@ namespace {
 
 /// Check a concrete struct argument against its declared restriction. Deferred affine maps are
 /// valid only for integer-like restrictions; a fieldless felt value satisfies a fielded
-/// restriction.
+/// restriction. StructType::verify has already checked IntegerAttr types.
 bool isCompatibleTemplateArgument(Attribute value, Type restriction) {
   if (isa<TypeVarType>(restriction)) {
     return isa<TypeAttr>(value);
@@ -39,16 +38,11 @@ bool isCompatibleTemplateArgument(Attribute value, Type restriction) {
       felt::FeltType valueType = feltValue.getType();
       return !feltType.hasField() || !valueType.hasField() || valueType == feltType;
     }
-    if (IntegerAttr integerValue = dyn_cast<IntegerAttr>(value)) {
-      return isValidConstReadType(integerValue.getType());
-    }
-    return false;
+    return isa<IntegerAttr>(value);
   }
 
   if (isa<IndexType, IntegerType>(restriction)) {
-    if (IntegerAttr integerValue = dyn_cast<IntegerAttr>(value)) {
-      return isValidConstReadType(integerValue.getType());
-    }
+    return isa<IntegerAttr>(value);
   }
   return false;
 }
