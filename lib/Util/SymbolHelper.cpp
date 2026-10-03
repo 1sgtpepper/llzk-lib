@@ -410,16 +410,23 @@ FailureOr<TemplateOp> getConstResolutionTemplate(SymbolTableCollection &tables, 
   return getParentOfType<TemplateOp>(origin);
 }
 
-LogicalResult
-verifyTemplateParamSymbol(SymbolTableCollection &tables, SymbolRefAttr symbol, Operation *origin) {
+namespace {
+
+/// Resolve a template argument to an enclosing binding or constant global. Keep the lookup
+/// result alive while inspecting a global from an included module.
+FailureOr<SymbolLookupResultUntyped> resolveTemplateParamSymbol(
+    SymbolTableCollection &tables, SymbolRefAttr symbol, Operation *origin
+) {
   if (symbol.getNestedReferences().empty()) {
     FailureOr<TemplateOp> parent = getConstResolutionTemplate(tables, origin);
     if (failed(parent)) {
       return failure();
     }
-    if (*parent &&
-        parent->getConstNamed<TemplateSymbolBindingOpInterface>(symbol.getRootReference())) {
-      return success();
+    if (*parent) {
+      if (auto binding =
+              parent->getConstNamed<TemplateSymbolBindingOpInterface>(symbol.getRootReference())) {
+        return SymbolLookupResultUntyped(binding.getOperation());
+      }
     }
   }
 
@@ -436,7 +443,14 @@ verifyTemplateParamSymbol(SymbolTableCollection &tables, SymbolRefAttr symbol, O
     return origin->emitOpError() << "template argument '" << symbol
                                  << "' refers to a global that is not marked as 'const'";
   }
-  return success();
+  return std::move(*lookupRes);
+}
+
+} // namespace
+
+LogicalResult
+verifyTemplateParamSymbol(SymbolTableCollection &tables, SymbolRefAttr symbol, Operation *origin) {
+  return succeeded(resolveTemplateParamSymbol(tables, symbol, origin)) ? success() : failure();
 }
 
 LogicalResult verifyTemplateParamValueCompatibility(
@@ -463,7 +477,9 @@ LogicalResult verifyTemplateParamValueCompatibility(
 
   if (auto symbol = llvm::dyn_cast<SymbolRefAttr>(value)) {
     SymbolTableCollection tables;
-    if (failed(verifyTemplateParamSymbol(tables, symbol, origin))) {
+    FailureOr<SymbolLookupResultUntyped> symbolRes =
+        resolveTemplateParamSymbol(tables, symbol, origin);
+    if (failed(symbolRes)) {
       return failure();
     }
     if (!declaredType) {
@@ -479,45 +495,20 @@ LogicalResult verifyTemplateParamValueCompatibility(
       }
       return typesUnify(sourceType, *declaredType);
     };
-    bool resolvedLocal = false;
+    Operation *symbolDef = symbolRes->get();
     bool compatible = false;
-    Operation *symbolDef = nullptr;
-    if (symbol.getNestedReferences().empty()) {
-      FailureOr<TemplateOp> parentTemplate = getConstResolutionTemplate(tables, origin);
-      if (failed(parentTemplate)) {
-        return failure();
-      }
-      if (*parentTemplate) {
-        auto binding = parentTemplate->getConstNamed<TemplateSymbolBindingOpInterface>(
-            symbol.getRootReference()
-        );
-        if (binding) {
-          resolvedLocal = true;
-          symbolDef = binding.getOperation();
-          std::optional<Type> bindingType = binding.getTypeOpt();
-          // A poly.expr is a value even if its result has a type-variable type.
-          bool typeBinding = bindingType && llvm::isa<TemplateParamOp>(binding.getOperation()) &&
-                             llvm::isa<TypeVarType>(*bindingType);
-          compatible = !bindingType || (typeBinding == llvm::isa<TypeVarType>(*declaredType) &&
-                                        typeCompatible(*bindingType));
-        }
-      }
-    }
-    // `verifyTemplateParamSymbol` establishes that this is a constant global, but the global's
-    // type is not otherwise constrained when the parameter is absent from the callee signature.
-    // Resolve it here to enforce the explicit template parameter restriction.
-    if (!resolvedLocal) {
-      FailureOr<SymbolLookupResultUntyped> lookupRes = lookupTopLevelSymbol(tables, symbol, origin);
-      if (failed(lookupRes)) {
-        return failure();
-      }
-      auto global = llvm::cast<GlobalDefOp>(lookupRes->get());
-      assert(global.isConstant() && "already verified by verifyTemplateParamSymbol");
-      symbolDef = global.getOperation();
+    if (auto binding = llvm::dyn_cast<TemplateSymbolBindingOpInterface>(symbolDef)) {
+      std::optional<Type> bindingType = binding.getTypeOpt();
+      // A poly.expr is a value even if its result has a type-variable type.
+      bool typeBinding = bindingType && llvm::isa<TemplateParamOp>(symbolDef) &&
+                         llvm::isa<TypeVarType>(*bindingType);
+      compatible = !bindingType || (typeBinding == llvm::isa<TypeVarType>(*declaredType) &&
+                                    typeCompatible(*bindingType));
+    } else {
+      auto global = llvm::cast<GlobalDefOp>(symbolDef);
       compatible = !llvm::isa<TypeVarType>(*declaredType) && typeCompatible(global.getType());
     }
     if (!compatible) {
-      assert(symbolDef && "symbol resolved by compatibility check");
       auto diag = origin->emitOpError().append(
           "instantiation value '", value, "' is not compatible with parameter \"@",
           targetParam.getName(), "\" type restriction ", *declaredType

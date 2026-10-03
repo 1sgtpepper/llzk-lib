@@ -1,0 +1,4 @@
+module attributes {llzk.lang} {
+  // expected-note@+1 {{argument symbol defined here}}
+  global.def const @WrongField : !felt.type<"goldilocks"> = 35
+}
