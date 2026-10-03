@@ -40,12 +40,12 @@ module attributes {llzk.lang = "circom"} {
   signals, or tables. Structs generally correlate to components/functions in the source language;
   constituent elements may be local variables, subcomponents, or called functions.
 
-  For a definition in a `poly.template`, a supplied argument list has one entry per `poly.param`
-  in declaration order. Arguments may be integers, felt constants, references to template
-  bindings or constant globals, types (required by `poly.tvar` restrictions), or
-  [affine maps](https://mlir.llvm.org/docs/Dialects/Affine/#polyhedral-structures). With a
-  restriction, an affine map is allowed only for `index` or integer parameters. The wildcard `?`
-  is not a valid `struct.type` argument.
+  In a `poly.template`, supplied arguments match `poly.param` declarations in number and order.
+  Arguments may be integers, felt constants, references to template bindings or constant globals,
+  types, or [affine maps](https://mlir.llvm.org/docs/Dialects/Affine/#polyhedral-structures).
+  A `!poly.tvar` restriction accepts a type or a type-valued `poly.param` symbol. Affine maps
+  are allowed only for unrestricted parameters or those restricted to `index` or `i1`. The
+  wildcard `?` is not a valid `struct.type` argument.
 
   A felt restriction accepts integer arguments. A fieldless felt restriction also accepts felt
   values with any field. A fielded felt restriction accepts fieldless felt constants; explicitly

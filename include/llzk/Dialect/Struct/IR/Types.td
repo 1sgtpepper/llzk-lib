@@ -38,9 +38,10 @@ def LLZK_StructType : StructDialectType<"Struct", "type"> {
         wildcard (`?`) is not allowed
       - FeltConstAttr, specifying a finite-field parameter value.
       - SymbolRefAttr, referencing a template binding or constant global.
-      - AffineMapAttr, for a varying parameter with no restriction or an index or
-        integer restriction.
-      - TypeAttr, for a type argument (required by a `!poly.tvar` restriction).
+      - AffineMapAttr, for a varying parameter that is unrestricted or restricted
+        to `index` or `i1`.
+      - TypeAttr, specifying a type; a `!poly.tvar` restriction also accepts a
+        symbol naming a type-valued `poly.param`.
     A felt restriction accepts integer arguments. A fieldless felt restriction
     also accepts felt values with any field. A fielded felt restriction accepts
     fieldless felt constants; explicitly fielded constants and typed felt symbols
