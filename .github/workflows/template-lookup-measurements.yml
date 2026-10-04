@@ -8,7 +8,7 @@ on:
         default: ''
         type: string
       run_debug_checks:
-        description: Validate table reuse with both sanitizer builds
+        description: Validate table reuse with both debug compilers
         required: false
         default: false
         type: boolean
