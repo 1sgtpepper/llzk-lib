@@ -123,6 +123,14 @@ def fixtures():
         path = directory / ('restriction-first.llzk' if wrong else 'mixed-failures.llzk')
         path.write_text('module attributes {llzk.lang} {\n  global.def const @Good : !felt.type<"bn128"> = 1\n  global.def const @Wrong : !felt.type<"goldilocks"> = 2\n' + params + '  struct.def @Use {\n    struct.member @bad : !struct.type<@T::@S<[' + arg + ', @MissingValue, !array.type<@MissingDimension x !felt.type>]>>\n' + functions('!struct.type<@Use>') + '  }\n}\n')
         cases.append({'name': path.stem, 'kind': 'diagnostic', 'args': [str(path)], 'expected_exit': 1, 'source_sha256': sha(path)})
+    warning_folder = directory / 'include-remark'
+    warning_folder.mkdir(exist_ok=True)
+    text, _ = workload(k=1, members=1, globals_count=1, included=True)
+    path = warning_folder / 'input.llzk'
+    path.write_text(text)
+    reader = functions('!struct.type<@Reader>').replace('        %self =', '        %read = global.read @G0 : !felt.type<"bn128">\n        %self =')
+    (warning_folder / 'library.llzk').write_text('module attributes {llzk.lang} {\n  global.def const @G0 : !felt.type<"bn128"> = 1\n  struct.def @Reader {\n' + reader + '  }\n}\n')
+    cases.append({'name': 'include-remark', 'kind': 'warning', 'args': ['-I', str(warning_folder), str(path)], 'expected_exit': 0, 'source_sha256': sha(path), 'include_sha256': sha(warning_folder / 'library.llzk')})
     (OUT / 'workloads.json').write_text(json.dumps(cases, indent=2) + '\n')
     return cases
 
@@ -177,7 +185,13 @@ def differential(cases):
             (folder / (case['name'] + '.stdout')).write_bytes(result.stdout)
             (folder / (case['name'] + '.stderr')).write_bytes(result.stderr)
             values.append((result.returncode, result.stdout, result.stderr))
-        if values[0][0] != case['expected_exit'] or any(v != values[0] for v in values[1:]):
+        if case['kind'] == 'warning':
+            needle = b"recommend adding 'const' when targeting 'global.def' marked as 'const'"
+            counts = [value[2].count(needle) for value in values]
+            if any(value[0] != 0 or value[1] != values[0][1] for value in values) or values[1] != values[0] or not counts[0] > counts[2] == counts[3] > 0:
+                raise RuntimeError('include diagnostic-effect counterexample not established')
+            (OUT / 'diagnostic-counterexample.json').write_text(json.dumps({'case': case['name'], 'remark_counts': dict(zip(VARIANTS, counts)), 'filtering_changes_diagnostics': True, 'tables_preserves_diagnostics': True}, indent=2) + '\n')
+        elif values[0][0] != case['expected_exit'] or any(v != values[0] for v in values[1:]):
             raise RuntimeError('differential failure: ' + case['name'])
         stderr = values[0][2].decode()
         if case['name'] == 'mixed-failures':
@@ -186,7 +200,7 @@ def differential(cases):
         if case['name'] == 'restriction-first':
             if stderr.count('error:') != 1 or 'is not compatible with parameter' not in stderr or 'references unknown symbol' in stderr:
                 raise RuntimeError('restriction failure must precede remaining validation')
-        rows.append({'name': case['name'], 'exit': values[0][0], 'stdout_sha256': hashlib.sha256(values[0][1]).hexdigest(), 'stderr_sha256': hashlib.sha256(values[0][2]).hexdigest(), 'all_variants_identical': True})
+        rows.append({'name': case['name'], 'exit': values[0][0], 'stdout_sha256': hashlib.sha256(values[0][1]).hexdigest(), 'stderr_sha256': hashlib.sha256(values[0][2]).hexdigest(), 'all_variants_identical': all(v == values[0] for v in values[1:]), 'diagnostic_effect_counterexample': case['kind'] == 'warning'})
     (OUT / 'differential.json').write_text(json.dumps(rows, indent=2) + '\n')
 
 
@@ -233,7 +247,7 @@ def benchmark(cases):
     generator = random.Random(765)
     rows = []
     for case in cases:
-        if case['kind'] == 'diagnostic':
+        if case['kind'] in ('diagnostic', 'warning'):
             continue
         for name in VARIANTS:
             timed(name, case, 3)
@@ -272,4 +286,4 @@ if __name__ == '__main__':
     differential(cases)
     open_counts(cases)
     benchmark(cases)
-    print('ALL MEASUREMENT AND SEMANTIC GATES PASSED', flush=True)
+    print('MEASUREMENTS COMPLETE; FILTERING DIAGNOSTIC VIOLATION RECORDED', flush=True)
