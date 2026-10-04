@@ -7,6 +7,7 @@ from pathlib import Path
 import random
 import re
 import resource
+import shlex
 import shutil
 import statistics
 import subprocess
@@ -244,6 +245,45 @@ def open_counts(cases):
         raise RuntimeError('unrestricted include lookup count changed')
 
 
+def replay_pr_fixtures():
+    """Capture all changed PR producers with the measured table-reuse binary."""
+    paths = [
+        'test/Dialect/Function/call_fieldless_felt_symbol_pass.llzk',
+        'test/Dialect/Function/call_with_template_params_fail.llzk',
+        'test/Dialect/Struct/struct_param_included_global_fail.llzk',
+        'test/Dialect/Struct/struct_params_fail.llzk',
+        'test/Dialect/Struct/struct_params_restrictions_pass.llzk',
+        'test/Dialect/Struct/struct_params_symbolic_restrictions_pass.llzk',
+        'test/Dialect/Verif/contracts_fail.llzk',
+        'test/Dialect/Verif/include_fieldless_felt_symbol_pass.llzk',
+        'test/Dialect/Verif/include_symbolic_template_argument_fail.llzk',
+        'test/Inputs/struct_param_wrong_field_global.llzk',
+        'test/Transforms/TypeVarInference/infer_tvars_fail.llzk',
+    ]
+    rows = []
+    for rel in paths:
+        source = SOURCE / rel
+        folder = OUT / 'pr-replay' / rel
+        folder.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source, folder / 'source.llzk')
+        runs = [line for line in source.read_text().splitlines() if line.startswith('// RUN:')]
+        row = {'fixture': rel, 'source_sha256': sha(source), 'runs': []}
+        for index, line in enumerate(runs):
+            producer = line.removeprefix('// RUN:').strip().split('| FileCheck', 1)[0].strip()
+            args = shlex.split(producer.replace('%input_dir', str(SOURCE / 'test')).replace('%s', str(source)))
+            if args[0] != 'llzk-opt':
+                raise RuntimeError('unsupported PR producer')
+            args[0] = str(OUT / 'binaries/tables')
+            result = subprocess.run(args, capture_output=True, timeout=60)
+            (folder / f'run-{index+1:02d}.stdout').write_bytes(result.stdout)
+            (folder / f'run-{index+1:02d}.stderr').write_bytes(result.stderr)
+            if result.returncode != 0:
+                raise RuntimeError('PR producer failure: ' + rel)
+            row['runs'].append({'literal_run': line, 'argv': args, 'exit': result.returncode, 'output_sha256': hashlib.sha256(result.stdout).hexdigest()})
+        rows.append(row)
+    (OUT / 'pr-replay.json').write_text(json.dumps({'source_hash': MANIFEST['tables']['source_sha256'], 'rows': rows}, indent=2) + '\n')
+
+
 def native_table_counts(cases):
     """Observe real native index constructions under a debugger, outside all timings."""
     script = OUT / 'count-native-tables.gdb'
@@ -330,5 +370,6 @@ if __name__ == '__main__':
     differential(cases)
     open_counts(cases)
     native_table_counts(cases)
+    replay_pr_fixtures()
     benchmark(cases)
     print('MEASUREMENTS COMPLETE; FILTERING DIAGNOSTIC VIOLATION RECORDED', flush=True)
