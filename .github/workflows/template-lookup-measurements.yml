@@ -1,5 +1,7 @@
 name: Template lookup measurements
 on:
+  push:
+    branches: [validation/template-lookup-efficiency]
   workflow_dispatch:
 permissions:
   contents: read
