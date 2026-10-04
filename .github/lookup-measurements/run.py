@@ -130,7 +130,10 @@ def fixtures():
         ('test/Transforms/Flattening/instantiate_column_field_globals_pass.llzk', ['-split-input-file', '-llzk-const-global-propagation', '-llzk-flatten']),
     ]:
         path = SOURCE / rel
-        cases.append({'name': path.stem, 'kind': 'repository', 'args': ['-I', str(SOURCE / 'test'), *flags, str(path)], 'expected_exit': 0, 'source_sha256': sha(path)})
+        known_failure = path.stem == 'mastermind_included_with_main'
+        if known_failure and '// XFAIL:*' not in path.read_text():
+            raise RuntimeError('known failure annotation changed')
+        cases.append({'name': path.stem, 'kind': 'diagnostic' if known_failure else 'repository', 'args': ['-I', str(SOURCE / 'test'), *flags, str(path)], 'expected_exit': 1 if known_failure else 0, 'source_sha256': sha(path), 'known_expected_failure': known_failure})
     for wrong in (False, True):
         # Successful restricted argument cannot hide either remaining generic failure.
         # A restriction failure must precede and suppress both generic diagnostics.
