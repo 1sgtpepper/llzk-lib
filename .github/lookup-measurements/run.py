@@ -244,6 +244,31 @@ def open_counts(cases):
         raise RuntimeError('unrestricted include lookup count changed')
 
 
+def native_table_counts(cases):
+    """Observe real native index constructions under a debugger, outside all timings."""
+    script = OUT / 'count-native-tables.gdb'
+    script.write_text('set pagination off\nset confirm off\nset print thread-events off\nset $tables = 0\nbreak \'mlir::SymbolTable::SymbolTable(mlir::Operation*)\'\ncommands\nsilent\nset $tables = $tables + 1\ncontinue\nend\nrun\nprintf "native_symbol_tables=%d\\n", $tables\nquit\n')
+    rows = []
+    for case in cases:
+        if case['name'] not in ('native-medium', 'native-call-medium', 'unrestricted-native', 'literal-call-large'):
+            continue
+        for name in VARIANTS:
+            result = subprocess.run(['gdb', '-q', '-batch', '-x', str(script), '--args', str(OUT / 'binaries' / name), *case['args'], '-o', '/dev/null'], capture_output=True, text=True, timeout=90, check=True)
+            (OUT / name / (case['name'] + '.gdb.txt')).write_text(result.stdout + result.stderr)
+            match = re.search(r'native_symbol_tables=(\d+)', result.stdout)
+            if not match or int(match[1]) == 0:
+                raise RuntimeError('native constructor observation missing')
+            rows.append({'case': case['name'], 'variant': name, 'native_symbol_tables': int(match[1])})
+    (OUT / 'native-table-counts.json').write_text(json.dumps(rows, indent=2) + '\n')
+    counts = {(r['case'], r['variant']): r['native_symbol_tables'] for r in rows}
+    for case in ('native-medium', 'native-call-medium'):
+        if not counts[case, 'baseline'] > counts[case, 'tables']:
+            raise RuntimeError('native index construction reduction not observed')
+    for case in ('unrestricted-native', 'literal-call-large'):
+        if counts[case, 'baseline'] != counts[case, 'tables']:
+            raise RuntimeError('native negative-control construction count changed')
+
+
 def timed(name, case, repeats):
     """Use a blocking wait to measure CLI wall/CPU time without timeout polling overhead."""
     before = resource.getrusage(resource.RUSAGE_CHILDREN)
@@ -304,5 +329,6 @@ if __name__ == '__main__':
     cases = fixtures()
     differential(cases)
     open_counts(cases)
+    native_table_counts(cases)
     benchmark(cases)
     print('MEASUREMENTS COMPLETE; FILTERING DIAGNOSTIC VIOLATION RECORDED', flush=True)

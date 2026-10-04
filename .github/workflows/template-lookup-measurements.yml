@@ -44,9 +44,9 @@ jobs:
           skipPush: true
       - name: Prepare observation tools
         run: |
-          if ! command -v strace; then
+          if ! command -v strace || ! command -v gdb; then
             sudo apt-get update
-            sudo apt-get install -y strace
+            sudo apt-get install -y strace gdb
           fi
       - name: Reuse verified build artifacts
         if: inputs.reuse_run_id != ''
