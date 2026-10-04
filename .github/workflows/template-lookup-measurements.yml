@@ -7,6 +7,11 @@ on:
         required: false
         default: ''
         type: string
+      run_debug_checks:
+        description: Validate table reuse with both sanitizer builds
+        required: false
+        default: false
+        type: boolean
 permissions:
   contents: read
   actions: read
@@ -67,4 +72,60 @@ jobs:
         with:
           name: template-lookup-measurements
           path: evidence/
+          retention-days: 30
+
+  debug-checks:
+    if: inputs.run_debug_checks
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        compiler: [debugGCC, debugClang]
+    env:
+      NIX_CONFIG: |
+        max-jobs = 1
+        cores = 2
+        experimental-features = nix-command flakes
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          path: driver
+          persist-credentials: false
+      - uses: actions/checkout@v6
+        with:
+          ref: af667b15804e80b08454279ca2769eb18f2b7a5f
+          path: source
+          persist-credentials: false
+      - uses: cachix/install-nix-action@v31
+        with:
+          install_url: https://releases.nixos.org/nix/nix-2.35.2/install
+          github_access_token: '${{ secrets.GITHUB_TOKEN }}'
+      - uses: cachix/cachix-action@v17
+        with:
+          name: veridise-public
+          skipPush: true
+      - name: Validate invocation-local index reuse
+        working-directory: source
+        env:
+          DERIVATION: '${{ matrix.compiler }}'
+          CANDIDATE_PATCH: '${{ github.workspace }}/driver/.github/lookup-measurements/patches/tables.patch'
+          EVIDENCE_DIR: '${{ github.workspace }}/debug-evidence'
+        run: |
+          set -euo pipefail
+          mkdir -p "$EVIDENCE_DIR"
+          test "$(git rev-parse HEAD)" = af667b15804e80b08454279ca2769eb18f2b7a5f
+          git apply "$CANDIDATE_PATCH"
+          sha256sum lib/Util/SymbolHelper.cpp > "$EVIDENCE_DIR/source.sha256"
+          test "$(cut -d' ' -f1 "$EVIDENCE_DIR/source.sha256")" = 46ad1b45b7b9dbb30720a91cb3d93d4b54aa82a2aa72a715fe57ad8617d9d491
+          cp lib/Util/SymbolHelper.cpp "$EVIDENCE_DIR/SymbolHelper.cpp"
+          nix --print-build-logs build --out-link result ".#$DERIVATION" 2>&1 | tee "$EVIDENCE_DIR/build.log"
+          cp result/artifacts/*-report.xml "$EVIDENCE_DIR/"
+          result/bin/llzk-opt --version > "$EVIDENCE_DIR/version.txt"
+          readlink -f result > "$EVIDENCE_DIR/store-path.txt"
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: 'template-lookup-checks-${{ matrix.compiler }}'
+          path: debug-evidence/
           retention-days: 30

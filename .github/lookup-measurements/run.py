@@ -245,11 +245,11 @@ def open_counts(cases):
 
 
 def timed(name, case, repeats):
-    """Measure monotonic elapsed time and child CPU time for an uninstrumented CLI batch."""
+    """Use a blocking wait to measure CLI wall/CPU time without timeout polling overhead."""
     before = resource.getrusage(resource.RUSAGE_CHILDREN)
     start = time.perf_counter_ns()
     for _ in range(repeats):
-        subprocess.run([str(OUT / 'binaries' / name), *case['args'], '-o', '/dev/null'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True, timeout=60)
+        subprocess.run([str(OUT / 'binaries' / name), *case['args'], '-o', '/dev/null'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
     elapsed = (time.perf_counter_ns() - start) / 1e9 / repeats
     after = resource.getrusage(resource.RUSAGE_CHILDREN)
     cpu = ((after.ru_utime + after.ru_stime) - (before.ru_utime + before.ru_stime)) / repeats
@@ -260,7 +260,7 @@ def benchmark(cases):
     """Alternate all four variants on one CPU with fixed-seed randomized paired rounds."""
     cpus = sorted(os.sched_getaffinity(0))
     os.sched_setaffinity(0, {cpus[0]})
-    metadata = {'available_cpus': cpus, 'pinned_cpu': cpus[0], 'uname': list(os.uname()), 'clock': str(time.get_clock_info('perf_counter')), 'rounds': 21, 'warmups': 3, 'seed': 765, 'baseline_head': BASE_HEAD, 'driver_head': os.environ.get('GITHUB_SHA'), 'run_url': 'https://github.com/' + os.environ.get('GITHUB_REPOSITORY', '') + '/actions/runs/' + os.environ.get('GITHUB_RUN_ID', '')}
+    metadata = {'available_cpus': cpus, 'pinned_cpu': cpus[0], 'uname': list(os.uname()), 'clock': str(time.get_clock_info('perf_counter')), 'rounds': 21, 'warmups': 3, 'seed': 765, 'wait_policy': 'blocking kernel wait; bounded preflight and workflow timeout', 'baseline_head': BASE_HEAD, 'driver_head': os.environ.get('GITHUB_SHA'), 'run_url': 'https://github.com/' + os.environ.get('GITHUB_REPOSITORY', '') + '/actions/runs/' + os.environ.get('GITHUB_RUN_ID', '')}
     (OUT / 'machine.json').write_text(json.dumps(metadata, indent=2) + '\n')
     (OUT / 'cpuinfo.txt').write_text(Path('/proc/cpuinfo').read_text())
     generator = random.Random(765)
