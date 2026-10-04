@@ -32,8 +32,10 @@ def LLZK_StructType : StructDialectType<"Struct", "type"> {
     a struct value copies the handle and preserves the identity of the referenced
     component; it does not duplicate the component's members, signals, or tables.
 
-    For a definition in a `poly.template`, a supplied argument list has one entry
-    per `poly.param` in declaration order. Each argument must be one of the following:
+    A supplied argument list has one entry per `poly.param` in the `poly.template`
+    containing the referenced `struct.def`, in declaration order. For a definition
+    with no template parameters, the list may be omitted or written as `[]`.
+    Each argument must be one of the following:
       - IntegerAttr (with index or i1 type), specifying a fixed parameter value; the
         wildcard (`?`) is not allowed
       - FeltConstAttr, specifying a finite-field parameter value.
@@ -42,11 +44,13 @@ def LLZK_StructType : StructDialectType<"Struct", "type"> {
         to `index` or `i1`.
       - TypeAttr, specifying a type; a `!poly.tvar` restriction also accepts a
         symbol naming a type-valued `poly.param`.
+
+    Untyped local template bindings remain deferred.
+
     A felt restriction accepts integer arguments. A fieldless felt restriction
     also accepts felt values with any field. A fielded felt restriction accepts
     fieldless felt constants; explicitly fielded constants and typed felt symbols
-    must have the matching field. A symbol typed as fieldless felt cannot satisfy
-    it; an untyped local template binding remains deferred.
+    must have the matching field. A symbol typed as fieldless felt cannot satisfy it.
 
     ```llzk
     // Type for struct `A` with no parameters.

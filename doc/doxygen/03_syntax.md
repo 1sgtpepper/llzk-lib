@@ -40,17 +40,19 @@ module attributes {llzk.lang = "circom"} {
   signals, or tables. Structs generally correlate to components/functions in the source language;
   constituent elements may be local variables, subcomponents, or called functions.
 
-  In a `poly.template`, supplied arguments match `poly.param` declarations in number and order.
+  A supplied argument list has one entry per `poly.param` in the `poly.template` containing
+  the referenced `struct.def`, in declaration order. For a definition with no template parameters,
+  the list may be omitted or written as `[]`.
   Arguments may be integers, felt constants, references to template bindings or constant globals,
   types, or [affine maps](https://mlir.llvm.org/docs/Dialects/Affine/#polyhedral-structures).
-  A `!poly.tvar` restriction accepts a type or a type-valued `poly.param` symbol. Affine maps
-  are allowed only for unrestricted parameters or those restricted to `index` or `i1`. The
-  wildcard `?` is not a valid `struct.type` argument.
+  A `!poly.tvar` restriction accepts a type or a type-valued `poly.param` symbol. Untyped local
+  template bindings remain deferred. Affine maps are allowed only for unrestricted parameters
+  or those restricted to `index` or `i1`. The wildcard `?` is not a valid `struct.type` argument.
 
   A felt restriction accepts integer arguments. A fieldless felt restriction also accepts felt
   values with any field. A fielded felt restriction accepts fieldless felt constants; explicitly
   fielded constants and typed felt symbols must have the matching field. A symbol typed as fieldless
-  felt cannot satisfy it; an untyped local template binding remains deferred.
+  felt cannot satisfy it.
 
 - `pod.type<..>`: Plain Old Data aggregate type with named heterogeneous elements. Unlike `struct.type`, there is no associated named declaration, the type itself specifies all constituent element types. It can be used more freely than `struct.type` since it has fewer restrictions on modifications.
 - `poly.tvar<@N>`: Placeholder type variable within a templated `struct.def` that may be instantiated with different types.
