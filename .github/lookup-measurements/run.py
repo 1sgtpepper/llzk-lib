@@ -104,6 +104,22 @@ def fixtures():
         path.write_text(text)
         (folder / 'library.llzk').write_text(library)
         cases.append({'name': name, 'kind': 'synthetic', 'dimensions': spec, 'args': ['-I', str(folder), str(path)], 'expected_exit': 0, 'source_sha256': sha(path), 'include_sha256': sha(folder / 'library.llzk')})
+    for name, k, calls, globals_count, role in [
+        ('literal-call-small', 1, 1, 0, 'index'),
+        ('literal-call-large', 32, 256, 0, 'index'),
+        ('type-call-large', 32, 128, 0, 'type'),
+        ('native-call-medium', 8, 64, 256, 'felt'),
+        ('native-call-large', 16, 64, 2048, 'felt'),
+    ]:
+        folder = directory / name
+        folder.mkdir(exist_ok=True)
+        globals_text = ''.join(f'  global.def const @G{i} : !felt.type<"bn128"> = {i+1}\n' for i in range(globals_count))
+        params = ''.join(f'    poly.param @P{i} : ' + (f'!poly.tvar<@P{i}>' if role == 'type' else '!felt.type<"bn128">' if role == 'felt' else 'index') + '\n' for i in range(k))
+        arguments = ', '.join(f'@G{i}' if role == 'felt' else 'index' if role == 'type' else f'{i+1} : index' for i in range(k))
+        body = ''.join(f'    %r{i} = function.call @Target::@id<[{arguments}]>() : () -> index\n' for i in range(calls))
+        path = folder / 'input.llzk'
+        path.write_text('module attributes {llzk.lang} {\n' + globals_text + '  poly.template @Target {\n' + params + '    function.def @id() -> index {\n      %zero = arith.constant 0 : index\n      function.return %zero : index\n    }\n  }\n  function.def @use() -> index {\n' + body + f'    function.return %r{calls-1} : index\n' + '  }\n}\n')
+        cases.append({'name': name, 'kind': 'synthetic', 'dimensions': {'parameters': k, 'calls': calls, 'globals': globals_count, 'role': role}, 'args': [str(path)], 'expected_exit': 0, 'source_sha256': sha(path)})
     for rel, flags in [
         ('test/Dialect/Struct/struct_params_symbolic_restrictions_pass.llzk', ['-verify-diagnostics']),
         ('test/Dialect/Function/call_fieldless_felt_symbol_pass.llzk', ['-verify-diagnostics']),
