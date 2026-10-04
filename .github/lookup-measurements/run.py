@@ -264,6 +264,7 @@ if __name__ == '__main__':
             identity = json.loads((OUT / name / 'identity.json').read_text())
             if identity['baseline_head'] != BASE_HEAD or identity['source_sha256'] != MANIFEST[name]['source_sha256'] or identity['binary_sha256'] != sha(OUT / 'binaries' / name):
                 raise RuntimeError('reused build identity mismatch')
+            (OUT / 'binaries' / name).chmod(0o755)
         (OUT / 'reused-build-run.txt').write_text(os.environ['REUSE_RUN_ID'] + '\n')
     else:
         build()
