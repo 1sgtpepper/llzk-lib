@@ -109,9 +109,9 @@ def fixtures():
         ('test/Dialect/Function/call_fieldless_felt_symbol_pass.llzk', ['-verify-diagnostics']),
         ('test/Dialect/Verif/include_fieldless_felt_symbol_pass.llzk', ['-verify-diagnostics']),
         ('test/Transforms/Flattening/mastermind_with_main.llzk', ['-llzk-flatten']),
-        ('test/Transforms/Flattening/mastermind_included_with_main.llzk', ['-llzk-flatten']),
+        ('test/Transforms/Flattening/mastermind_included_with_main.llzk', ['-llzk-inline-includes', '-llzk-flatten']),
         ('test/Transforms/Flattening/zir_example_9.llzk', ['-llzk-flatten']),
-        ('test/Transforms/Flattening/instantiate_column_field_globals_pass.llzk', ['-llzk-flatten', '-split-input-file', '-verify-diagnostics']),
+        ('test/Transforms/Flattening/instantiate_column_field_globals_pass.llzk', ['-split-input-file', '-llzk-const-global-propagation', '-llzk-flatten']),
     ]:
         path = SOURCE / rel
         cases.append({'name': path.stem, 'kind': 'repository', 'args': ['-I', str(SOURCE / 'test'), *flags, str(path)], 'expected_exit': 0, 'source_sha256': sha(path)})
@@ -259,7 +259,14 @@ def benchmark(cases):
 
 
 if __name__ == '__main__':
-    build()
+    if os.environ.get('REUSE_RUN_ID'):
+        for name in VARIANTS:
+            identity = json.loads((OUT / name / 'identity.json').read_text())
+            if identity['baseline_head'] != BASE_HEAD or identity['source_sha256'] != MANIFEST[name]['source_sha256'] or identity['binary_sha256'] != sha(OUT / 'binaries' / name):
+                raise RuntimeError('reused build identity mismatch')
+        (OUT / 'reused-build-run.txt').write_text(os.environ['REUSE_RUN_ID'] + '\n')
+    else:
+        build()
     cases = fixtures()
     differential(cases)
     open_counts(cases)

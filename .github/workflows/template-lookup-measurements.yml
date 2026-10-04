@@ -1,10 +1,15 @@
 name: Template lookup measurements
 on:
-  push:
-    branches: [validation/template-lookup-efficiency]
   workflow_dispatch:
+    inputs:
+      reuse_run_id:
+        description: Optional completed measurement run supplying verified binaries
+        required: false
+        default: ''
+        type: string
 permissions:
   contents: read
+  actions: read
 jobs:
   measure:
     runs-on: ubuntu-24.04
@@ -38,9 +43,18 @@ jobs:
             sudo apt-get update
             sudo apt-get install -y strace
           fi
+      - name: Reuse verified build artifacts
+        if: inputs.reuse_run_id != ''
+        uses: actions/download-artifact@v7
+        with:
+          name: template-lookup-measurements
+          path: evidence/
+          run-id: '${{ inputs.reuse_run_id }}'
+          github-token: '${{ secrets.GITHUB_TOKEN }}'
       - name: Build, verify, and measure isolated variants
         working-directory: source
         env:
+          REUSE_RUN_ID: '${{ inputs.reuse_run_id }}'
           EXPERIMENT_DRIVER: '${{ github.workspace }}/driver/.github/lookup-measurements/run.py'
           EXPERIMENT_OUTPUT: '${{ github.workspace }}/evidence'
         run: |
