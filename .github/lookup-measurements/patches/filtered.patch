@@ -1,0 +1,32 @@
+--- a/lib/Util/SymbolHelper.cpp
++++ b/lib/Util/SymbolHelper.cpp
+@@ -676,16 +676,24 @@
+   }
+   // If there are any SymbolRefAttr parameters on the StructType, ensure those refs are valid.
+   if (ArrayAttr tyParams = ty.getParams()) {
++    SmallVector<Attribute> uncheckedParams;
++    ArrayRef<Attribute> paramsToVerify = tyParams.getValue();
+     if (TemplateOp parent = getParentOfType<TemplateOp>(defForType.getOperation())) {
+       for (auto [targetParam, value] :
+            llvm::zip_equal(parent.getConstOps<TemplateParamOp>(), tyParams.getValue())) {
+-        if (targetParam.getTypeOpt() && llvm::isa<SymbolRefAttr>(value) &&
+-            failed(verifyTemplateParamValueCompatibility(origin, value, targetParam))) {
+-          return failure();
++        if (targetParam.getTypeOpt() && llvm::isa<SymbolRefAttr>(value)) {
++          if (failed(verifyTemplateParamValueCompatibility(origin, value, targetParam))) {
++            return failure();
++          }
++        } else {
++          uncheckedParams.push_back(value);
+         }
+       }
+-    }
+-    if (failed(verifyParamsOfType(tables, tyParams.getValue(), ty, origin))) {
++      // Restricted symbols already passed resolution. Keep generic checks for unrestricted
++      // symbols and nested types, in their original order and after restriction checks.
++      paramsToVerify = uncheckedParams;
++    }
++    if (failed(verifyParamsOfType(tables, paramsToVerify, ty, origin))) {
+       return failure(); // verifyParamsOfType() already emits a sufficient error message
+     }
+   }

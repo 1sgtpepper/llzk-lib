@@ -1,0 +1,24 @@
+{
+  "tables": {
+    "source_sha256": "46ad1b45b7b9dbb30720a91cb3d93d4b54aa82a2aa72a715fe57ad8617d9d491",
+    "patch_sha256": "d12afda5832de241b96414add9a72fe4a3c1ea6bd40bd8bc559c8e01f9564fc8",
+    "added": 16,
+    "deleted": 4
+  },
+  "filtered": {
+    "source_sha256": "89a1ef831c1639e8de8b73df7c860d77ec5738b32b9e330d09c0d0113f724db6",
+    "patch_sha256": "4c30918ea6ecb9945c3702a8cce938ac176710f12173ae2e17ef60496169357f",
+    "added": 13,
+    "deleted": 5
+  },
+  "combined": {
+    "source_sha256": "93d002fb0c91a63e79bd74bc4d088ea9e1835d35a0efab54ca0c1a1dcbd94de2",
+    "patch_sha256": "3917a470df46667dbe6a0b33c1e1a6b6fa8f3c5b6d101711758585e685818e57",
+    "added": 28,
+    "deleted": 8
+  },
+  "baseline": {
+    "head": "af667b15804e80b08454279ca2769eb18f2b7a5f",
+    "source_sha256": "7ecd931056fb515e8123a1e44b9be70241eba2e8bd1dae27542321c57b0a6250"
+  }
+}

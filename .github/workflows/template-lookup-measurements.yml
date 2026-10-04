@@ -1,0 +1,54 @@
+name: Template lookup measurements
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  measure:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 150
+    env:
+      NIX_CONFIG: |
+        max-jobs = 1
+        cores = 2
+        experimental-features = nix-command flakes
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          path: driver
+          persist-credentials: false
+      - uses: actions/checkout@v6
+        with:
+          ref: af667b15804e80b08454279ca2769eb18f2b7a5f
+          path: source
+          persist-credentials: false
+      - uses: cachix/install-nix-action@v31
+        with:
+          install_url: https://releases.nixos.org/nix/nix-2.35.2/install
+          github_access_token: '${{ secrets.GITHUB_TOKEN }}'
+      - uses: cachix/cachix-action@v17
+        with:
+          name: veridise-public
+          skipPush: true
+      - name: Prepare observation tools
+        run: |
+          if ! command -v strace; then
+            sudo apt-get update
+            sudo apt-get install -y strace
+          fi
+      - name: Build, verify, and measure isolated variants
+        working-directory: source
+        env:
+          EXPERIMENT_DRIVER: '${{ github.workspace }}/driver/.github/lookup-measurements/run.py'
+          EXPERIMENT_OUTPUT: '${{ github.workspace }}/evidence'
+        run: |
+          set -euo pipefail
+          mkdir -p "$EXPERIMENT_OUTPUT"
+          nix develop .#release --command python3 "$EXPERIMENT_DRIVER" "$PWD" "$EXPERIMENT_OUTPUT" 2>&1 | tee "$EXPERIMENT_OUTPUT/driver.log"
+      - name: Preserve measurement evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: template-lookup-measurements
+          path: evidence/
+          retention-days: 30
