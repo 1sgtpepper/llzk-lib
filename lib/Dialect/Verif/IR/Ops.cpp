@@ -30,6 +30,7 @@
 #include <mlir/IR/Diagnostics.h>
 #include <mlir/IR/SymbolTable.h>
 #include <mlir/IR/ValueRange.h>
+#include <mlir/Interfaces/CallInterfaces.h>
 #include <mlir/Interfaces/FunctionImplementation.h>
 #include <mlir/Support/LLVM.h>
 #include <mlir/Support/LogicalResult.h>
@@ -473,6 +474,7 @@ LogicalResult ContractOp::verifySymbolUses(SymbolTableCollection &tables) {
 ParseResult ContractOp::parse(OpAsmParser &parser, OperationState &result) {
   StringAttr typeAttrName = getFunctionTypeAttrName(result.name);
   StringAttr argAttrsName = getArgAttrsAttrName(result.name);
+  StringAttr resAttrsName = getResAttrsAttrName(result.name);
 
   SmallVector<OpAsmParser::Argument> entryArgs;
   SmallVector<DictionaryAttr> resultAttrs;
@@ -505,7 +507,7 @@ ParseResult ContractOp::parse(OpAsmParser &parser, OperationState &result) {
   SMLoc signatureLocation = parser.getCurrentLocation();
   bool isVariadic = false;
 
-  if (function_interface_impl::parseFunctionSignature(
+  if (function_interface_impl::parseFunctionSignatureWithArguments(
           parser, /*allowVariadic*/ false, entryArgs, isVariadic, resultTypes, resultAttrs
       )) {
     return failure();
@@ -552,9 +554,8 @@ ParseResult ContractOp::parse(OpAsmParser &parser, OperationState &result) {
   result.attributes.append(parsedAttributes);
 
   // Add the attributes to the function arguments.
-  function_interface_impl::addArgAndResultAttrs(
-      builder, result, entryArgs, resultAttrs, argAttrsName,
-      /*resAttrsName*/ StringAttr::get(parser.getContext())
+  call_interface_impl::addArgAndResultAttrs(
+      builder, result, entryArgs, resultAttrs, argAttrsName, resAttrsName
   );
 
   // Parse the required contract body.
@@ -593,7 +594,8 @@ void ContractOp::print(OpAsmPrinter &p) {
   );
   function_interface_impl::printFunctionAttributes(
       p, *this,
-      /*elided*/ {getFunctionTypeAttrName(), getArgAttrsAttrName(), getTargetAttrName()}
+      /*elided*/
+      {getFunctionTypeAttrName(), getArgAttrsAttrName(), getResAttrsAttrName(), getTargetAttrName()}
   );
   // Print the body.
   Region &body = getRegion();
@@ -789,7 +791,7 @@ protected:
 struct KnownTargetVerifier : public IncludeOpVerifier {
   KnownTargetVerifier(IncludeOp *c, SymbolLookupResult<ContractOp> &&tgtRes)
       : IncludeOpVerifier(c), tgt(*tgtRes), tgtType(tgt.getFunctionType()),
-        includeSymNames(tgtRes.getNamespace()) {}
+        targetNamespace(tgtRes.getNamespace()), targetViaInclude(tgtRes.viaInclude()) {}
 
   LogicalResult verifyInputs() override {
     return verifyTypesMatch(includeOp->getArgOperands().getTypes(), tgtType.getInputs(), "operand");
@@ -852,7 +854,7 @@ struct KnownTargetVerifier : public IncludeOpVerifier {
       // Check that the provided instantiation values are consistent with what type unification
       // of the target function types against the call's operand and result types would determine.
       FailureOr<UnificationMap> unifyResult =
-          includeOp->unifyTypeSignatureWithNamespace(tgtType, includeSymNames);
+          includeOp->unifyTypeSignatureWithNamespace(tgtType, targetNamespace);
       // This is already checked by `verifyInputs()`, but `verifyTemplateParams()` is called
       // even if `verifyInputs()` fails for error aggregation, so we still need to return
       // early here.
@@ -877,11 +879,13 @@ private:
           .append("callee defined here");
     }
     for (unsigned i = 0, e = tgtTypes.size(); i != e; ++i) {
-      if (!typesUnify(includeOpTypes[i], tgtTypes[i], includeSymNames)) {
-        return includeOp->emitOpError().append(
-            aspect, " type mismatch: expected type ", tgtTypes[i], ", but found ",
-            includeOpTypes[i], " for ", aspect, " number ", i
-        );
+      if (!typesUnify(includeOpTypes[i], tgtTypes[i], targetNamespace)) {
+        auto diag =
+            includeOp->emitOpError().append(aspect, " type mismatch: expected type ", tgtTypes[i]);
+        if (targetViaInclude) {
+          diag.append(" from included target \"", includeOp->getCalleeAttr(), '"');
+        }
+        return diag.append(", but found ", includeOpTypes[i], " for ", aspect, " number ", i);
       }
     }
     return success();
@@ -889,7 +893,8 @@ private:
 
   ContractOp tgt;
   FunctionType tgtType;
-  std::vector<llvm::StringRef> includeSymNames;
+  std::vector<llvm::StringRef> targetNamespace;
+  bool targetViaInclude;
 };
 
 } // namespace
@@ -996,8 +1001,6 @@ void InvariantOp::build(
     OpBuilder &odsBuilder, OperationState &odsState, StringRef loop_name,
     ArrayRef<Type> loop_arg_types, ArrayRef<Location> loop_arg_locs
 ) {
-  // Suppress false positive from `clang-tidy`
-  // NOLINTNEXTLINE(clang-analyzer-core.StackAddressEscape)
   odsState.getOrAddProperties<InvariantOp::Properties>().loop_name =
       odsBuilder.getStringAttr(loop_name);
   odsState.getOrAddProperties<InvariantOp::Properties>().loop_arg_types =
@@ -1063,8 +1066,6 @@ ParseResult InvariantOp::parse(OpAsmParser &parser, OperationState &result) {
   if (parser.parseSymbolName(loopNameAttr)) {
     return failure();
   }
-  // Suppress false positive from `clang-tidy`
-  // NOLINTNEXTLINE(clang-analyzer-core.StackAddressEscape)
   result.getOrAddProperties<InvariantOp::Properties>().loop_name = loopNameAttr;
 
   // Parse the function signature.
@@ -1073,7 +1074,7 @@ ParseResult InvariantOp::parse(OpAsmParser &parser, OperationState &result) {
   SmallVector<DictionaryAttr> resultAttrs;
   SmallVector<Type> resultTypes;
 
-  if (function_interface_impl::parseFunctionSignature(
+  if (function_interface_impl::parseFunctionSignatureWithArguments(
           parser, /*allowVariadic*/ false, entryArgs, isVariadic, resultTypes, resultAttrs
       )) {
     return failure();

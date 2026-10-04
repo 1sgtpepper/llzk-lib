@@ -1211,11 +1211,10 @@ mlir::LogicalResult IntervalDataFlowAnalysis::visitOperation(
     }
     propagateIfChanged(results[0], results[0]->setValue(expr));
   } else if (auto yieldOp = dyn_cast<scf::YieldOp>(op)) {
-    // Fetch the lattice for after the parent operation so we can propagate
-    // the yielded value to subsequent operations.
     Operation *parent = op->getParentOp();
     ensure(parent, "yield operation must have parent operation");
-    // Bind the operand values to the result values of the parent
+
+    // Bind scalar yielded values to the corresponding parent results.
     for (unsigned idx = 0; idx < yieldOp.getResults().size(); ++idx) {
       Value parentRes = parent->getResult(idx);
       Lattice *resLattice = getLatticeElement(parentRes);
@@ -1240,6 +1239,36 @@ mlir::LogicalResult IntervalDataFlowAnalysis::visitOperation(
         );
       }
       propagateIfChanged(resLattice, resLattice->setValue(newResVal));
+    }
+
+    // Aggregate intervals are tracked in `writeResults`, so remap writes
+    // rooted at each yielded aggregate onto the corresponding result.
+    for (unsigned idx = 0; idx < yieldOp.getNumOperands(); ++idx) {
+      Value parentRes = parent->getResult(idx);
+      if (!llvm::isa<ArrayType, StructType, pod::PodType>(parentRes.getType())) {
+        continue;
+      }
+
+      SourceRefLatticeValue yieldedRefs = getSourceRefState(yieldOp.getOperand(idx));
+      if (!yieldedRefs.isScalar()) {
+        continue;
+      }
+
+      SourceRef resultRef(llvm::cast<OpResult>(parentRes));
+      llvm::SmallVector<std::pair<SourceRef, ExpressionValue>> remappedWrites;
+      for (const SourceRef &yieldedRef : yieldedRefs.getScalarValue()) {
+        for (const auto &[writtenRef, writtenVal] : writeResults) {
+          if (!writtenRef.isValidPrefix(yieldedRef)) {
+            continue;
+          }
+          auto translatedRef = writtenRef.translate(yieldedRef, resultRef);
+          ensure(succeeded(translatedRef), "could not translate aggregate loop yield");
+          remappedWrites.emplace_back(*translatedRef, writtenVal);
+        }
+      }
+      for (const auto &[translatedRef, translatedVal] : remappedWrites) {
+        recordRefWrite(translatedRef, translatedVal);
+      }
     }
   } else if (
       // We do not need to explicitly handle read ops since they are resolved at the operand value
@@ -1838,7 +1867,7 @@ LogicalResult StructIntervals::computeIntervals(
       if (existing != memberRanges.end()) {
         Interval mergedInterval = existing->second.intersect(interval);
         bool intervalChanged = mergedInterval != existing->second;
-        existing->second = mergedInterval;
+        existing->second = std::move(mergedInterval);
 
         if (unreducedInterval.has_value()) {
           auto *existingUnreduced = memberUnreducedRanges.find(ref);
@@ -2009,8 +2038,8 @@ LogicalResult StructIntervals::computeIntervals(
         // existing parent intervals before merging back into each translated parent ref.
         llvm::EquivalenceClasses<SourceRef> directEqRefs =
             collectDirectEqualityRefs(solver, calledFn);
-        for (auto leaderIt = directEqRefs.begin(); leaderIt != directEqRefs.end(); ++leaderIt) {
-          if (!leaderIt->isLeader()) {
+        for (const auto *leader : directEqRefs) {
+          if (!leader->isLeader()) {
             continue;
           }
 
@@ -2019,21 +2048,20 @@ LogicalResult StructIntervals::computeIntervals(
           bool hasInterval = false;
           bool ambiguousTranslation = false;
 
-          for (auto memberIt = directEqRefs.member_begin(leaderIt);
-               memberIt != directEqRefs.member_end(); ++memberIt) {
+          for (const SourceRef &member : directEqRefs.members(*leader)) {
             Interval memberInterval = Interval::Entire(ctx.getField());
-            if (const auto *childIntervalIt = constrainIntervals.find(*memberIt);
+            if (const auto *childIntervalIt = constrainIntervals.find(member);
                 childIntervalIt != constrainIntervals.end()) {
               memberInterval = memberInterval.intersect(childIntervalIt->second);
             }
-            if (auto *callOperandIt = callOperandIntervals.find(*memberIt);
+            if (auto *callOperandIt = callOperandIntervals.find(member);
                 callOperandIt != callOperandIntervals.end()) {
               memberInterval = memberInterval.intersect(callOperandIt->second);
               contextualInterval = contextualInterval.intersect(memberInterval);
               hasInterval = true;
             }
 
-            auto translatedRefs = translateRef(*memberIt, identityTranslations);
+            auto translatedRefs = translateRef(member, identityTranslations);
             if (failed(translatedRefs)) {
               continue;
             }
