@@ -112,6 +112,9 @@ module attributes {llzk.lang} {
 // CHECK-NEXT:    poly.template @Caller {
 // CHECK-NEXT:      poly.param @LocalValue : !felt.type<"bn128">
 // CHECK-NEXT:      poly.param @DeferredValue
+// CHECK-NEXT:      poly.param @IndexValue : index
+// CHECK-NEXT:      poly.param @BoolValue : i1
+// CHECK-NEXT:      poly.param @FieldlessValue : !felt.type
 // CHECK-NEXT:      struct.def @Use {
 // CHECK-NEXT:        struct.member @from_global : !struct.type<@T::@S<[@GlobalValue]>>
 // CHECK-NEXT:        struct.member @from_binding : !struct.type<@T::@S<[@LocalValue]>>
@@ -119,11 +122,40 @@ module attributes {llzk.lang} {
 // CHECK-NEXT:        struct.member @from_concrete_any_field : !struct.type<@AnyField::@S<[#felt<const 35 : <"bn128">>]>>
 // CHECK-NEXT:        struct.member @from_global_any_field : !struct.type<@AnyField::@S<[@GlobalValue]>>
 // CHECK-NEXT:        struct.member @from_binding_any_field : !struct.type<@AnyField::@S<[@LocalValue]>>
-// CHECK-NEXT:        function.def @compute() -> !struct.type<@Caller::@Use<[@LocalValue, @DeferredValue]>> attributes {function.allow_witness} {
-// CHECK-NEXT:          %[[VAL_4:[0-9a-zA-Z_\.]+]] = struct.new : <@Caller::@Use<[@LocalValue, @DeferredValue]>>
-// CHECK-NEXT:          function.return %[[VAL_4]] : !struct.type<@Caller::@Use<[@LocalValue, @DeferredValue]>>
+// CHECK-NEXT:        struct.member @felt_to_index : !struct.type<@IndexTarget::@S<[@LocalValue]>>
+// CHECK-NEXT:        struct.member @bool_to_index : !struct.type<@IndexTarget::@S<[@BoolValue]>>
+// CHECK-NEXT:        struct.member @index_to_bool : !struct.type<@BoolTarget::@S<[@IndexValue]>>
+// CHECK-NEXT:        struct.member @index_to_felt : !struct.type<@T::@S<[@IndexValue]>>
+// CHECK-NEXT:        struct.member @fieldless_to_index : !struct.type<@IndexTarget::@S<[@FieldlessValue]>>
+// CHECK-NEXT:        function.def @compute() -> !struct.type<@Caller::@Use<[@LocalValue, @DeferredValue, @IndexValue, @BoolValue, @FieldlessValue]>> attributes {function.allow_witness} {
+// CHECK-NEXT:          %[[VAL_4:[0-9a-zA-Z_\.]+]] = struct.new : <@Caller::@Use<[@LocalValue, @DeferredValue, @IndexValue, @BoolValue, @FieldlessValue]>>
+// CHECK-NEXT:          function.return %[[VAL_4]] : !struct.type<@Caller::@Use<[@LocalValue, @DeferredValue, @IndexValue, @BoolValue, @FieldlessValue]>>
 // CHECK-NEXT:        }
-// CHECK-NEXT:        function.def @constrain(%[[VAL_5:[0-9a-zA-Z_\.]+]]: !struct.type<@Caller::@Use<[@LocalValue, @DeferredValue]>>) attributes {function.allow_constraint} {
+// CHECK-NEXT:        function.def @constrain(%[[VAL_5:[0-9a-zA-Z_\.]+]]: !struct.type<@Caller::@Use<[@LocalValue, @DeferredValue, @IndexValue, @BoolValue, @FieldlessValue]>>) attributes {function.allow_constraint} {
+// CHECK-NEXT:          function.return
+// CHECK-NEXT:        }
+// CHECK-NEXT:      }
+// CHECK-NEXT:    }
+// CHECK-NEXT:    poly.template @IndexTarget {
+// CHECK-NEXT:      poly.param @N : index
+// CHECK-NEXT:      struct.def @S {
+// CHECK-NEXT:        function.def @compute() -> !struct.type<@IndexTarget::@S<[@N]>> attributes {function.allow_witness} {
+// CHECK-NEXT:          %[[VAL_6:[0-9a-zA-Z_\.]+]] = struct.new : <@IndexTarget::@S<[@N]>>
+// CHECK-NEXT:          function.return %[[VAL_6]] : !struct.type<@IndexTarget::@S<[@N]>>
+// CHECK-NEXT:        }
+// CHECK-NEXT:        function.def @constrain(%[[VAL_7:[0-9a-zA-Z_\.]+]]: !struct.type<@IndexTarget::@S<[@N]>>) attributes {function.allow_constraint} {
+// CHECK-NEXT:          function.return
+// CHECK-NEXT:        }
+// CHECK-NEXT:      }
+// CHECK-NEXT:    }
+// CHECK-NEXT:    poly.template @BoolTarget {
+// CHECK-NEXT:      poly.param @N : i1
+// CHECK-NEXT:      struct.def @S {
+// CHECK-NEXT:        function.def @compute() -> !struct.type<@BoolTarget::@S<[@N]>> attributes {function.allow_witness} {
+// CHECK-NEXT:          %[[VAL_8:[0-9a-zA-Z_\.]+]] = struct.new : <@BoolTarget::@S<[@N]>>
+// CHECK-NEXT:          function.return %[[VAL_8]] : !struct.type<@BoolTarget::@S<[@N]>>
+// CHECK-NEXT:        }
+// CHECK-NEXT:        function.def @constrain(%[[VAL_9:[0-9a-zA-Z_\.]+]]: !struct.type<@BoolTarget::@S<[@N]>>) attributes {function.allow_constraint} {
 // CHECK-NEXT:          function.return
 // CHECK-NEXT:        }
 // CHECK-NEXT:      }
