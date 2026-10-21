@@ -48,8 +48,8 @@ module attributes {llzk.lang = "circom"} {
   A `!poly.tvar` restriction accepts a type or a type-valued `poly.param` symbol. Untyped local
   template bindings remain deferred. Affine maps are allowed only for unrestricted parameters
   or those restricted to `index` or `i1`. The wildcard `?` is not a valid `struct.type` argument.
-  Local numeric bindings may forward from `i1` or felt to `index`, or from `index` to `i1` or felt;
-  concrete conversion is checked when the template is instantiated.
+  Local numeric bindings may forward from `i1` or felt to `index`, or from `index` to `i1` or felt.
+  Value-dependent conversion checks run when the template is instantiated.
 
   A felt restriction accepts integer arguments. A fieldless felt restriction also accepts felt
   values with any field. A fielded felt restriction accepts fieldless felt constants; explicitly

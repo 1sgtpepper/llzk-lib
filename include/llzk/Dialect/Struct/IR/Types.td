@@ -46,8 +46,8 @@ def LLZK_StructType : StructDialectType<"Struct", "type"> {
         symbol naming a type-valued `poly.param`.
 
     Untyped local template bindings remain deferred.
-    Local numeric bindings may forward from `i1` or felt to `index`, or from `index`
-    to `i1` or felt; concrete conversion is checked when the template is instantiated.
+    Local numeric bindings may forward from `i1` or felt to `index`, or from `index` to `i1` or felt.
+    Value-dependent conversion checks run when the template is instantiated.
 
     A felt restriction accepts integer arguments. A fieldless felt restriction
     also accepts felt values with any field. A fielded felt restriction accepts
