@@ -1122,3 +1122,139 @@ module attributes {llzk.lang} {
     function.def @constrain(%self: !struct.type<@Use>) { function.return }
   }
 }
+
+
+// -----
+
+// Global symbols retain strict types rather than local numeric forwarding.
+module attributes {llzk.lang} {
+  // expected-note@+1 {{argument symbol defined here}}
+  global.def const @Value : !felt.type<"bn128"> = 7
+  poly.template @Target {
+    // expected-note@+1 {{parameter restriction declared here}}
+    poly.param @N : index
+    struct.def @S {
+      function.def @compute() -> !struct.type<@Target::@S<[@N]>> {
+        %self = struct.new : !struct.type<@Target::@S<[@N]>>
+        function.return %self : !struct.type<@Target::@S<[@N]>>
+      }
+      function.def @constrain(%self: !struct.type<@Target::@S<[@N]>>) { function.return }
+    }
+  }
+  struct.def @Use {
+    // expected-error@+1 {{'struct.member' op instantiation value '@Value' is not compatible with parameter "@N" type restriction 'index'}}
+    struct.member @value : !struct.type<@Target::@S<[@Value]>>
+    function.def @compute() -> !struct.type<@Use> {
+      %self = struct.new : !struct.type<@Use>
+      function.return %self : !struct.type<@Use>
+    }
+    function.def @constrain(%self: !struct.type<@Use>) { function.return }
+  }
+}
+
+// -----
+
+// Felt values have no implicit conversion to a boolean parameter.
+module attributes {llzk.lang} {
+  poly.template @Target {
+    // expected-note@+1 {{parameter restriction declared here}}
+    poly.param @N : i1
+    struct.def @S {
+      function.def @compute() -> !struct.type<@Target::@S<[@N]>> {
+        %self = struct.new : !struct.type<@Target::@S<[@N]>>
+        function.return %self : !struct.type<@Target::@S<[@N]>>
+      }
+      function.def @constrain(%self: !struct.type<@Target::@S<[@N]>>) { function.return }
+    }
+  }
+  poly.template @Caller {
+    // expected-note@+1 {{argument symbol defined here}}
+    poly.param @Value : !felt.type<"bn128">
+    struct.def @Use {
+      // expected-error@+1 {{'struct.member' op instantiation value '@Value' is not compatible with parameter "@N" type restriction 'i1'}}
+      struct.member @value : !struct.type<@Target::@S<[@Value]>>
+      function.def @compute() -> !struct.type<@Caller::@Use<[@Value]>> {
+        %self = struct.new : !struct.type<@Caller::@Use<[@Value]>>
+        function.return %self : !struct.type<@Caller::@Use<[@Value]>>
+      }
+      function.def @constrain(%self: !struct.type<@Caller::@Use<[@Value]>>) { function.return }
+    }
+  }
+}
+
+// -----
+
+// Boolean values have no implicit conversion to a felt parameter.
+module attributes {llzk.lang} {
+  poly.template @Target {
+    // expected-note@+1 {{parameter restriction declared here}}
+    poly.param @N : !felt.type<"bn128">
+    struct.def @S {
+      function.def @compute() -> !struct.type<@Target::@S<[@N]>> {
+        %self = struct.new : !struct.type<@Target::@S<[@N]>>
+        function.return %self : !struct.type<@Target::@S<[@N]>>
+      }
+      function.def @constrain(%self: !struct.type<@Target::@S<[@N]>>) { function.return }
+    }
+  }
+  poly.template @Caller {
+    // expected-note@+1 {{argument symbol defined here}}
+    poly.param @Value : i1
+    struct.def @Use {
+      // expected-error@+1 {{'struct.member' op instantiation value '@Value' is not compatible with parameter "@N" type restriction '!felt.type<"bn128">'}}
+      struct.member @value : !struct.type<@Target::@S<[@Value]>>
+      function.def @compute() -> !struct.type<@Caller::@Use<[@Value]>> {
+        %self = struct.new : !struct.type<@Caller::@Use<[@Value]>>
+        function.return %self : !struct.type<@Caller::@Use<[@Value]>>
+      }
+      function.def @constrain(%self: !struct.type<@Caller::@Use<[@Value]>>) { function.return }
+    }
+  }
+}
+
+// -----
+
+// A typed fieldless local symbol cannot satisfy a fielded felt restriction.
+module attributes {llzk.lang} {
+  poly.template @Target {
+    // expected-note@+1 {{parameter restriction declared here}}
+    poly.param @N : !felt.type<"bn128">
+    struct.def @S {
+      function.def @compute() -> !struct.type<@Target::@S<[@N]>> {
+        %self = struct.new : !struct.type<@Target::@S<[@N]>>
+        function.return %self : !struct.type<@Target::@S<[@N]>>
+      }
+      function.def @constrain(%self: !struct.type<@Target::@S<[@N]>>) { function.return }
+    }
+  }
+  poly.template @Caller {
+    // expected-note@+1 {{argument symbol defined here}}
+    poly.param @Value : !felt.type
+    struct.def @Use {
+      // expected-error@+1 {{'struct.member' op instantiation value '@Value' is not compatible with parameter "@N" type restriction '!felt.type<"bn128">'}}
+      struct.member @value : !struct.type<@Target::@S<[@Value]>>
+      function.def @compute() -> !struct.type<@Caller::@Use<[@Value]>> {
+        %self = struct.new : !struct.type<@Caller::@Use<[@Value]>>
+        function.return %self : !struct.type<@Caller::@Use<[@Value]>>
+      }
+      function.def @constrain(%self: !struct.type<@Caller::@Use<[@Value]>>) { function.return }
+    }
+  }
+}
+
+// -----
+
+// Concrete felt-to-index admission must not also admit felt-to-i1.
+// expected-error@+1 {{instantiation value '#felt<const 1 : <"bn128">> : !felt.type<"bn128">' is not compatible with parameter "@N" type restriction 'i1'}}
+module attributes {llzk.lang, llzk.main = !struct.type<@Target::@S<[#felt<const 1 : !felt.type<"bn128">>]>>} {
+  poly.template @Target {
+    poly.param @N : i1
+    struct.def @S {
+      function.def @compute() -> !struct.type<@Target::@S<[@N]>> {
+        %self = struct.new : !struct.type<@Target::@S<[@N]>>
+        function.return %self : !struct.type<@Target::@S<[@N]>>
+      }
+      function.def @constrain(%self: !struct.type<@Target::@S<[@N]>>) { function.return }
+    }
+  }
+}

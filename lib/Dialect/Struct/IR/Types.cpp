@@ -24,6 +24,7 @@ namespace {
 /// Check a concrete struct argument against its declared restriction. With a restriction,
 /// affine maps are valid only for index or integer parameters; a fieldless felt constant satisfies
 /// a fielded felt restriction. StructType::verify has already checked IntegerAttr types.
+/// Numeric argument values are converted and checked during template normalization.
 bool isCompatibleTemplateArgument(Attribute value, Type restriction) {
   if (isa<TypeVarType>(restriction)) {
     return isa<TypeAttr>(value);
@@ -41,7 +42,10 @@ bool isCompatibleTemplateArgument(Attribute value, Type restriction) {
     return isa<IntegerAttr>(value);
   }
 
-  if (isa<IndexType, IntegerType>(restriction)) {
+  if (isa<IndexType>(restriction)) {
+    return isa<IntegerAttr, felt::FeltConstAttr>(value);
+  }
+  if (isa<IntegerType>(restriction)) {
     return isa<IntegerAttr>(value);
   }
   return false;
