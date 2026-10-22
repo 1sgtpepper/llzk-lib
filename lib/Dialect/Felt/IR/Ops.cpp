@@ -303,7 +303,7 @@ OpFoldResult ShrFeltOp::fold(FoldAdaptor adaptor) {
   }
   // Any shift `amount >= bitwidth` will yield zero.
   const Field *field = data->field;
-  if (data->rhsVal >= DynamicAPInt(field->bitWidth())) {
+  if (data->rhsVal >= field->bitWidth()) {
     return buildFoldResult(getContext(), DynamicAPInt(0), *field, data->fieldName);
   }
   // Right-shifting a non-negative value always yields a value in [0, lhs] < prime;
@@ -341,8 +341,7 @@ OpFoldResult NotFeltOp::fold(FoldAdaptor adaptor) {
   // One's complement at field.bitWidth() bits: maxMask = 2^bitWidth - 1,
   // result = reduce(maxMask ^ val).  The operator<< here is llzk::operator<<
   // on DynamicAPInt (defined in DynamicAPIntHelper.h).
-  DynamicAPInt maxMask =
-      (DynamicAPInt(1) << DynamicAPInt(data->field->bitWidth())) - DynamicAPInt(1);
+  DynamicAPInt maxMask = (DynamicAPInt(1) << data->field->bitWidth()) - 1;
   return buildFoldResult(
       getContext(), data->field->reduce(maxMask ^ data->val), *data->field, data->fieldName
   );
