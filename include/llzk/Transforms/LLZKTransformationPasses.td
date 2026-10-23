@@ -114,7 +114,7 @@ def ComputeConstrainToProductPass
 
 def FuseProductControlFlowPass : LLZKPass<"llzk-fuse-product-control-flow"> {
   let summary =
-      "Fuse matching compute/constrain control flow in a @product function";
+      "Fuse matching compute/constrain control flow in a `@product` function";
   let description = [{
     Fuse uniquely matched compute/constrain `scf.for` and `scf.if` siblings in `@product`
     functions. A pair must contain one compute-side candidate and one constrain-side candidate.
@@ -124,9 +124,8 @@ def FuseProductControlFlowPass : LLZKPass<"llzk-fuse-product-control-flow"> {
     **Loops.** Loop pairs must be in the same block with the compute loop first.
     Each lower bound, upper bound, and step must be the same SSA value, equal integer constants,
     or same-block `poly.read_const` operations naming the same binding; the pass does not infer
-    arithmetic equivalence. An absent `unsignedCmp` attribute or `unsignedCmp = false` selects
-    signed bound comparisons; a unit attribute or `unsignedCmp = true` selects unsigned comparisons.
-    Both loops must select the same behavior.
+    arithmetic equivalence. Both loops must use the same signed or unsigned comparison mode;
+    the fused loop preserves SCF's `unsignedCmp` unit attribute when present.
 
     Fusion interleaves the loop bodies, so the compute loop must be
     memory-effect-free and speculatable. The constrain loop may contain `constrain.eq`,

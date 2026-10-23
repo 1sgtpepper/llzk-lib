@@ -895,9 +895,9 @@ TEST_F(FuseProductControlFlowTests, DistinctConstReadsOfSameBindingCanFuse) {
 }
 
 TEST_F(FuseProductControlFlowTests, LoopUnsignedComparisonMustMatch) {
-  // Loops that select different signed or unsigned bound comparisons stay separate. Unit and true
-  // select unsigned comparison; absent and false select signed comparison, and the fused loop
-  // retains the accepted input spelling.
+  // Mixed comparison modes stay separate. Matching signed and unsigned loops fuse while
+  // preserving SCF's native comparison mode. The high-bit upper bound makes the unsigned
+  // trip count differ from the zero iterations that signed comparison would produce.
   mlir::OwningOpRef<mlir::ModuleOp> module = mlir::parseSourceString<mlir::ModuleOp>(
       R"mlir(
     module attributes {llzk.lang = "llzk"} {
@@ -909,9 +909,8 @@ TEST_F(FuseProductControlFlowTests, LoopUnsignedComparisonMustMatch) {
           %c0 = arith.constant 0 : index
           %c1 = arith.constant 1 : index
           %c2 = arith.constant 2 : index
-          %c3 = arith.constant 3 : index
+          %unsignedUpper = arith.constant -1 : index
           %c4 = arith.constant 4 : index
-          %c5 = arith.constant 5 : index
           %zero = felt.const 0
 
           scf.for %i = %c0 to %c2 step %c1 {
@@ -923,32 +922,23 @@ TEST_F(FuseProductControlFlowTests, LoopUnsignedComparisonMustMatch) {
             scf.yield
           } {product_source = "constrain"}
 
-          scf.for %i = %c0 to %c3 step %c1 {
+          scf.for %i = %c0 to %unsignedUpper step %c1 {
             %equal_compute = arith.addi %i, %c0 : index
             scf.yield
           } {product_source = "compute", unsignedCmp}
-          scf.for %i = %c0 to %c3 step %c1 {
+          scf.for %i = %c0 to %unsignedUpper step %c1 {
             %equal_constrain = arith.addi %i, %c0 : index
             scf.yield
           } {product_source = "constrain", unsignedCmp}
 
           scf.for %i = %c0 to %c4 step %c1 {
-            %false_compute = arith.addi %i, %c0 : index
+            %signed_compute = arith.addi %i, %c0 : index
             scf.yield
           } {product_source = "compute"}
           scf.for %i = %c0 to %c4 step %c1 {
-            %false_constrain = arith.addi %i, %c0 : index
+            %signed_constrain = arith.addi %i, %c0 : index
             scf.yield
-          } {product_source = "constrain", unsignedCmp = false}
-
-          scf.for %i = %c0 to %c5 step %c1 {
-            %true_compute = arith.addi %i, %c0 : index
-            scf.yield
-          } {product_source = "compute", unsignedCmp = true}
-          scf.for %i = %c0 to %c5 step %c1 {
-            %true_constrain = arith.addi %i, %c0 : index
-            scf.yield
-          } {product_source = "constrain", unsignedCmp}
+          } {product_source = "constrain"}
 
           struct.writem %self[@value] = %zero : <@A>, !felt.type
           function.return %self : !struct.type<@A>
@@ -974,9 +964,8 @@ TEST_F(FuseProductControlFlowTests, LoopUnsignedComparisonMustMatch) {
 
   // Unique upper bounds tie each signed/unsigned expectation to its original loop pair.
   llvm::SmallVector<mlir::scf::ForOp> upperBound2Loops;
-  llvm::SmallVector<mlir::scf::ForOp> upperBound3Loops;
+  llvm::SmallVector<mlir::scf::ForOp> unsignedUpperLoops;
   llvm::SmallVector<mlir::scf::ForOp> upperBound4Loops;
-  llvm::SmallVector<mlir::scf::ForOp> upperBound5Loops;
   unsigned unexpectedLoopBounds = 0;
   product.walk([&](mlir::scf::ForOp loop) {
     auto upperBound = loop.getUpperBound().getDefiningOp<mlir::arith::ConstantIndexOp>();
@@ -988,14 +977,11 @@ TEST_F(FuseProductControlFlowTests, LoopUnsignedComparisonMustMatch) {
     case 2:
       upperBound2Loops.push_back(loop);
       break;
-    case 3:
-      upperBound3Loops.push_back(loop);
+    case -1:
+      unsignedUpperLoops.push_back(loop);
       break;
     case 4:
       upperBound4Loops.push_back(loop);
-      break;
-    case 5:
-      upperBound5Loops.push_back(loop);
       break;
     default:
       ++unexpectedLoopBounds;
@@ -1010,37 +996,29 @@ TEST_F(FuseProductControlFlowTests, LoopUnsignedComparisonMustMatch) {
       upperBound2Loops[0]->getAttrOfType<mlir::StringAttr>("product_source");
   ASSERT_TRUE(upperBound2ComputeSource);
   EXPECT_EQ(upperBound2ComputeSource.getValue(), "compute");
-  EXPECT_TRUE(llvm::isa<mlir::UnitAttr>(upperBound2Loops[0]->getAttr("unsignedCmp")));
+  EXPECT_TRUE(upperBound2Loops[0].getUnsignedCmp());
   mlir::StringAttr upperBound2ConstrainSource =
       upperBound2Loops[1]->getAttrOfType<mlir::StringAttr>("product_source");
   ASSERT_TRUE(upperBound2ConstrainSource);
   EXPECT_EQ(upperBound2ConstrainSource.getValue(), "constrain");
-  EXPECT_FALSE(upperBound2Loops[1]->hasAttr("unsignedCmp"));
+  EXPECT_FALSE(upperBound2Loops[1].getUnsignedCmp());
 
-  ASSERT_EQ(upperBound3Loops.size(), 1U);
-  mlir::StringAttr upperBound3Source =
-      upperBound3Loops[0]->getAttrOfType<mlir::StringAttr>("product_source");
-  ASSERT_TRUE(upperBound3Source);
-  EXPECT_EQ(upperBound3Source.getValue(), "fused");
-  EXPECT_TRUE(llvm::isa<mlir::UnitAttr>(upperBound3Loops[0]->getAttr("unsignedCmp")));
+  ASSERT_EQ(unsignedUpperLoops.size(), 1U);
+  mlir::StringAttr unsignedSource =
+      unsignedUpperLoops[0]->getAttrOfType<mlir::StringAttr>("product_source");
+  ASSERT_TRUE(unsignedSource);
+  EXPECT_EQ(unsignedSource.getValue(), "fused");
+  EXPECT_TRUE(unsignedUpperLoops[0].getUnsignedCmp());
+  auto tripCount = unsignedUpperLoops[0].getStaticTripCount();
+  ASSERT_TRUE(tripCount);
+  EXPECT_TRUE(tripCount->isAllOnes());
 
   ASSERT_EQ(upperBound4Loops.size(), 1U);
   mlir::StringAttr upperBound4Source =
       upperBound4Loops[0]->getAttrOfType<mlir::StringAttr>("product_source");
   ASSERT_TRUE(upperBound4Source);
   EXPECT_EQ(upperBound4Source.getValue(), "fused");
-  mlir::BoolAttr falseMode = upperBound4Loops[0]->getAttrOfType<mlir::BoolAttr>("unsignedCmp");
-  ASSERT_TRUE(falseMode);
-  EXPECT_FALSE(falseMode.getValue());
-
-  ASSERT_EQ(upperBound5Loops.size(), 1U);
-  mlir::StringAttr upperBound5Source =
-      upperBound5Loops[0]->getAttrOfType<mlir::StringAttr>("product_source");
-  ASSERT_TRUE(upperBound5Source);
-  EXPECT_EQ(upperBound5Source.getValue(), "fused");
-  mlir::BoolAttr trueMode = upperBound5Loops[0]->getAttrOfType<mlir::BoolAttr>("unsignedCmp");
-  ASSERT_TRUE(trueMode);
-  EXPECT_TRUE(trueMode.getValue());
+  EXPECT_FALSE(upperBound4Loops[0].getUnsignedCmp());
 }
 
 TEST_F(FuseProductControlFlowTests, ComputeLoopResultDependenciesPreventFusion) {

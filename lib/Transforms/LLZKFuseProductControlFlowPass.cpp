@@ -90,14 +90,6 @@ static bool sameLoopControlValue(Value a, Value b) {
          aConstRead.getConstName() == bConstRead.getConstName();
 }
 
-/// Return whether LLZK's `unsignedCmp` attribute selects unsigned bound comparisons for this loop.
-static bool usesUnsignedCmp(scf::ForOp loop) {
-  if (auto boolAttr = loop->getAttrOfType<BoolAttr>("unsignedCmp")) {
-    return boolAttr.getValue();
-  }
-  return loop->hasAttr("unsignedCmp");
-}
-
 /// Return whether two marked loops have the same parent region, opposite product roles, and the
 /// same lower bound, upper bound, step, and signed or unsigned comparison.
 static inline bool canLoopsBeFused(scf::ForOp a, scf::ForOp b) {
@@ -109,7 +101,7 @@ static inline bool canLoopsBeFused(scf::ForOp a, scf::ForOp b) {
     return false;
   }
 
-  if (usesUnsignedCmp(a) != usesUnsignedCmp(b)) {
+  if (a.getUnsignedCmp() != b.getUnsignedCmp()) {
     return false;
   }
 
@@ -370,8 +362,8 @@ static void cloneIfBranch(
   for (Value operand : computeYield.getResults()) {
     yieldOperands.push_back(mapper.lookupOrDefault(operand));
   }
-  auto fusedYield = builder.create<scf::YieldOp>(
-      builder.getFusedLoc({computeYield.getLoc(), constrainYield.getLoc()}), yieldOperands
+  auto fusedYield = scf::YieldOp::create(
+      builder, builder.getFusedLoc({computeYield.getLoc(), constrainYield.getLoc()}), yieldOperands
   );
   std::optional<DictionaryAttr> yieldAttrs = getCompatibleFusedAttrs(computeYield, constrainYield);
   assert(yieldAttrs && "fusion candidates must have compatible yield attributes");
@@ -404,9 +396,9 @@ static void fuseIfPair(
   rewriter.setInsertionPoint(computeIf);
   std::optional<DictionaryAttr> fusedAttrs = getCompatibleFusedAttrs(computeIf, constrainIf);
   assert(fusedAttrs && "fusion candidates must have compatible if attributes");
-  scf::IfOp fusedIf = rewriter.create<scf::IfOp>(
-      rewriter.getFusedLoc({computeIf.getLoc(), constrainIf.getLoc()}), computeIf.getResultTypes(),
-      computeIf.getCondition(), !computeIf.getElseRegion().empty()
+  scf::IfOp fusedIf = scf::IfOp::create(
+      rewriter, rewriter.getFusedLoc({computeIf.getLoc(), constrainIf.getLoc()}),
+      computeIf.getResultTypes(), computeIf.getCondition(), !computeIf.getElseRegion().empty()
   );
   fusedIf->setAttrs(*fusedAttrs);
   setProductSource(fusedIf, "fused");
@@ -596,19 +588,12 @@ fuseMatchingLoopPairs(Region &body, MLIRContext *context, SymbolTableCollection 
       continue;
     }
 
-    Attribute unsignedCmpAttr = computeLoop->getAttr("unsignedCmp");
-    if (!unsignedCmpAttr) {
-      unsignedCmpAttr = constrainLoop->getAttr("unsignedCmp");
-    }
+    bool unsignedCmp = computeLoop.getUnsignedCmp();
     if (failed(prepareForFusion(computeLoop, constrainLoop, rewriter))) {
       continue;
     }
     auto fusedLoop = fuseIndependentSiblingForLoops(computeLoop, constrainLoop, rewriter);
-    if (unsignedCmpAttr) {
-      // LLZK records `unsignedCmp` as a discardable `scf.for` attribute. The generic SCF fusion
-      // helper does not copy it, so retain the accepted input spelling.
-      fusedLoop->setAttr("unsignedCmp", unsignedCmpAttr);
-    }
+    fusedLoop.setUnsignedCmp(unsignedCmp);
     setProductSource(fusedLoop, "fused");
     // Recurse so nested if/loop pairs become eligible after loop fusion.
     fuseMatchingRegionControlFlow(fusedLoop.getBodyRegion(), context, symbolTables);
