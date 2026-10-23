@@ -52,9 +52,10 @@ module attributes {llzk.lang = "circom"} {
   Value-dependent conversion checks run when the template is instantiated.
 
   A felt restriction accepts integer arguments. A fieldless felt restriction also accepts felt
-  values with any field. A fielded felt restriction accepts fieldless felt constants; explicitly
-  fielded constants and typed felt symbols must have the matching field. A symbol typed as fieldless
-  felt cannot satisfy it.
+  values with any field, using their reduced value when instantiated. A fielded felt restriction
+  accepts fieldless felt constants; explicitly fielded constants and typed felt symbols must have
+  the matching field. A symbol typed as fieldless felt cannot satisfy it.
+  These restrictions also apply recursively to types supplied as arguments, including in `llzk.main`.
 
 - `pod.type<..>`: Plain Old Data aggregate type with named heterogeneous elements. Unlike `struct.type`, there is no associated named declaration, the type itself specifies all constituent element types. It can be used more freely than `struct.type` since it has fewer restrictions on modifications.
 - `poly.tvar<@N>`: Placeholder type variable within a templated `struct.def` that may be instantiated with different types.

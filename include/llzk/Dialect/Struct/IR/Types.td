@@ -50,9 +50,11 @@ def LLZK_StructType : StructDialectType<"Struct", "type"> {
     Value-dependent conversion checks run when the template is instantiated.
 
     A felt restriction accepts integer arguments. A fieldless felt restriction
-    also accepts felt values with any field. A fielded felt restriction accepts
-    fieldless felt constants; explicitly fielded constants and typed felt symbols
-    must have the matching field. A symbol typed as fieldless felt cannot satisfy it.
+    also accepts felt values with any field, using their reduced value when instantiated.
+    A fielded felt restriction accepts fieldless felt constants; explicitly fielded constants
+    and typed felt symbols must have the matching field. A symbol typed as fieldless felt
+    cannot satisfy it.
+    Restrictions also apply recursively to type arguments, including in `llzk.main`.
 
     ```llzk
     // Type for struct `A` with no parameters.

@@ -19,6 +19,7 @@
 #include "llzk/Dialect/Felt/IR/Types.h"
 #include "llzk/Dialect/Function/IR/Ops.h"
 #include "llzk/Dialect/Global/IR/Ops.h"
+#include "llzk/Dialect/POD/IR/Types.h"
 #include "llzk/Dialect/Polymorphic/IR/Ops.h"
 #include "llzk/Dialect/Polymorphic/IR/Types.h"
 #include "llzk/Dialect/Verif/IR/Ops.h"
@@ -826,6 +827,13 @@ LogicalResult verifyTypeResolution(SymbolTableCollection &tables, Operation *ori
       return failure();
     }
     return verifyTypeResolution(tables, origin, aTy.getElementType());
+  } else if (auto pTy = llvm::dyn_cast<pod::PodType>(ty)) {
+    for (pod::RecordAttr record : pTy.getRecords()) {
+      if (failed(verifyTypeResolution(tables, origin, record.getType()))) {
+        return failure();
+      }
+    }
+    return success();
   } else if (TypeVarType vTy = llvm::dyn_cast<TypeVarType>(ty)) {
     // Unlike other type parameters, a type variable may only name a parameter
     // of the enclosing template; it cannot resolve to a global.
