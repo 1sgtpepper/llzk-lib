@@ -1,0 +1,38 @@
+name: PR765 isolated review probes
+on:
+  push:
+    branches: [review/pr765-294f722-20261024]
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 2
+          persist-credentials: false
+      - name: Verify candidate source identity
+        run: |
+          test "$(git rev-parse HEAD^)" = 294f722b0fe73677552308893f769aaee0a23a4e
+          git diff --exit-code 294f722b0fe73677552308893f769aaee0a23a4e HEAD -- . ':(exclude).github'
+          git log -1 --format='%H %P'
+          git rev-parse 294f722b0fe73677552308893f769aaee0a23a4e^{tree}
+      - uses: cachix/install-nix-action@v31
+        with:
+          install_url: https://releases.nixos.org/nix/nix-2.35.2/install
+          github_access_token: ${{ secrets.GITHUB_TOKEN }}
+          extra_nix_config: |
+            extra-substituters = https://veridise-public.cachix.org
+            extra-trusted-public-keys = veridise-public.cachix.org-1:FvpZ8GzAj1mmJA5PnO9UgKxC6CQdmPutuIKtEpGmeig=
+      - name: Build exact candidate tools and run configured suites
+        run: nix --print-build-logs build --out-link review-result .#default
+      - name: Capture and verify review probes
+        run: nix develop --command python3 .github/review/pr765.py review-result/bin/llzk-opt
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: pr765-review-evidence
+          path: review-outputs
+          if-no-files-found: warn
