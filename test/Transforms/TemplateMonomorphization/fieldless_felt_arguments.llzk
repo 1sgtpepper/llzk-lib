@@ -4,6 +4,59 @@
 // value is reduced before forwarding to a fieldless parameter; literal and
 // symbolic arguments with that value must select the same child specialization.
 // Resolve constant globals before specialization.
+module attributes {llzk.lang, llzk.main = !struct.type<@Caller::@Main<[#felt<const 2013265924 : !felt.type<"babybear">>]>>} {
+  global.def const @GlobalValue : !felt.type<"babybear"> = 2013265924
+  poly.template @ChildTemplate {
+    poly.param @N : !felt.type
+    struct.def @Child {
+      struct.member @value : !felt.type
+      function.def @compute() -> !struct.type<@ChildTemplate::@Child<[@N]>> {
+        %n = poly.read_const @N : !felt.type
+        %self = struct.new : !struct.type<@ChildTemplate::@Child<[@N]>>
+        struct.writem %self[@value] = %n : !struct.type<@ChildTemplate::@Child<[@N]>>, !felt.type
+        function.return %self : !struct.type<@ChildTemplate::@Child<[@N]>>
+      }
+      function.def @constrain(%self: !struct.type<@ChildTemplate::@Child<[@N]>>) {
+        %actual = struct.readm %self[@value] : !struct.type<@ChildTemplate::@Child<[@N]>>, !felt.type
+        %expected = poly.read_const @N : !felt.type
+        constrain.eq %actual, %expected : !felt.type
+        function.return
+      }
+    }
+  }
+  poly.template @ValueFunction {
+    poly.param @N : !felt.type
+    function.def @value() -> !felt.type {
+      %n = poly.read_const @N : !felt.type
+      function.return %n : !felt.type
+    }
+  }
+  poly.template @Caller {
+    poly.param @N : !felt.type<"babybear">
+    struct.def @Main {
+      struct.member @literal : !struct.type<@ChildTemplate::@Child<[#felt<const 2013265924 : !felt.type<"babybear">>]>>
+      struct.member @forwarded : !struct.type<@ChildTemplate::@Child<[@N]>>
+      struct.member @raw : !struct.type<@ChildTemplate::@Child<[#felt<const 3>]>>
+      struct.member @global : !struct.type<@ChildTemplate::@Child<[@GlobalValue]>>
+      struct.member @value : !felt.type
+      function.def @compute() -> !struct.type<@Caller::@Main<[@N]>> {
+        %self = struct.new : !struct.type<@Caller::@Main<[@N]>>
+        %value = function.call @ValueFunction::@value<[@N]>() : () -> !felt.type
+        %global = function.call @ValueFunction::@value<[@GlobalValue]>() : () -> !felt.type
+        %sum = felt.add %value, %global : !felt.type
+        struct.writem %self[@value] = %sum : !struct.type<@Caller::@Main<[@N]>>, !felt.type
+        function.return %self : !struct.type<@Caller::@Main<[@N]>>
+      }
+      function.def @constrain(%self: !struct.type<@Caller::@Main<[@N]>>) {
+        %actual = struct.readm %self[@value] : !struct.type<@Caller::@Main<[@N]>>, !felt.type
+        %expected = felt.const 6
+        constrain.eq %actual, %expected : !felt.type
+        function.return
+      }
+    }
+  }
+}
+
 // CHECK-LABEL: module attributes {llzk.lang, llzk.main = !struct.type<@Main__spec_0>} {
 // CHECK-NEXT:    poly.template @ChildTemplate {
 // CHECK-NEXT:      poly.param @N : !felt.type
@@ -95,55 +148,3 @@
 // CHECK-NEXT:      function.return %[[VAL_25]] : !felt.type
 // CHECK-NEXT:    }
 // CHECK-NEXT:  }
-module attributes {llzk.lang, llzk.main = !struct.type<@Caller::@Main<[#felt<const 2013265924 : !felt.type<"babybear">>]>>} {
-  global.def const @GlobalValue : !felt.type<"babybear"> = 2013265924
-  poly.template @ChildTemplate {
-    poly.param @N : !felt.type
-    struct.def @Child {
-      struct.member @value : !felt.type
-      function.def @compute() -> !struct.type<@ChildTemplate::@Child<[@N]>> {
-        %n = poly.read_const @N : !felt.type
-        %self = struct.new : !struct.type<@ChildTemplate::@Child<[@N]>>
-        struct.writem %self[@value] = %n : !struct.type<@ChildTemplate::@Child<[@N]>>, !felt.type
-        function.return %self : !struct.type<@ChildTemplate::@Child<[@N]>>
-      }
-      function.def @constrain(%self: !struct.type<@ChildTemplate::@Child<[@N]>>) {
-        %actual = struct.readm %self[@value] : !struct.type<@ChildTemplate::@Child<[@N]>>, !felt.type
-        %expected = poly.read_const @N : !felt.type
-        constrain.eq %actual, %expected : !felt.type
-        function.return
-      }
-    }
-  }
-  poly.template @ValueFunction {
-    poly.param @N : !felt.type
-    function.def @value() -> !felt.type {
-      %n = poly.read_const @N : !felt.type
-      function.return %n : !felt.type
-    }
-  }
-  poly.template @Caller {
-    poly.param @N : !felt.type<"babybear">
-    struct.def @Main {
-      struct.member @literal : !struct.type<@ChildTemplate::@Child<[#felt<const 2013265924 : !felt.type<"babybear">>]>>
-      struct.member @forwarded : !struct.type<@ChildTemplate::@Child<[@N]>>
-      struct.member @raw : !struct.type<@ChildTemplate::@Child<[#felt<const 3>]>>
-      struct.member @global : !struct.type<@ChildTemplate::@Child<[@GlobalValue]>>
-      struct.member @value : !felt.type
-      function.def @compute() -> !struct.type<@Caller::@Main<[@N]>> {
-        %self = struct.new : !struct.type<@Caller::@Main<[@N]>>
-        %value = function.call @ValueFunction::@value<[@N]>() : () -> !felt.type
-        %global = function.call @ValueFunction::@value<[@GlobalValue]>() : () -> !felt.type
-        %sum = felt.add %value, %global : !felt.type
-        struct.writem %self[@value] = %sum : !struct.type<@Caller::@Main<[@N]>>, !felt.type
-        function.return %self : !struct.type<@Caller::@Main<[@N]>>
-      }
-      function.def @constrain(%self: !struct.type<@Caller::@Main<[@N]>>) {
-        %actual = struct.readm %self[@value] : !struct.type<@Caller::@Main<[@N]>>, !felt.type
-        %expected = felt.const 6
-        constrain.eq %actual, %expected : !felt.type
-        function.return
-      }
-    }
-  }
-}
