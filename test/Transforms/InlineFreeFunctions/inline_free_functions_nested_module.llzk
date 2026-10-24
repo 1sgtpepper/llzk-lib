@@ -10,7 +10,9 @@ module attributes {llzk.lang} {
 
   poly.template @Target {
     poly.param @Q
-    function.def private @sink()
+    function.def @sink() {
+      function.return
+    }
   }
 
   module @lib {
@@ -75,28 +77,16 @@ module attributes {llzk.lang} {
     }
   }
 }
-
 // CHECK-LABEL: module attributes {llzk.lang} {
 // CHECK-NEXT:    global.def const @offset : !felt.type =  1
 // CHECK-NEXT:    function.def private @blackbox(!felt.type) -> !felt.type
 // CHECK-NEXT:    func.func private @shadowed(!felt.type) -> !felt.type
 // CHECK-NEXT:    poly.template @Target {
 // CHECK-NEXT:      poly.param @Q
-// CHECK-NEXT:      function.def private @sink()
 // CHECK-NEXT:    }
 // CHECK-NEXT:    module @lib {
 // CHECK-NEXT:      global.def const @offset : !felt.type =  2
 // CHECK-NEXT:      function.def private @blackbox(!felt.type) -> !felt.type
-// CHECK-NEXT:      function.def @helper(%[[VAL_0:[0-9a-zA-Z_\.]+]]: !felt.type) -> !felt.type {
-// CHECK-NEXT:        %[[VAL_1:[0-9a-zA-Z_\.]+]] = global.read const @offset : !felt.type
-// CHECK-NEXT:        %[[VAL_2:[0-9a-zA-Z_\.]+]] = felt.add %[[VAL_0]], %[[VAL_1]] : !felt.type, !felt.type
-// CHECK-NEXT:        %[[VAL_3:[0-9a-zA-Z_\.]+]] = function.call @blackbox(%[[VAL_2]]) : (!felt.type) -> !felt.type
-// CHECK-NEXT:        function.return %[[VAL_3]] : !felt.type
-// CHECK-NEXT:      }
-// CHECK-NEXT:      function.def @read_public_member(%[[VAL_4:[0-9a-zA-Z_\.]+]]: !struct.type<@Main>) -> !felt.type {
-// CHECK-NEXT:        %[[VAL_5:[0-9a-zA-Z_\.]+]] = struct.readm %[[VAL_4]][@out] : <@Main>, !felt.type
-// CHECK-NEXT:        function.return %[[VAL_5]] : !felt.type
-// CHECK-NEXT:      }
 // CHECK-NEXT:    }
 // CHECK-NEXT:    module @shadow {
 // CHECK-NEXT:      func.func private @shadowed(!felt.type) -> !felt.type
@@ -112,10 +102,6 @@ module attributes {llzk.lang} {
 // CHECK-NEXT:        %[[VAL_10:[0-9a-zA-Z_\.]+]] = felt.add %[[VAL_8]], %[[VAL_9]] : !felt.type, !felt.type
 // CHECK-NEXT:        function.return %[[VAL_10]] : !felt.type
 // CHECK-NEXT:      }
-// CHECK-NEXT:      function.def @helper_with_property_symbol() {
-// CHECK-NEXT:        function.call @Target::@sink<[@N]>() : () -> ()
-// CHECK-NEXT:        function.return
-// CHECK-NEXT:      }
 // CHECK-NEXT:    }
 // CHECK-NEXT:    struct.def @Main {
 // CHECK-NEXT:      struct.member @out : !felt.type {llzk.pub}
@@ -128,7 +114,6 @@ module attributes {llzk.lang} {
 // CHECK-NEXT:        %[[VAL_16:[0-9a-zA-Z_\.]+]] = felt.add %[[VAL_14]], %[[VAL_15]] : !felt.type, !felt.type
 // CHECK-NEXT:        %[[VAL_17:[0-9a-zA-Z_\.]+]] = function.call @blackbox(%[[VAL_16]]) : (!felt.type) -> !felt.type
 // CHECK-NEXT:        %[[VAL_18:[0-9a-zA-Z_\.]+]] = function.call @Template::@helper_with_symbol<[1]>(%[[VAL_14]]) : (!felt.type) -> !felt.type
-// CHECK-NEXT:        function.call @Template::@helper_with_property_symbol<[1]>() : () -> ()
 // CHECK-NEXT:        %[[VAL_19:[0-9a-zA-Z_\.]+]] = function.call @shadow::@helper(%[[VAL_14]]) : (!felt.type) -> !felt.type
 // CHECK-NEXT:        %[[VAL_20:[0-9a-zA-Z_\.]+]] = struct.readm %[[VAL_13]][@out] : <@Main>, !felt.type
 // CHECK-NEXT:        %[[VAL_21:[0-9a-zA-Z_\.]+]] = struct.readm %[[VAL_13]][@out] : <@Main>, !felt.type

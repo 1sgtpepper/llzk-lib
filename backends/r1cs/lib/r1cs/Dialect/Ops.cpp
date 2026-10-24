@@ -21,6 +21,11 @@ using namespace mlir;
 
 namespace r1cs {
 
+void CircuitDefOp::build(OpBuilder &builder, OperationState &state, StringRef name) {
+  state.addAttribute(SymbolTable::getSymbolAttrName(), builder.getStringAttr(name));
+  state.addRegion();
+}
+
 ParseResult CircuitDefOp::parse(OpAsmParser &parser, OperationState &result) {
   // Parse symbol name
   StringAttr symName;
@@ -155,7 +160,7 @@ LogicalResult CircuitDefOp::verify() {
 
   // === Step 3: Require at least one public signal ===
   if (!foundPublic) {
-    return emitOpError() << "at least one signal must be marked public";
+    return emitOpError("at least one signal must be marked public");
   }
 
   return success();

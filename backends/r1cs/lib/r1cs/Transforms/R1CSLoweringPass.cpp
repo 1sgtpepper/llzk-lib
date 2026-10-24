@@ -18,6 +18,7 @@
 #include "r1cs/Transforms/TransformationPasses.h"
 
 #include "llzk/Dialect/Array/IR/Ops.h"
+#include "llzk/Dialect/Cast/IR/Ops.h"
 #include "llzk/Dialect/Constrain/IR/Ops.h"
 #include "llzk/Dialect/Felt/IR/Ops.h"
 #include "llzk/Dialect/Function/IR/Ops.h"
@@ -28,6 +29,7 @@
 #include "llzk/Util/Walk.h"
 
 #include <mlir/IR/BuiltinOps.h>
+#include <mlir/Interfaces/SideEffectInterfaces.h>
 
 #include <llvm/ADT/DenseMap.h>
 #include <llvm/ADT/DenseMapInfo.h>
@@ -62,7 +64,8 @@ struct LinearCombination {
 
   LinearCombination() : constant() {}
 
-  void addTerm(Value v, const DynamicAPInt &coeff) {
+  /// Add a term, preserving native coefficients for arithmetic overload selection.
+  template <typename CoeffT> void addTerm(Value v, const CoeffT &coeff) {
     if (coeff == 0) {
       return;
     }
@@ -72,11 +75,6 @@ struct LinearCombination {
     }
   }
 
-  void addTerm(Value v, int64_t coeff) {
-    DynamicAPInt dynamicCoeff(coeff);
-    return addTerm(v, dynamicCoeff);
-  }
-
   void negate() {
     for (auto &kv : terms) {
       kv.second = -kv.second;
@@ -84,7 +82,8 @@ struct LinearCombination {
     constant = -constant;
   };
 
-  LinearCombination scaled(const DynamicAPInt &factor) const {
+  /// Scale all coefficients, preserving native factors for arithmetic overload selection.
+  template <typename FactorT> LinearCombination scaled(const FactorT &factor) const {
     LinearCombination result;
     if (factor == 0) {
       return result;
@@ -95,11 +94,6 @@ struct LinearCombination {
     }
     result.constant = constant * factor;
     return result;
-  }
-
-  LinearCombination scaled(int64_t factor) const {
-    DynamicAPInt dynamicFactor(factor);
-    return scaled(dynamicFactor);
   }
 
   LinearCombination add(const LinearCombination &other) const {
@@ -347,11 +341,11 @@ class PassImpl : public r1cs::impl::R1CSLoweringPassBase<PassImpl> {
           builder.setInsertionPoint(op);
           std::string auxName = R1CS_AUXILIARY_MEMBER_PREFIX + std::to_string(auxCounter++);
           MemberDefOp auxMember = addAuxMember(structDef, auxName, val.getType());
-          Value aux = builder.create<MemberReadOp>(
-              val.getLoc(), val.getType(), constrainFunc.getSelfValueFromConstrain(),
+          Value aux = MemberReadOp::create(
+              builder, val.getLoc(), val.getType(), constrainFunc.getSelfValueFromConstrain(),
               auxMember.getNameAttr()
           );
-          auto eqOp = builder.create<EmitEqualityOp>(val.getLoc(), aux, lhs);
+          auto eqOp = EmitEqualityOp::create(builder, val.getLoc(), aux, lhs);
           auxAssignments.push_back({auxName, lhs});
           degreeMemo[aux] = 1;
           rewrites[aux] = aux;
@@ -359,9 +353,9 @@ class PassImpl : public r1cs::impl::R1CSLoweringPassBase<PassImpl> {
           lhs = aux;
           degLhs = 1;
 
-          Operation *newOp = isAdd
-                                 ? builder.create<AddFeltOp>(val.getLoc(), val.getType(), lhs, rhs)
-                                 : builder.create<SubFeltOp>(val.getLoc(), val.getType(), lhs, rhs);
+          Operation *newOp =
+              isAdd ? AddFeltOp::create(builder, val.getLoc(), val.getType(), lhs, rhs)
+                    : SubFeltOp::create(builder, val.getLoc(), val.getType(), lhs, rhs);
           Value result = newOp->getResult(0);
           degreeMemo[result] = std::max(degLhs, degRhs);
           rewrites[val] = result;
@@ -448,7 +442,9 @@ class PassImpl : public r1cs::impl::R1CSLoweringPassBase<PassImpl> {
         R1CSConstraint inner = constraintMap[op->getOperand(0)];
         constraintMap[v] = inner.negated();
       } else if (auto cst = dyn_cast<FeltConstantOp>(op)) {
-        R1CSConstraint c(toDynamicAPInt(cst.getValue()));
+        // Reduce the constant if a field is specified. Preserve constants with unspecified field;
+        // later binary export reduces them modulo --r1cs-prime, without checking the source fields.
+        R1CSConstraint c(cst.getValue().getReducedValueOrRaw());
         constraintMap[v] = c;
       } else {
         llvm::errs() << "Unhandled op in R1CS lowering: " << *op << '\n';
@@ -524,8 +520,8 @@ class PassImpl : public r1cs::impl::R1CSLoweringPassBase<PassImpl> {
 
     // Start with the constant, if present
     if (lc.constant != 0) {
-      result = builder.create<r1cs::ConstOp>(
-          loc, linearTy, r1cs::FeltAttr::get(builder.getContext(), toAPSInt(lc.constant))
+      result = r1cs::ConstOp::create(
+          builder, loc, linearTy, r1cs::FeltAttr::get(builder.getContext(), lc.constant)
       );
     }
 
@@ -536,27 +532,27 @@ class PassImpl : public r1cs::impl::R1CSLoweringPassBase<PassImpl> {
       }
       // %tmp = r1cs.to_linear %mapped
       // most of these will be removed with CSE passes
-      Value lin = builder.create<r1cs::ToLinearOp>(loc, linearTy, *mapped);
+      Value lin = r1cs::ToLinearOp::create(builder, loc, linearTy, *mapped);
       // %scaled = r1cs.mul_const %lin, coeff
       Value scaled = coeff == 1 ? lin
-                                : builder.create<r1cs::MulConstOp>(
-                                      loc, linearTy, lin,
-                                      r1cs::FeltAttr::get(builder.getContext(), toAPSInt(coeff))
+                                : r1cs::MulConstOp::create(
+                                      builder, loc, linearTy, lin,
+                                      r1cs::FeltAttr::get(builder.getContext(), coeff)
                                   );
 
       // Accumulate via r1cs.add
       if (!result) {
         result = scaled;
       } else {
-        result = builder.create<r1cs::AddOp>(loc, linearTy, result, scaled);
+        result = r1cs::AddOp::create(builder, loc, linearTy, result, scaled);
       }
     }
 
     if (!result) {
       // Entire linear combination was zero
-      result = builder.create<r1cs::ConstOp>(
-          loc, r1cs::LinearType::get(builder.getContext()),
-          r1cs::FeltAttr::get(builder.getContext(), toAPSInt(lc.constant))
+      result = r1cs::ConstOp::create(
+          builder, loc, r1cs::LinearType::get(builder.getContext()),
+          r1cs::FeltAttr::get(builder.getContext(), lc.constant)
       );
     }
 
@@ -603,8 +599,8 @@ class PassImpl : public r1cs::impl::R1CSLoweringPassBase<PassImpl> {
         argAttrPairs.emplace_back(key, value);
       }
     }
-    auto circuit = topBuilder.create<r1cs::CircuitDefOp>(
-        loc, structDef.getSymName().str(), topBuilder.getDictionaryAttr(argAttrPairs)
+    auto circuit = r1cs::CircuitDefOp::create(
+        topBuilder, loc, structDef.getSymName().str(), topBuilder.getDictionaryAttr(argAttrPairs)
     );
 
     Block *circuitBlock = circuit.addEntryBlock();
@@ -632,8 +628,8 @@ class PassImpl : public r1cs::impl::R1CSLoweringPassBase<PassImpl> {
       if (member.hasPublicAttr()) {
         pubAttr = bodyBuilder.getAttr<r1cs::PublicAttr>();
       }
-      auto defOp = bodyBuilder.create<r1cs::SignalDefOp>(
-          member.getLoc(), bodyBuilder.getType<r1cs::SignalType>(),
+      auto defOp = r1cs::SignalDefOp::create(
+          bodyBuilder, member.getLoc(), bodyBuilder.getType<r1cs::SignalType>(),
           bodyBuilder.getUI32IntegerAttr(signalDefCntr), pubAttr
       );
       signalDefCntr++;
@@ -658,7 +654,7 @@ class PassImpl : public r1cs::impl::R1CSLoweringPassBase<PassImpl> {
       if (failed(cVal)) {
         return failure();
       }
-      bodyBuilder.create<r1cs::ConstrainOp>(loc, *aVal, *bVal, *cVal);
+      r1cs::ConstrainOp::create(bodyBuilder, loc, *aVal, *bVal, *cVal);
     }
     return success();
   }
@@ -691,6 +687,31 @@ class PassImpl : public r1cs::impl::R1CSLoweringPassBase<PassImpl> {
         return;
       }
 
+      // Constraint extraction only visits equality operands. Reject residual
+      // casts explicitly so a potentially failing assertion cannot disappear
+      // with the struct. Unused infallible casts need no lowering.
+      // Valid constant casts can be folded by canonicalization before this pass.
+      if (walkContains<cast::IntToFeltOp>(constrainFunc, [](cast::IntToFeltOp op) {
+        if (isOpTriviallyDead(op)) {
+          return false;
+        }
+        op.emitError("R1CS lowering does not support effectful 'cast.tofelt' operations");
+        return true;
+      })) {
+        signalPassFailure();
+        return;
+      }
+      if (walkContains<cast::FeltToIndexOp>(constrainFunc, [](cast::FeltToIndexOp op) {
+        if (isOpTriviallyDead(op)) {
+          return false;
+        }
+        op.emitError("R1CS lowering does not support effectful 'cast.toindex' operations");
+        return true;
+      })) {
+        signalPassFailure();
+        return;
+      }
+
       DenseMap<Value, unsigned> degreeMemo;
       DenseMap<Value, Value> rewrites;
       SmallVector<AuxAssignment> auxAssignments;
@@ -711,18 +732,18 @@ class PassImpl : public r1cs::impl::R1CSLoweringPassBase<PassImpl> {
         if (degLhs == 2 && degRhs == 2) {
           std::string auxName = R1CS_AUXILIARY_MEMBER_PREFIX + std::to_string(auxCounter++);
           MemberDefOp auxMember = addAuxMember(structDef, auxName, lhs.getType());
-          Value aux = builder.create<MemberReadOp>(
-              eqOp.getLoc(), lhs.getType(), constrainFunc.getSelfValueFromConstrain(),
+          Value aux = MemberReadOp::create(
+              builder, eqOp.getLoc(), lhs.getType(), constrainFunc.getSelfValueFromConstrain(),
               auxMember.getNameAttr()
           );
-          auto eqAux = builder.create<EmitEqualityOp>(eqOp.getLoc(), aux, lhs);
+          auto eqAux = EmitEqualityOp::create(builder, eqOp.getLoc(), aux, lhs);
           auxAssignments.push_back({auxName, lhs});
           degreeMemo[aux] = 1;
           replaceSubsequentUsesWith(lhs, aux, eqAux);
           lhs = aux;
         }
 
-        builder.create<EmitEqualityOp>(eqOp.getLoc(), lhs, rhs);
+        EmitEqualityOp::create(builder, eqOp.getLoc(), lhs, rhs);
         eqOp.erase();
       });
 
@@ -737,9 +758,9 @@ class PassImpl : public r1cs::impl::R1CSLoweringPassBase<PassImpl> {
           signalPassFailure();
           return;
         }
-        builder.create<MemberWriteOp>(
-            assign.computedValue.getLoc(), selfVal, builder.getStringAttr(assign.auxMemberName),
-            expr
+        MemberWriteOp::create(
+            builder, assign.computedValue.getLoc(), selfVal,
+            builder.getStringAttr(assign.auxMemberName), expr
         );
       }
       if (failed(buildAndEmitR1CS(moduleOp, structDef, constrainFunc, degreeMemo))) {

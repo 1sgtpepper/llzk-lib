@@ -314,6 +314,8 @@ public:
 
   /* Getter methods */
 
+  /// Provide the template body for ModuleLikeBuilder's CRTP dispatch.
+  // NOLINTNEXTLINE(bugprone-derived-method-shadowing-base-method)
   mlir::Region &getBodyRegion() { return myTemplate.getBodyRegion(); }
 
   /// Get the associated template of this builder.
@@ -352,7 +354,7 @@ public:
 
     auto nameAttr = builder.getStringAttr(name);
 
-    builder.create<polymorphic::TemplateParamOp>(loc, nameAttr, type);
+    polymorphic::TemplateParamOp::create(builder, loc, nameAttr, type);
 
     return *this;
   }
@@ -377,7 +379,7 @@ public:
 
     auto nameAttr = builder.getStringAttr(name);
 
-    builder.create<polymorphic::TemplateExprOp>(loc, nameAttr);
+    polymorphic::TemplateExprOp::create(builder, loc, nameAttr);
 
     return *this;
   }
@@ -423,6 +425,8 @@ public:
 
   /* Getter methods */
 
+  /// Provide the module body for ModuleLikeBuilder's CRTP dispatch.
+  // NOLINTNEXTLINE(bugprone-derived-method-shadowing-base-method)
   mlir::Region &getBodyRegion() { return myModule.getBodyRegion(); }
 
   /// Get the associated module of this builder.
