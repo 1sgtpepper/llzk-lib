@@ -1,0 +1,49 @@
+name: PR765 readiness validation
+on:
+  push:
+    branches: [review/pr765-readiness-20261024]
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        variant: [candidate, main-integration]
+    env:
+      PR765_VARIANT: ${{ matrix.variant }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 70
+          persist-credentials: false
+      - name: Verify source and prepare integration
+        run: |
+          test "$(git rev-parse HEAD^)" = e3c7dcf11919d6bfc1c88e7b3fc6e0be2bbfd2d8
+          git diff --exit-code e3c7dcf11919d6bfc1c88e7b3fc6e0be2bbfd2d8 HEAD -- . ':(exclude).github'
+          if [ "$PR765_VARIANT" = main-integration ]; then
+            git fetch --no-tags --depth=70 https://github.com/project-llzk/llzk-lib.git 02fdd7dbfbdd76cec1ceb87e29d63687eacd499e
+            git -c user.name=1sgtpepper -c user.email=165563006+1sgtpepper@users.noreply.github.com merge --no-commit --no-ff FETCH_HEAD
+          fi
+          git diff --cached --check
+          git log -1 --format='%H %P'
+          git write-tree
+      - uses: cachix/install-nix-action@v31
+        with:
+          install_url: https://releases.nixos.org/nix/nix-2.35.2/install
+          github_access_token: ${{ secrets.GITHUB_TOKEN }}
+          extra_nix_config: |
+            extra-substituters = https://veridise-public.cachix.org
+            extra-trusted-public-keys = veridise-public.cachix.org-1:FvpZ8GzAj1mmJA5PnO9UgKxC6CQdmPutuIKtEpGmeig=
+      - name: Build and run complete configured suites
+        run: nix --print-build-logs build --out-link result .#default
+      - name: Verify output assertions and negative controls
+        run: nix develop --command python3 .github/review/pr765-readiness.py result/bin/llzk-opt
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: pr765-readiness-${{ matrix.variant }}
+          path: review-outputs
+          if-no-files-found: warn
