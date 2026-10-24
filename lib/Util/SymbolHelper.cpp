@@ -842,8 +842,21 @@ LogicalResult verifyTypeResolution(SymbolTableCollection &tables, Operation *ori
       return failure();
     }
     TemplateOp templateOp = *parent;
-    if (templateOp && templateOp.getConstNamed<TemplateParamOp>(vTy.getNameRef())) {
-      return success();
+    if (templateOp) {
+      if (auto param = templateOp.getConstNamed<TemplateParamOp>(vTy.getNameRef())) {
+        // Untyped parameters may still bind a type when their template is instantiated.
+        if (auto restriction = param.getTypeOpt();
+            restriction && !llvm::isa<TypeVarType>(*restriction)) {
+          return origin->emitError()
+              .append(
+                  "type variable ", vTy, " cannot reference parameter \"@", param.getName(),
+                  "\" with value type ", *restriction
+              )
+              .attachNote(param.getLoc())
+              .append("parameter declared here");
+        }
+        return success();
+      }
     }
     return origin->emitError() << "type variable " << vTy
                                << " must reference a parameter of its enclosing " << '\''

@@ -46,15 +46,22 @@ module attributes {llzk.lang = "circom"} {
   Arguments may be integers, felt constants, references to template bindings or constant globals,
   types, or [affine maps](https://mlir.llvm.org/docs/Dialects/Affine/#polyhedral-structures).
   A `!poly.tvar` restriction accepts a type or a type-valued `poly.param` symbol. Untyped local
-  template bindings remain deferred. Affine maps are allowed only for unrestricted parameters
-  or those restricted to `index` or `i1`. The wildcard `?` is not a valid `struct.type` argument.
+  template bindings remain deferred. A type variable cannot reference a parameter explicitly
+  restricted to a value type such as `index`, `i1`, or felt.
+  Affine maps are allowed only for unrestricted parameters or those restricted to `index` or `i1`.
+  The wildcard `?` is not a valid `struct.type` argument.
   Local numeric bindings may forward from `i1` or felt to `index`, or from `index` to `i1` or felt.
-  Value-dependent conversion checks run when the template is instantiated.
+  Constant globals must match the declared parameter type, except for the felt-field rule below;
+  they do not use these local numeric conversions.
+  Monomorphization checks conversion values: felt-to-index requires a known field and a reduced
+  value in the nonnegative signed 64-bit range, and index-to-`i1` requires zero or one.
 
-  A felt restriction accepts integer arguments. A fieldless felt restriction also accepts felt
-  values with any field, using their reduced value when instantiated. A fielded felt restriction
-  accepts fieldless felt constants; explicitly fielded constants and typed felt symbols must have
-  the matching field. A symbol typed as fieldless felt cannot satisfy it.
+  A felt restriction accepts integer literals. A fieldless felt restriction also accepts felt
+  values with any field. The `llzk-monomorphize-templates` pass uses their reduced value when
+  specializing a fieldless parameter. The legacy `llzk-flatten` pass does not support this
+  conversion when the fieldless value is read and used.
+  A fielded felt restriction accepts fieldless felt constants; explicitly fielded constants and
+  typed felt symbols must have the matching field. A symbol typed as fieldless felt cannot satisfy it.
   These restrictions also apply recursively to types supplied as arguments, including in `llzk.main`.
 
 - `pod.type<..>`: Plain Old Data aggregate type with named heterogeneous elements. Unlike `struct.type`, there is no associated named declaration, the type itself specifies all constituent element types. It can be used more freely than `struct.type` since it has fewer restrictions on modifications.
