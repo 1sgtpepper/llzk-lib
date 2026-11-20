@@ -1,0 +1,106 @@
+name: Verify PR 765 merged with main
+
+on:
+  push:
+    branches:
+      - test/pr765-merged-main-20261120
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    strategy:
+      fail-fast: false
+      matrix:
+        compiler:
+          - name: GCC
+            derivation: '.#debugGCC'
+          - name: Clang
+            derivation: '.#debugClangCov'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: cachix/install-nix-action@v31
+        with:
+          install_url: https://releases.nixos.org/nix/nix-2.35.2/install
+          github_access_token: "${{ secrets.GITHUB_TOKEN }}"
+      - name: Set Git credentials
+        run: |
+          git config --global 'url.https://api@github.com/'.insteadOf 'https://github.com/'
+          git config --global 'url.https://ssh@github.com/'.insteadOf 'ssh://git@github.com/'
+          git config --global 'url.https://git@github.com/'.insteadOf 'git@github.com:'
+      - uses: cachix/cachix-action@v17
+        with:
+          name: veridise-public
+          skipPush: true
+      - name: Build and test ${{ matrix.compiler.name }}
+        run: |
+          set -euo pipefail
+          nix --print-build-logs build ${{ matrix.compiler.derivation }} 2>&1 | tee build.log
+          grep -E '100% tests passed, 0 tests failed out of [0-9]+' build.log
+
+  docs:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: cachix/install-nix-action@v31
+        with:
+          install_url: https://releases.nixos.org/nix/nix-2.35.2/install
+          github_access_token: "${{ secrets.GITHUB_TOKEN }}"
+      - name: Set Git credentials
+        run: |
+          git config --global 'url.https://api@github.com/'.insteadOf 'https://github.com/'
+          git config --global 'url.https://ssh@github.com/'.insteadOf 'ssh://git@github.com/'
+          git config --global 'url.https://git@github.com/'.insteadOf 'git@github.com:'
+      - uses: cachix/cachix-action@v17
+        with:
+          name: veridise-public
+          skipPush: true
+      - name: Build docs
+        run: nix --option sandbox false --print-build-logs build '.#docs'
+
+  lint-and-tidy:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: cachix/install-nix-action@v31
+        with:
+          install_url: https://releases.nixos.org/nix/nix-2.35.2/install
+          github_access_token: "${{ secrets.GITHUB_TOKEN }}"
+      - name: Set Git credentials
+        run: |
+          git config --global 'url.https://api@github.com/'.insteadOf 'https://github.com/'
+          git config --global 'url.https://ssh@github.com/'.insteadOf 'ssh://git@github.com/'
+          git config --global 'url.https://git@github.com/'.insteadOf 'git@github.com:'
+      - uses: cachix/cachix-action@v17
+        with:
+          name: veridise-public
+          skipPush: true
+      - name: Run clang-format and clang-tidy on PR 765 changed files
+        run: |
+          set -euo pipefail
+          git fetch --no-tags https://github.com/project-llzk/llzk-lib.git main:refs/remotes/upstream/main
+          nix develop .#debugClang --command bash -c '
+            set -euo pipefail
+            git diff --check refs/remotes/upstream/main HEAD^
+            mapfile -t fmt_files < <(git diff --name-only refs/remotes/upstream/main HEAD^ -- "*.c" "*.cpp" "*.h" "*.td")
+            if [ "${#fmt_files[@]}" -gt 0 ]; then
+              clang-format --dry-run --Werror "${fmt_files[@]}"
+            fi
+            cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug -DLLZK_BUILD_DEVTOOLS=ON -DLLZK_VERSION_OVERRIDE=0.0.0
+            cmake --build build --target llzk-headers
+            mapfile -t tidy_files < <(git diff --name-only refs/remotes/upstream/main HEAD^ -- "*.c" "*.cpp")
+            if [ "${#tidy_files[@]}" -gt 0 ]; then
+              clang-tidy -p build "${tidy_files[@]}"                 --extra-arg=-I"$PWD/backends/pcl/include"                 --extra-arg=-isystem"$PWD/build/backends/pcl/include"                 --extra-arg=-I"$PWD/backends/r1cs/include"                 --extra-arg=-isystem"$PWD/build/backends/r1cs/include"                 --extra-arg=-I"$PWD/backends/zklean/include"                 --extra-arg=-isystem"$PWD/build/backends/zklean/include"
+            fi
+          '
