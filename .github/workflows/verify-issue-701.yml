@@ -1,0 +1,51 @@
+name: Verify issue 701 on main
+
+on:
+  push:
+    branches:
+      - test/verify-issue-701-main-20261120-v2
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    env:
+      TARGET_HEAD: 6d0a56dca032556aa2f6bd6b7ecfcf903983e1ce
+      EVIDENCE_PATH: /home/runner/work/_temp/verify-issue-701
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 10
+          persist-credentials: false
+      - uses: cachix/install-nix-action@v31
+        with:
+          install_url: https://releases.nixos.org/nix/nix-2.35.2/install
+          github_access_token: "${{ secrets.GITHUB_TOKEN }}"
+      - name: Set Git credentials
+        run: |
+          git config --global 'url.https://api@github.com/'.insteadOf 'https://github.com/'
+          git config --global 'url.https://ssh@github.com/'.insteadOf 'ssh://git@github.com/'
+          git config --global 'url.https://git@github.com/'.insteadOf 'git@github.com:'
+      - uses: cachix/cachix-action@v17
+        with:
+          name: veridise-public
+          skipPush: true
+      - name: Build and verify issue 701
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$EVIDENCE_PATH"
+          test "$(git rev-parse HEAD^)" = "$TARGET_HEAD"
+          git diff --exit-code "$TARGET_HEAD" -- include lib tools backends CMakeLists.txt flake.nix flake.lock
+          nix --print-build-logs build .#debugGCC 2>&1 | tee "$EVIDENCE_PATH/build.log"
+          grep -E 'LLZKTest\.MemberReadReplacementRespectsMemberIdentity .* Passed' "$EVIDENCE_PATH/build.log"
+          grep -E '100% tests passed, 0 tests failed out of [0-9]+' "$EVIDENCE_PATH/build.log"
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: verify-issue-701-${{ github.sha }}
+          path: /home/runner/work/_temp/verify-issue-701
+          if-no-files-found: warn
