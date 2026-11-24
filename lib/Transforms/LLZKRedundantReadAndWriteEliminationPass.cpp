@@ -59,28 +59,27 @@ namespace {
 
 /// @brief A reference to a value, represented by an SSA value, an attribute
 /// (e.g., a member name or access metadata), or an int (e.g., a constant array index).
+// libstdc++'s variant::emplace calls get on the just-constructed alternative, so
+// the reported bad_variant_access path in the implicit move assignment is unreachable.
+// NOLINTNEXTLINE(bugprone-exception-escape)
 class ReferenceID {
 public:
   explicit ReferenceID(Value v) {
-    // reserved special pointer values for DenseMapInfo
-    if (v == llvm::DenseMapInfo<Value>::getEmptyKey() ||
-        v == llvm::DenseMapInfo<Value>::getTombstoneKey()) {
-      identifier = v;
-    } else if (auto constVal = dyn_cast_if_present<FeltConstantOp>(v.getDefiningOp())) {
+    if (auto constVal = dyn_cast_if_present<FeltConstantOp>(v.getDefiningOp())) {
       identifier = constVal.getValue();
     } else if (auto constIdxVal = dyn_cast_if_present<arith::ConstantIndexOp>(v.getDefiningOp())) {
-      identifier = llvm::cast<IntegerAttr>(constIdxVal.getValue()).getValue();
+      identifier = llvm::DynamicAPInt(constIdxVal.value());
     } else {
       identifier = v;
     }
   }
   explicit ReferenceID(Attribute attr) : identifier(attr) {}
-  explicit ReferenceID(const APInt &i) : identifier(i) {}
-  explicit ReferenceID(unsigned i) : identifier(APInt(64, i)) {}
+  explicit ReferenceID(const llvm::DynamicAPInt &i) : identifier(i) {}
+  explicit ReferenceID(unsigned i) : identifier(llvm::DynamicAPInt(i)) {}
 
   bool isValue() const { return std::holds_alternative<Value>(identifier); }
   bool isAttribute() const { return std::holds_alternative<Attribute>(identifier); }
-  bool isConst() const { return std::holds_alternative<APInt>(identifier); }
+  bool isConst() const { return std::holds_alternative<llvm::DynamicAPInt>(identifier); }
 
   Value getValue() const {
     ensure(isValue(), "does not hold Value");
@@ -92,9 +91,9 @@ public:
     return std::get<Attribute>(identifier);
   }
 
-  APInt getConst() const {
+  llvm::DynamicAPInt getConst() const {
     ensure(isConst(), "does not hold const");
-    return std::get<APInt>(identifier);
+    return std::get<llvm::DynamicAPInt>(identifier);
   }
 
   void print(raw_ostream &os) const {
@@ -107,7 +106,7 @@ public:
     } else if (const auto *attr = std::get_if<Attribute>(&identifier)) {
       os << *attr;
     } else {
-      os << std::get<APInt>(identifier);
+      os << std::get<llvm::DynamicAPInt>(identifier);
     }
   }
 
@@ -123,9 +122,9 @@ public:
 private:
   /// @brief Three cases:
   /// Attribute: identifier refers to a named member or other access metadata
-  /// APInt: identifier refers to a constant index in an array
+  /// DynamicAPInt: identifier refers to a constant index in an array
   /// Value: identifier refers to a dynamic index or access operand
-  std::variant<Attribute, APInt, Value> identifier;
+  std::variant<Attribute, llvm::DynamicAPInt, Value> identifier;
 };
 
 } // namespace
@@ -134,17 +133,13 @@ namespace llvm {
 
 /// @brief Allows ReferenceID to be a DenseMap key.
 template <> struct DenseMapInfo<ReferenceID> {
-  static ReferenceID getEmptyKey() { return ReferenceID(DenseMapInfo<Value>::getEmptyKey()); }
-  static inline ReferenceID getTombstoneKey() {
-    return ReferenceID(DenseMapInfo<Value>::getTombstoneKey());
-  }
   static unsigned getHashValue(const ReferenceID &r) {
     if (r.isValue()) {
       return hash_value(r.getValue());
     } else if (r.isAttribute()) {
       return hash_value(r.getAttribute());
     }
-    return hash_value(r.getConst());
+    return llzk::hashDynamicAPInt(r.getConst());
   }
   static bool isEqual(const ReferenceID &lhs, const ReferenceID &rhs) { return lhs == rhs; }
 };
@@ -222,7 +217,7 @@ public:
   createChild(IdType id, Value storedVal, const std::shared_ptr<ReferenceNode> &valTree = nullptr) {
     std::shared_ptr<ReferenceNode> child = create(id, storedVal);
     child->setCurrentValue(storedVal, valTree);
-    if (child->identifier.isValue() && children.find(child->identifier) == children.end()) {
+    if (child->identifier.isValue() && !children.contains(child->identifier)) {
       ++dynamicChildCount;
     }
     children[child->identifier] = child;
@@ -487,7 +482,7 @@ private:
 
   template <typename IdType>
   ReferenceNode(IdType id, Value initialVal)
-      : identifier(std::move(id)), storedValue(initialVal), lastWrite(nullptr), children(),
+      : identifier(std::move(id)), storedValue(initialVal), lastWrite(nullptr),
         dynamicChildCount(0) {}
 };
 
@@ -677,8 +672,10 @@ class PassImpl : public llzk::impl::RedundantReadAndWriteEliminationPassBase<Pas
       if (auto memberWrite = dyn_cast<MemberWriteOp>(op)) {
         recordAggregateWriteTarget(memberWrite.getComponent());
         knownAggregateWrite = true;
-      } else if (auto arrayAccess = llvm::dyn_cast<ArrayAccessOpInterface>(op);
-                 arrayAccess && !arrayAccess.isRead()) {
+      } else if (
+          auto arrayAccess = llvm::dyn_cast<ArrayAccessOpInterface>(op);
+          arrayAccess && !arrayAccess.isRead()
+      ) {
         recordAggregateWriteTarget(arrayAccess.getArrRef());
         knownAggregateWrite = true;
       } else if (auto podWrite = dyn_cast<pod::WritePodOp>(op)) {
@@ -752,14 +749,12 @@ class PassImpl : public llzk::impl::RedundantReadAndWriteEliminationPassBase<Pas
       ensure(it != endStates.end(), "unknown end state means we have an unsupported backedge");
       return cloneKnownState(it->second);
     };
-    auto hasBlockState = [&endStates](Block *blockPtr) {
-      return endStates.find(blockPtr) != endStates.end();
-    };
+    auto hasBlockState = [&endStates](Block *blockPtr) { return endStates.contains(blockPtr); };
     std::deque<Block *> frontier;
     DenseSet<Block *> queued;
     DenseSet<Block *> processed;
     auto enqueue = [&](Block *blockPtr) {
-      if (processed.find(blockPtr) == processed.end() && queued.insert(blockPtr).second) {
+      if (!processed.contains(blockPtr) && queued.insert(blockPtr).second) {
         frontier.push_back(blockPtr);
       }
     };
@@ -813,7 +808,7 @@ class PassImpl : public llzk::impl::RedundantReadAndWriteEliminationPassBase<Pas
       // Update the end states.
       // Since we only support the scf dialect, we should never have any
       // backedges, so we should never already have state for this block.
-      ensure(processed.find(currentBlock) == processed.end(), "backedge");
+      ensure(!processed.contains(currentBlock), "backedge");
       endStates[currentBlock] = std::move(endState);
       processed.insert(currentBlock);
 
@@ -1418,8 +1413,9 @@ class PassImpl : public llzk::impl::RedundantReadAndWriteEliminationPassBase<Pas
           };
         }
         writeCandidates.globals.erase(name);
-      } else if (auto it = state.globals.find(name);
-                 it != state.globals.end() && it->second.scalar) {
+      } else if (
+          auto it = state.globals.find(name); it != state.globals.end() && it->second.scalar
+      ) {
         replacementMap[result] = *it->second.scalar;
       } else {
         state.globals[name] = GlobalState {.scalar = result, .aggregate = nullptr};
@@ -1491,9 +1487,33 @@ class PassImpl : public llzk::impl::RedundantReadAndWriteEliminationPassBase<Pas
           redundantWrites.push_back(previous->second);
         }
         writeCandidates.ram[address] = store.getOperation();
-        state.ram.clear();
-        state.ramExact.clear();
-        state.ram[ReferenceID(address)] = value;
+        ReferenceID addressID(address);
+        if (addressID.isConst()) {
+          SmallVector<ReferenceID> invalidatedAddresses;
+          for (const auto &[knownAddress, _] : state.ram) {
+            if (!knownAddress.isConst() || knownAddress == addressID) {
+              invalidatedAddresses.push_back(knownAddress);
+            }
+          }
+          for (const ReferenceID &knownAddress : invalidatedAddresses) {
+            state.ram.erase(knownAddress);
+          }
+
+          SmallVector<Value> invalidatedExactAddresses;
+          for (const auto &[knownAddress, _] : state.ramExact) {
+            ReferenceID knownAddressID(knownAddress);
+            if (!knownAddressID.isConst() || knownAddressID == addressID) {
+              invalidatedExactAddresses.push_back(knownAddress);
+            }
+          }
+          for (Value knownAddress : invalidatedExactAddresses) {
+            state.ramExact.erase(knownAddress);
+          }
+        } else {
+          state.ram.clear();
+          state.ramExact.clear();
+        }
+        state.ram[addressID] = value;
         state.ramExact[address] = value;
       }
     }

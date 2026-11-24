@@ -40,7 +40,7 @@ class BuildShortTypeString {
   std::string ret;
   llvm::raw_string_ostream ss;
 
-  BuildShortTypeString() : ret(), ss(ret) {}
+  BuildShortTypeString() : ss(ret) {}
   BuildShortTypeString &append(mlir::Type);
   BuildShortTypeString &append(mlir::ArrayRef<mlir::Attribute>);
   BuildShortTypeString &append(mlir::Attribute);
@@ -145,15 +145,9 @@ inline mlir::LogicalResult checkValidType(EmitErrorFn emitError, mlir::Type type
 /// @brief Return `true` iff the given type contains an AffineMapAttr.
 bool hasAffineMapAttr(mlir::Type type);
 
-enum class Side : std::uint8_t { EMPTY = 0, LHS, RHS, TOMB };
+enum class Side : std::uint8_t { LHS, RHS };
 static inline mlir::raw_ostream &operator<<(mlir::raw_ostream &os, const Side &val) {
   switch (val) {
-  case Side::EMPTY:
-    os << "EMPTY";
-    break;
-  case Side::TOMB:
-    os << "TOMB";
-    break;
   case Side::LHS:
     os << "LHS";
     break;
@@ -170,9 +164,8 @@ inline Side reverse(Side in) {
     return Side::RHS;
   case Side::RHS:
     return Side::LHS;
-  default:
-    return in;
   }
+  return in;
 }
 
 } // namespace llzk
@@ -180,8 +173,6 @@ inline Side reverse(Side in) {
 namespace llvm {
 template <> struct DenseMapInfo<llzk::Side> {
   using T = llzk::Side;
-  static inline T getEmptyKey() { return T::EMPTY; }
-  static inline T getTombstoneKey() { return T::TOMB; }
   static unsigned getHashValue(const T &val) {
     using UT = std::underlying_type_t<T>;
     return llvm::DenseMapInfo<UT>::getHashValue(static_cast<UT>(val));
@@ -256,6 +247,14 @@ bool podTypesUnify(
 bool functionTypesUnify(
     mlir::FunctionType lhs, mlir::FunctionType rhs,
     mlir::ArrayRef<llvm::StringRef> rhsReversePrefix = {}, UnificationMap *unifications = nullptr
+);
+
+/// Unify a complete signature with transitive, side-qualified symbolic bindings.
+/// Unlike UnificationMap's null entries, this distinguishes compatible unresolved bindings from
+/// conflicts, including alias chains and repeated parameters within aggregate arguments/results.
+bool functionTypesUnifyConsistently(
+    mlir::FunctionType lhs, mlir::FunctionType rhs,
+    mlir::ArrayRef<llvm::StringRef> rhsReversePrefix = {}
 );
 
 /// Return `true` iff the two Type instances are equivalent or could be equivalent after full

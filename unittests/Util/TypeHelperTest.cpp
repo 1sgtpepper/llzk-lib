@@ -14,6 +14,7 @@
 #include "llzk/Dialect/Array/IR/Types.h"
 #include "llzk/Dialect/Felt/IR/Types.h"
 #include "llzk/Dialect/POD/IR/Types.h"
+#include "llzk/Dialect/Polymorphic/IR/Types.h"
 #include "llzk/Dialect/Struct/IR/Types.h"
 
 #include <mlir/IR/BuiltinTypeInterfaces.h>
@@ -28,7 +29,7 @@ using namespace llzk::pod;
 
 class TypeHelperTests : public LLZKTest {
 protected:
-  TypeHelperTests() : LLZKTest(), errFn([this]() { return InFlightDiagnosticWrapper(&ctx); }) {}
+  TypeHelperTests() : errFn([this]() { return InFlightDiagnosticWrapper(&ctx); }) {}
 
   OwningEmitErrorFn errFn;
 };
@@ -109,6 +110,53 @@ TEST_F(TypeHelperTests, test_structTypesUnify) {
   ASSERT_TRUE(structTypesUnify(a, b));
 }
 
+// Equal raw types can resolve to different symbols under the RHS namespace, including when nested
+// in TypeAttr parameters.
+TEST_F(TypeHelperTests, test_typesUnify_equalRecursiveTypesRespectRhsPrefix) {
+  SymbolRefAttr targetBoxName = SymbolRefAttr::get(
+      &ctx, "Target", ArrayRef<FlatSymbolRefAttr> {FlatSymbolRefAttr::get(&ctx, "Box")}
+  );
+  SymbolRefAttr includedBoxName = SymbolRefAttr::get(
+      &ctx, "Lib",
+      ArrayRef<FlatSymbolRefAttr> {
+          FlatSymbolRefAttr::get(&ctx, "Target"), FlatSymbolRefAttr::get(&ctx, "Box")
+      }
+  );
+  StructType targetBox = StructType::get(targetBoxName);
+  StructType includedBox = StructType::get(includedBoxName);
+  SymbolRefAttr targetHolderName = SymbolRefAttr::get(
+      &ctx, "Target", ArrayRef<FlatSymbolRefAttr> {FlatSymbolRefAttr::get(&ctx, "Holder")}
+  );
+  SymbolRefAttr includedHolderName = SymbolRefAttr::get(
+      &ctx, "Lib",
+      ArrayRef<FlatSymbolRefAttr> {
+          FlatSymbolRefAttr::get(&ctx, "Target"), FlatSymbolRefAttr::get(&ctx, "Holder")
+      }
+  );
+  StructType targetHolder =
+      StructType::get(targetHolderName, ArrayRef<Attribute> {TypeAttr::get(targetBox)});
+  StructType includedHolder =
+      StructType::get(includedHolderName, ArrayRef<Attribute> {TypeAttr::get(includedBox)});
+  StructType collidingHolder =
+      StructType::get(includedHolderName, ArrayRef<Attribute> {TypeAttr::get(targetBox)});
+  ArrayType targetArray = ArrayType::get(targetBox, {2});
+  PodType targetPod = PodType::get(
+      &ctx, ArrayRef {RecordAttr::get(&ctx, StringAttr::get(&ctx, "value"), targetBox)}
+  );
+  FunctionType targetFunction = FunctionType::get(&ctx, {IndexType::get(&ctx)}, {targetBox});
+  llvm::StringRef includedNamespace = "Lib";
+  ArrayRef<llvm::StringRef> rhsPrefix(&includedNamespace, 1);
+
+  EXPECT_TRUE(typesUnify(includedBox, targetBox, rhsPrefix));
+  EXPECT_TRUE(typesUnify(includedHolder, targetHolder, rhsPrefix));
+  EXPECT_FALSE(typesUnify(targetBox, targetBox, rhsPrefix));
+  EXPECT_FALSE(typesUnify(collidingHolder, targetHolder, rhsPrefix));
+  EXPECT_FALSE(typesUnify(targetArray, targetArray, rhsPrefix));
+  EXPECT_FALSE(typesUnify(targetPod, targetPod, rhsPrefix));
+  EXPECT_FALSE(typesUnify(targetFunction, targetFunction, rhsPrefix));
+  EXPECT_TRUE(typesUnify(IndexType::get(&ctx), IndexType::get(&ctx), rhsPrefix));
+}
+
 TEST_F(TypeHelperTests, test_podTypesUnify_Pass) {
   IndexType tyIndex = IndexType::get(&ctx);
   auto r1 = RecordAttr::get(&ctx, StringAttr::get(&ctx, "r"), tyIndex);
@@ -156,6 +204,122 @@ TEST_F(TypeHelperTests, test_functionTypesUnify_Output_Fail) {
   ASSERT_FALSE(functionTypesUnify(a, b));
 }
 
+// Repeated dimensions can be unresolved inside one aggregate, even though the ordinary
+// unification map cannot retain a single binding for N.
+TEST_F(TypeHelperTests, test_functionTypesUnifyConsistently_unresolvedAggregate) {
+  auto index = IndexType::get(&ctx);
+  auto parameter = FlatSymbolRefAttr::get(&ctx, "N");
+  auto declared = FunctionType::get(&ctx, {ArrayType::get(index, {parameter, parameter})}, {});
+  auto eight = IntegerAttr::get(index, 8);
+  for (Attribute unresolved : SmallVector<Attribute> {
+           FlatSymbolRefAttr::get(&ctx, "M"),
+           AffineMapAttr::get(OpBuilder(&ctx).getDimIdentityMap()),
+           IntegerAttr::get(index, ShapedType::kDynamic)
+       }) {
+    auto actual = FunctionType::get(&ctx, {ArrayType::get(index, {unresolved, eight})}, {});
+    UnificationMap bindings;
+    ASSERT_TRUE(functionTypesUnify(actual, declared, {}, &bindings));
+    ASSERT_TRUE(bindings.contains({parameter, Side::RHS}));
+    // A wildcard dimension is accepted without recording a binding; the other cases retain
+    // the incompatible spellings as a null entry, despite their possible common refinement.
+    if (auto integer = dyn_cast<IntegerAttr>(unresolved); integer && isDynamic(integer)) {
+      EXPECT_EQ(bindings.lookup({parameter, Side::RHS}), eight);
+    } else {
+      EXPECT_FALSE(bindings.lookup({parameter, Side::RHS}));
+    }
+    EXPECT_TRUE(functionTypesUnifyConsistently(actual, declared));
+    EXPECT_TRUE(functionTypesUnifyConsistently(declared, actual));
+  }
+}
+
+// A symbolic occurrence that unifies with both concrete bindings must not hide their conflict.
+TEST_F(TypeHelperTests, test_functionTypesUnifyConsistently_allOccurrences) {
+  auto index = IndexType::get(&ctx);
+  auto parameter = FlatSymbolRefAttr::get(&ctx, "N");
+  auto symbolic = FlatSymbolRefAttr::get(&ctx, "M");
+  auto eight = IntegerAttr::get(index, 8);
+  auto nine = IntegerAttr::get(index, 9);
+  auto declared =
+      FunctionType::get(&ctx, {ArrayType::get(index, {parameter, parameter, parameter})}, {});
+  for (const SmallVector<Attribute> &dimensions :
+       {SmallVector<Attribute> {symbolic, eight, nine},
+        SmallVector<Attribute> {nine, eight, symbolic}}) {
+    auto actual = FunctionType::get(&ctx, {ArrayType::get(index, dimensions)}, {});
+    ASSERT_TRUE(functionTypesUnify(actual, declared));
+    EXPECT_FALSE(functionTypesUnifyConsistently(actual, declared));
+    EXPECT_FALSE(functionTypesUnifyConsistently(declared, actual));
+  }
+}
+
+TEST_F(TypeHelperTests, test_functionTypesUnifyConsistently_argumentAndResult) {
+  auto index = IndexType::get(&ctx);
+  auto generic = ArrayType::get(index, {FlatSymbolRefAttr::get(&ctx, "N")});
+  auto declared = FunctionType::get(&ctx, {generic}, {generic});
+  auto actual = FunctionType::get(&ctx, {ArrayType::get(index, {8})}, {ArrayType::get(index, {9})});
+  ASSERT_TRUE(functionTypesUnify(actual, declared));
+  EXPECT_FALSE(functionTypesUnifyConsistently(actual, declared));
+}
+
+TEST_F(TypeHelperTests, test_functionTypesUnifyConsistently_transitiveAliases) {
+  auto s = polymorphic::TypeVarType::get(FlatSymbolRefAttr::get(&ctx, "S"));
+  auto t = polymorphic::TypeVarType::get(FlatSymbolRefAttr::get(&ctx, "T"));
+  auto u = polymorphic::TypeVarType::get(FlatSymbolRefAttr::get(&ctx, "U"));
+  Type index = IndexType::get(&ctx), felt = felt::FeltType::get(&ctx);
+  auto declared = FunctionType::get(&ctx, {t, t, u}, {u});
+  for (Type last : {index, felt, Type(s)}) {
+    auto actual = FunctionType::get(&ctx, {felt, s, s}, {last});
+    EXPECT_EQ(functionTypesUnifyConsistently(actual, declared), last != index);
+    EXPECT_EQ(functionTypesUnifyConsistently(declared, actual), last != index);
+  }
+}
+
+TEST_F(TypeHelperTests, test_functionTypesUnifyConsistently_sameSpellingScopes) {
+  auto t = polymorphic::TypeVarType::get(FlatSymbolRefAttr::get(&ctx, "T"));
+  Type index = IndexType::get(&ctx), felt = felt::FeltType::get(&ctx);
+  EXPECT_TRUE(functionTypesUnifyConsistently(
+      FunctionType::get(&ctx, {t, felt}, {}), FunctionType::get(&ctx, {index, t}, {})
+  ));
+  // Equal syntax across scopes still establishes an alias between the two distinct variables.
+  EXPECT_FALSE(functionTypesUnifyConsistently(
+      FunctionType::get(&ctx, {t, t, felt}, {}), FunctionType::get(&ctx, {t, index, t}, {})
+  ));
+}
+
+TEST_F(TypeHelperTests, test_functionTypesUnifyConsistently_nestedAliases) {
+  auto s = polymorphic::TypeVarType::get(FlatSymbolRefAttr::get(&ctx, "S"));
+  auto u = polymorphic::TypeVarType::get(FlatSymbolRefAttr::get(&ctx, "U"));
+  Type felt = felt::FeltType::get(&ctx), index = IndexType::get(&ctx);
+  auto declared =
+      FunctionType::get(&ctx, {ArrayType::get(u, {1}), ArrayType::get(felt, {1}), u}, {});
+  EXPECT_FALSE(
+      functionTypesUnifyConsistently(FunctionType::get(&ctx, {s, s, index}, {}), declared)
+  );
+  EXPECT_TRUE(functionTypesUnifyConsistently(FunctionType::get(&ctx, {s, s, felt}, {}), declared));
+}
+
+TEST_F(TypeHelperTests, test_functionTypesUnifyConsistently_recursiveAliases) {
+  auto s = polymorphic::TypeVarType::get(FlatSymbolRefAttr::get(&ctx, "S"));
+  auto t = polymorphic::TypeVarType::get(FlatSymbolRefAttr::get(&ctx, "T"));
+  EXPECT_FALSE(functionTypesUnifyConsistently(
+      FunctionType::get(&ctx, {t, ArrayType::get(t, {1})}, {}), FunctionType::get(&ctx, {s, s}, {})
+  ));
+}
+
+TEST_F(TypeHelperTests, test_functionTypesUnifyConsistently_affineEvidence) {
+  auto n = FlatSymbolRefAttr::get(&ctx, "N");
+  auto index = IndexType::get(&ctx);
+  auto affine = AffineMapAttr::get(OpBuilder(&ctx).getDimIdentityMap());
+  auto eight = IntegerAttr::get(index, 8), nine = IntegerAttr::get(index, 9);
+  auto actual = FunctionType::get(&ctx, {ArrayType::get(index, {affine, eight, nine})}, {});
+  auto declared = FunctionType::get(&ctx, {ArrayType::get(index, {n, n, n})}, {});
+  EXPECT_FALSE(functionTypesUnifyConsistently(actual, declared));
+  // Identical affine syntax is not itself a shared template variable.
+  EXPECT_TRUE(functionTypesUnifyConsistently(
+      FunctionType::get(&ctx, {ArrayType::get(index, {affine, affine})}, {}),
+      FunctionType::get(&ctx, {ArrayType::get(index, {eight, nine})}, {})
+  ));
+}
+
 TEST_F(TypeHelperTests, test_forceIntToIndexType_fromI1) {
   // create a boolean IntegerAttr
   IntegerAttr a = IntegerAttr::get(IntegerType::get(&ctx, 1), 1);
@@ -195,7 +359,7 @@ TEST_F(TypeHelperTests, test_forceIntToIndexType_fromI256) {
 
 TEST_F(TypeHelperTests, test_forceIntToIndexType_fromSignedI128) {
   IntegerType signedI128 = IntegerType::get(&ctx, 128, IntegerType::SignednessSemantics::Signed);
-  for (APInt value : {APInt::getAllOnes(128), APInt::getSignedMinValue(64).sext(128)}) {
+  for (const APInt &value : {APInt::getAllOnes(128), APInt::getSignedMinValue(64).sext(128)}) {
     FailureOr<IntegerAttr> normalized = forceIntType(IntegerAttr::get(signedI128, value), errFn);
     ASSERT_TRUE(succeeded(normalized));
     ASSERT_EQ(normalized->getValue().sext(128), value);

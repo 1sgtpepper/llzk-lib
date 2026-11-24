@@ -2,12 +2,13 @@
 //
 // Part of the LLZK Project, under the Apache License v2.0.
 // See LICENSE.txt for license information.
-// Copyright 2026 Veridise Inc.
+// Copyright 2026 Project LLZK
 // SPDX-License-Identifier: Apache-2.0
 //
 //===----------------------------------------------------------------------===//
 //
-// This header declares the C interface to target Picus PCL.
+/// \file
+/// Declares the C interface for Picus PCL conversion, transformation, and translation.
 //
 //===----------------------------------------------------------------------===//
 
@@ -15,13 +16,28 @@
 #define MLIR_C_TARGET_PCL_H
 
 #include "mlir-c/IR.h"
+#include "mlir-c/Pass.h"
 #include "mlir-c/Support.h"
 
-// Include the generated CAPI
+#include "llzk/Config/Config.h"
+
+// Include the generated pass APIs when the PCL backend is enabled.
+#if LLZK_WITH_PCL
 #include "pcl/Conversion/ConversionPasses.capi.h.inc"
+#include "pcl/Transforms/TransformationPasses.capi.h.inc"
+#endif
 
 #ifdef __cplusplus
 extern "C" {
+#endif
+
+#if LLZK_WITH_PCL
+/// Register the named PCL conversion pipelines for use with mlirParsePassPipeline.
+MLIR_CAPI_EXPORTED void llzkRegisterPCLConversionPassPipelines(void);
+
+/// Append the full LLZK-to-PCL lowering pipeline to a module pass manager.
+/// Preserves component boundaries and the existing PCL legality requirements.
+MLIR_CAPI_EXPORTED void llzkBuildFullPCLLoweringPipeline(MlirOpPassManager passManager);
 #endif
 
 /// Translate an operation that satisfies the PCL dialect (i.e. previously converted with

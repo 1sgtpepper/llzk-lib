@@ -10,7 +10,9 @@ module attributes {llzk.lang} {
 
   poly.template @Target {
     poly.param @Q
-    function.def private @sink()
+    function.def @sink() {
+      function.return
+    }
   }
 
   module @lib {
@@ -75,63 +77,46 @@ module attributes {llzk.lang} {
     }
   }
 }
-
 // CHECK-LABEL: module attributes {llzk.lang} {
 // CHECK-NEXT:    global.def const @offset : !felt.type =  1
 // CHECK-NEXT:    function.def private @blackbox(!felt.type) -> !felt.type
 // CHECK-NEXT:    func.func private @shadowed(!felt.type) -> !felt.type
 // CHECK-NEXT:    poly.template @Target {
 // CHECK-NEXT:      poly.param @Q
-// CHECK-NEXT:      function.def private @sink()
 // CHECK-NEXT:    }
 // CHECK-NEXT:    module @lib {
 // CHECK-NEXT:      global.def const @offset : !felt.type =  2
 // CHECK-NEXT:      function.def private @blackbox(!felt.type) -> !felt.type
-// CHECK-NEXT:      function.def @helper(%[[VAL_0:[0-9a-zA-Z_\.]+]]: !felt.type) -> !felt.type {
-// CHECK-NEXT:        %[[VAL_1:[0-9a-zA-Z_\.]+]] = global.read const @offset : !felt.type
-// CHECK-NEXT:        %[[VAL_2:[0-9a-zA-Z_\.]+]] = felt.add %[[VAL_0]], %[[VAL_1]] : !felt.type, !felt.type
-// CHECK-NEXT:        %[[VAL_3:[0-9a-zA-Z_\.]+]] = function.call @blackbox(%[[VAL_2]]) : (!felt.type) -> !felt.type
-// CHECK-NEXT:        function.return %[[VAL_3]] : !felt.type
-// CHECK-NEXT:      }
-// CHECK-NEXT:      function.def @read_public_member(%[[VAL_4:[0-9a-zA-Z_\.]+]]: !struct.type<@Main>) -> !felt.type {
-// CHECK-NEXT:        %[[VAL_5:[0-9a-zA-Z_\.]+]] = struct.readm %[[VAL_4]][@out] : <@Main>, !felt.type
-// CHECK-NEXT:        function.return %[[VAL_5]] : !felt.type
-// CHECK-NEXT:      }
 // CHECK-NEXT:    }
 // CHECK-NEXT:    module @shadow {
 // CHECK-NEXT:      func.func private @shadowed(!felt.type) -> !felt.type
-// CHECK-NEXT:      function.def @helper(%[[VAL_6:[0-9a-zA-Z_\.]+]]: !felt.type) -> !felt.type {
-// CHECK-NEXT:        %[[VAL_7:[0-9a-zA-Z_\.]+]] = func.call @shadowed(%[[VAL_6]]) : (!felt.type) -> !felt.type
+// CHECK-NEXT:      function.def @helper(%[[VAL_6:[0-9a-zA-Z_.-]+]]: !felt.type) -> !felt.type {
+// CHECK-NEXT:        %[[VAL_7:[0-9a-zA-Z_.-]+]] = func.call @shadowed(%[[VAL_6]]) : (!felt.type) -> !felt.type
 // CHECK-NEXT:        function.return %[[VAL_7]] : !felt.type
 // CHECK-NEXT:      }
 // CHECK-NEXT:    }
 // CHECK-NEXT:    poly.template @Template {
 // CHECK-NEXT:      poly.param @N
-// CHECK-NEXT:      function.def @helper_with_symbol(%[[VAL_8:[0-9a-zA-Z_\.]+]]: !felt.type) -> !felt.type {
-// CHECK-NEXT:        %[[VAL_9:[0-9a-zA-Z_\.]+]] = poly.read_const @N : !felt.type
-// CHECK-NEXT:        %[[VAL_10:[0-9a-zA-Z_\.]+]] = felt.add %[[VAL_8]], %[[VAL_9]] : !felt.type, !felt.type
+// CHECK-NEXT:      function.def @helper_with_symbol(%[[VAL_8:[0-9a-zA-Z_.-]+]]: !felt.type) -> !felt.type {
+// CHECK-NEXT:        %[[VAL_9:[0-9a-zA-Z_.-]+]] = poly.read_const @N : !felt.type
+// CHECK-NEXT:        %[[VAL_10:[0-9a-zA-Z_.-]+]] = felt.add %[[VAL_8]], %[[VAL_9]] : !felt.type, !felt.type
 // CHECK-NEXT:        function.return %[[VAL_10]] : !felt.type
-// CHECK-NEXT:      }
-// CHECK-NEXT:      function.def @helper_with_property_symbol() {
-// CHECK-NEXT:        function.call @Target::@sink<[@N]>() : () -> ()
-// CHECK-NEXT:        function.return
 // CHECK-NEXT:      }
 // CHECK-NEXT:    }
 // CHECK-NEXT:    struct.def @Main {
 // CHECK-NEXT:      struct.member @out : !felt.type {llzk.pub}
-// CHECK-NEXT:      function.def @compute(%[[VAL_11:[0-9a-zA-Z_\.]+]]: !felt.type) -> !struct.type<@Main> attributes {function.allow_witness} {
-// CHECK-NEXT:        %[[VAL_12:[0-9a-zA-Z_\.]+]] = struct.new : <@Main>
+// CHECK-NEXT:      function.def @compute(%[[VAL_11:[0-9a-zA-Z_.-]+]]: !felt.type) -> !struct.type<@Main> attributes {function.allow_witness} {
+// CHECK-NEXT:        %[[VAL_12:[0-9a-zA-Z_.-]+]] = struct.new : <@Main>
 // CHECK-NEXT:        function.return %[[VAL_12]] : !struct.type<@Main>
 // CHECK-NEXT:      }
-// CHECK-NEXT:      function.def @constrain(%[[VAL_13:[0-9a-zA-Z_\.]+]]: !struct.type<@Main>, %[[VAL_14:[0-9a-zA-Z_\.]+]]: !felt.type) attributes {function.allow_constraint} {
-// CHECK-NEXT:        %[[VAL_15:[0-9a-zA-Z_\.]+]] = global.read const @offset : !felt.type
-// CHECK-NEXT:        %[[VAL_16:[0-9a-zA-Z_\.]+]] = felt.add %[[VAL_14]], %[[VAL_15]] : !felt.type, !felt.type
-// CHECK-NEXT:        %[[VAL_17:[0-9a-zA-Z_\.]+]] = function.call @blackbox(%[[VAL_16]]) : (!felt.type) -> !felt.type
-// CHECK-NEXT:        %[[VAL_18:[0-9a-zA-Z_\.]+]] = function.call @Template::@helper_with_symbol<[1]>(%[[VAL_14]]) : (!felt.type) -> !felt.type
-// CHECK-NEXT:        function.call @Template::@helper_with_property_symbol<[1]>() : () -> ()
-// CHECK-NEXT:        %[[VAL_19:[0-9a-zA-Z_\.]+]] = function.call @shadow::@helper(%[[VAL_14]]) : (!felt.type) -> !felt.type
-// CHECK-NEXT:        %[[VAL_20:[0-9a-zA-Z_\.]+]] = struct.readm %[[VAL_13]][@out] : <@Main>, !felt.type
-// CHECK-NEXT:        %[[VAL_21:[0-9a-zA-Z_\.]+]] = struct.readm %[[VAL_13]][@out] : <@Main>, !felt.type
+// CHECK-NEXT:      function.def @constrain(%[[VAL_13:[0-9a-zA-Z_.-]+]]: !struct.type<@Main>, %[[VAL_14:[0-9a-zA-Z_.-]+]]: !felt.type) attributes {function.allow_constraint} {
+// CHECK-NEXT:        %[[VAL_15:[0-9a-zA-Z_.-]+]] = global.read const @offset : !felt.type
+// CHECK-NEXT:        %[[VAL_16:[0-9a-zA-Z_.-]+]] = felt.add %[[VAL_14]], %[[VAL_15]] : !felt.type, !felt.type
+// CHECK-NEXT:        %[[VAL_17:[0-9a-zA-Z_.-]+]] = function.call @blackbox(%[[VAL_16]]) : (!felt.type) -> !felt.type
+// CHECK-NEXT:        %[[VAL_18:[0-9a-zA-Z_.-]+]] = function.call @Template::@helper_with_symbol<[1]>(%[[VAL_14]]) : (!felt.type) -> !felt.type
+// CHECK-NEXT:        %[[VAL_19:[0-9a-zA-Z_.-]+]] = function.call @shadow::@helper(%[[VAL_14]]) : (!felt.type) -> !felt.type
+// CHECK-NEXT:        %[[VAL_20:[0-9a-zA-Z_.-]+]] = struct.readm %[[VAL_13]][@out] : <@Main>, !felt.type
+// CHECK-NEXT:        %[[VAL_21:[0-9a-zA-Z_.-]+]] = struct.readm %[[VAL_13]][@out] : <@Main>, !felt.type
 // CHECK-NEXT:        constrain.eq %[[VAL_20]], %[[VAL_17]] : !felt.type, !felt.type
 // CHECK-NEXT:        constrain.eq %[[VAL_17]], %[[VAL_18]] : !felt.type, !felt.type
 // CHECK-NEXT:        constrain.eq %[[VAL_18]], %[[VAL_19]] : !felt.type, !felt.type

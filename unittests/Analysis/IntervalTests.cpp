@@ -10,6 +10,7 @@
 #include "../LLZKTestBase.h"
 #include "../LLZKTestUtils.h"
 
+#include "llzk/Analysis/AnalysisUtil.h"
 #include "llzk/Analysis/IntervalAnalysis.h"
 #include "llzk/Analysis/Intervals.h"
 #include "llzk/Dialect/Bool/IR/Ops.h"
@@ -21,8 +22,10 @@
 #include <mlir/Dialect/Arith/IR/Arith.h>
 #include <mlir/Parser/Parser.h>
 
+#include <array>
 #include <gtest/gtest.h>
 #include <string>
+#include <unordered_set>
 
 using namespace mlir;
 using namespace llzk;
@@ -49,6 +52,33 @@ protected:
     ASSERT_TRUE(checkCond(expected, actual, expected == actual));
   }
 };
+
+// Field aliases share interval identity, while different primes remain distinct.
+TEST_F(IntervalTests, EqualityAndHashIncludeFieldPrime) {
+  auto intervals = [](const Field &field) {
+    return std::array {
+        Interval::Empty(field), Interval::Entire(field), Interval::Degenerate(field, field.one()),
+        UnreducedInterval(1, 7).reduce(field)
+    };
+  };
+  const auto bn128 = intervals(Field::getField("bn128"));
+  const auto bn254 = intervals(Field::getField("bn254"));
+  const auto grumpkin = intervals(Field::getField("grumpkin"));
+  const Interval::Hash hash;
+
+  for (size_t idx = 0; idx < bn128.size(); ++idx) {
+    SCOPED_TRACE(idx);
+    EXPECT_EQ(bn128[idx], bn254[idx]);
+    EXPECT_EQ(hash(bn128[idx]), hash(bn254[idx]));
+    EXPECT_NE(bn128[idx], grumpkin[idx]);
+
+    std::unordered_set<Interval, Interval::Hash> values;
+    EXPECT_TRUE(values.insert(bn128[idx]).second);
+    EXPECT_FALSE(values.insert(bn254[idx]).second);
+    EXPECT_TRUE(values.insert(grumpkin[idx]).second);
+    EXPECT_EQ(values.size(), 2U);
+  }
+}
 
 TEST_F(IntervalTests, UnreducedIntervalOverlap) {
   UnreducedInterval a(0, 100), b(100, 200), c(101, 300), d(1, 0);
@@ -601,6 +631,37 @@ module attributes {llzk.lang} {
 }
 )mlir";
 
+  static constexpr auto kDynamicNonAssertCastModule = R"mlir(
+module attributes {llzk.lang} {
+  struct.def @DynamicNonAssertCasts {
+    struct.member @truncated : !felt.type<"babybear">
+    struct.member @sum : !felt.type<"babybear">
+
+    function.def @compute(%index: index, %felt: !felt.type<"babybear">)
+        -> !struct.type<@DynamicNonAssertCasts>
+        attributes {function.allow_non_native_field_ops, function.allow_witness} {
+      %self = struct.new : <@DynamicNonAssertCasts>
+      %sat_to_felt = cast.tofelt sat %index : index, !felt.type<"babybear">
+      %wrap_to_felt = cast.tofelt wrap %index : index, !felt.type<"babybear">
+      %trunc_to_felt = cast.tofelt trunc %index : index, !felt.type<"babybear">
+      %sat_to_index = cast.toindex sat %felt : !felt.type<"babybear">
+      %wrap_to_index = cast.toindex wrap %felt : !felt.type<"babybear">
+      %trunc_to_index = cast.toindex trunc %felt : !felt.type<"babybear">
+      %one = felt.const 1 : !felt.type<"babybear">
+      %sum = felt.add %trunc_to_felt, %one : !felt.type<"babybear">, !felt.type<"babybear">
+      struct.writem %self[@truncated] = %trunc_to_felt : <@DynamicNonAssertCasts>, !felt.type<"babybear">
+      struct.writem %self[@sum] = %sum : <@DynamicNonAssertCasts>, !felt.type<"babybear">
+      function.return %self : !struct.type<@DynamicNonAssertCasts>
+    }
+
+    function.def @constrain(%self: !struct.type<@DynamicNonAssertCasts>, %index: index,
+        %felt: !felt.type<"babybear">) attributes {function.allow_constraint} {
+      function.return
+    }
+  }
+}
+)mlir";
+
   OwningOpRef<ModuleOp> parseModule(llvm::StringRef source) {
     auto mod = parseSourceString<ModuleOp>(source, ParserConfig(&ctx));
     EXPECT_TRUE(mod);
@@ -611,6 +672,324 @@ module attributes {llzk.lang} {
     return analysis.getSolver().lookupState<IntervalAnalysisLattice>(value);
   }
 };
+
+// Equal-looking values in separate functions must still have separate SMT identities.
+TEST_F(IntervalAnalysisAPITests, ValueSymbolsCacheIdentityAndPreserveSorts) {
+  auto mod = parseModule(R"mlir(
+module attributes {llzk.lang} {
+  function.def @first(%felt: !felt.type, %flag: i1, %index: index,
+                      %array: !array.type<2 x !felt.type>) {
+    function.return
+  }
+  function.def @second(%felt: !felt.type, %flag: i1, %index: index,
+                       %array: !array.type<2 x !felt.type>) {
+    function.return
+  }
+}
+)mlir");
+  ASSERT_TRUE(mod);
+  auto functions = llvm::to_vector(mod->getOps<function::FuncDefOp>());
+  ASSERT_EQ(functions.size(), 2U);
+  const Field &field = Field::getField("babybear");
+  auto smt = llvm::CreateZ3Solver();
+  DataFlowSolver solver;
+  auto *analysis = solver.load<IntervalDataFlowAnalysis>(smt, field, false, false);
+
+  for (auto [first, second] : llvm::zip(functions[0].getArguments(), functions[1].getArguments())) {
+    EXPECT_EQ(buildStringViaPrint(first), buildStringViaPrint(second));
+    const auto *symbol = analysis->getOrCreateSymbol(first);
+    EXPECT_EQ(symbol, analysis->getOrCreateSymbol(first));
+    const auto *other = analysis->getOrCreateSymbol(second);
+    EXPECT_FALSE(*symbol == *other);
+    EXPECT_EQ(symbol, analysis->getOrCreateSymbol(first));
+    const auto *sort = smt->getSort(symbol);
+    if (first.getType().isInteger(1)) {
+      EXPECT_TRUE(sort->isBooleanSort());
+    } else {
+      ASSERT_TRUE(sort->isBitvectorSort());
+      EXPECT_EQ(sort->getBitvectorSortSize(), field.bitWidth());
+    }
+
+    // Even a user-supplied SourceRef name matching the internal value name is separate.
+    functions[0].setArgName(first.getArgNumber(), buildStringViaPrint(*symbol));
+    SourceRef ref(first);
+    EXPECT_EQ(buildStringViaPrint(ref), buildStringViaPrint(*symbol));
+    const auto *refSymbol = analysis->getOrCreateSymbol(ref);
+    EXPECT_EQ(refSymbol, analysis->getOrCreateSymbol(ref));
+    EXPECT_FALSE(*symbol == *refSymbol);
+    EXPECT_TRUE(*sort == *smt->getSort(refSymbol));
+  }
+}
+
+// Printed references may coincide across functions, including paths into aggregate arguments.
+TEST_F(IntervalAnalysisAPITests, SourceRefSymbolsCacheIdentityAndPreserveSorts) {
+  auto mod = parseModule(R"mlir(
+module attributes {llzk.lang} {
+  function.def @first(%felt: !felt.type, %flag: i1, %index: index,
+                      %array: !array.type<2 x !felt.type>) {
+    function.return
+  }
+  function.def @second(%felt: !felt.type, %flag: i1, %index: index,
+                       %array: !array.type<2 x !felt.type>) {
+    function.return
+  }
+}
+)mlir");
+  ASSERT_TRUE(mod);
+  auto functions = llvm::to_vector(mod->getOps<function::FuncDefOp>());
+  ASSERT_EQ(functions.size(), 2U);
+  const Field &field = Field::getField("babybear");
+  auto smt = llvm::CreateZ3Solver();
+  DataFlowSolver solver;
+  auto *analysis = solver.load<IntervalDataFlowAnalysis>(smt, field, false, false);
+
+  llvm::SmallVector<SourceRef> firstRefs, secondRefs;
+  for (auto [first, second] : llvm::zip(functions[0].getArguments(), functions[1].getArguments())) {
+    firstRefs.emplace_back(first);
+    secondRefs.emplace_back(second);
+  }
+  for (int64_t index : {0, 1}) {
+    auto first = SourceRef(functions[0].getArgument(3)).createChild(SourceRefIndex(index));
+    auto second = SourceRef(functions[1].getArgument(3)).createChild(SourceRefIndex(index));
+    ASSERT_TRUE(succeeded(first));
+    ASSERT_TRUE(succeeded(second));
+    firstRefs.push_back(*first);
+    secondRefs.push_back(*second);
+  }
+  for (auto [first, second] : llvm::zip(firstRefs, secondRefs)) {
+    EXPECT_NE(first, second);
+    EXPECT_EQ(buildStringViaPrint(first), buildStringViaPrint(second));
+    const auto *symbol = analysis->getOrCreateSymbol(first);
+    const auto *other = analysis->getOrCreateSymbol(second);
+    EXPECT_EQ(symbol, analysis->getOrCreateSymbol(SourceRef(first)));
+    EXPECT_FALSE(*symbol == *other);
+    const auto *sort = smt->getSort(symbol);
+    EXPECT_TRUE(*sort == *smt->getSort(other));
+    if (first.getType().isInteger(1)) {
+      EXPECT_TRUE(sort->isBooleanSort());
+    } else {
+      ASSERT_TRUE(sort->isBitvectorSort());
+      EXPECT_EQ(sort->getBitvectorSortSize(), field.bitWidth());
+    }
+    smt->addConstraint(smt->mkNot(smt->mkEqual(symbol, other)));
+  }
+  EXPECT_EQ(smt->check(), std::optional<bool>(true));
+}
+
+// Namespace allocation outlives an analysis when another owner retains its SMT solver.
+TEST_F(IntervalAnalysisAPITests, ValueSymbolsRemainDistinctAcrossAnalysesSharingSolver) {
+  auto mod = parseModule(kDynamicNonAssertCastModule);
+  ASSERT_TRUE(mod);
+  auto structDef = *mod->getOps<StructDefOp>().begin();
+  auto value = structDef.getComputeFuncOp().getArguments().front();
+  const Field &field = Field::getField("babybear");
+  auto smt = llvm::CreateZ3Solver();
+  llvm::SMTExprRef firstSymbol, firstRef;
+  {
+    DataFlowSolver firstSolver, secondSolver;
+    auto *first = firstSolver.load<IntervalDataFlowAnalysis>(smt, field, false, false);
+    auto *second = secondSolver.load<IntervalDataFlowAnalysis>(smt, field, false, false);
+    firstSymbol = first->getOrCreateSymbol(value);
+    firstRef = first->getOrCreateSymbol(SourceRef(value));
+    const auto *secondSymbol = second->getOrCreateSymbol(value);
+    const auto *secondRef = second->getOrCreateSymbol(SourceRef(value));
+    EXPECT_FALSE(*firstSymbol == *secondSymbol);
+    EXPECT_FALSE(*firstSymbol == *secondRef);
+    EXPECT_FALSE(*firstRef == *secondSymbol);
+    EXPECT_FALSE(*firstRef == *secondRef);
+    EXPECT_EQ(firstSymbol, first->getOrCreateSymbol(value));
+    EXPECT_EQ(secondSymbol, second->getOrCreateSymbol(value));
+    smt->addConstraint(smt->mkNot(smt->mkEqual(firstSymbol, secondSymbol)));
+    EXPECT_EQ(smt->check(), std::optional<bool>(true));
+  }
+
+  // Solver reset removes constraints, but existing symbol names remain allocated.
+  smt->reset();
+  {
+    DataFlowSolver solver;
+    auto *analysis = solver.load<IntervalDataFlowAnalysis>(smt, field, false, false);
+    const auto *symbol = analysis->getOrCreateSymbol(value);
+    EXPECT_FALSE(*firstSymbol == *symbol);
+    EXPECT_FALSE(*firstRef == *symbol);
+    EXPECT_FALSE(*firstRef == *analysis->getOrCreateSymbol(SourceRef(value)));
+  }
+  std::weak_ptr<llvm::SMTSolver> weakSolver = smt;
+  smt.reset();
+  EXPECT_TRUE(weakSolver.expired());
+}
+
+// Inverse equations must remain independent for identical operations in different contexts.
+TEST_F(IntervalAnalysisAPITests, InverseSymbolsRemainDistinctAcrossFunctionsAndAnalyses) {
+  auto mod = parseModule(R"mlir(
+module attributes {llzk.lang} {
+  function.def @first(%value: !felt.type) -> (!felt.type, !felt.type)
+      attributes {function.allow_witness, function.allow_non_native_field_ops} {
+    %one = felt.const 1 : !felt.type
+    %inverse = felt.inv %value : !felt.type
+    %quotient = felt.div %one, %value : !felt.type, !felt.type
+    function.return %inverse, %quotient : !felt.type, !felt.type
+  }
+  function.def @second(%value: !felt.type) -> (!felt.type, !felt.type)
+      attributes {function.allow_witness, function.allow_non_native_field_ops} {
+    %one = felt.const 1 : !felt.type
+    %inverse = felt.inv %value : !felt.type
+    %quotient = felt.div %one, %value : !felt.type, !felt.type
+    function.return %inverse, %quotient : !felt.type, !felt.type
+  }
+}
+)mlir");
+  ASSERT_TRUE(mod);
+  llvm::SmallVector<felt::InvFeltOp> invOps;
+  llvm::SmallVector<felt::DivFeltOp> divOps;
+  mod->walk([&](felt::InvFeltOp op) { invOps.push_back(op); });
+  mod->walk([&](felt::DivFeltOp op) { divOps.push_back(op); });
+  ASSERT_EQ(invOps.size(), 2U);
+  ASSERT_EQ(divOps.size(), 2U);
+  EXPECT_EQ(buildStringViaInsertionOp(*invOps[0]), buildStringViaInsertionOp(*invOps[1]));
+  EXPECT_EQ(buildStringViaInsertionOp(*divOps[0]), buildStringViaInsertionOp(*divOps[1]));
+
+  const Field &field = Field::getField("babybear");
+  for (bool separateAnalyses : {false, true}) {
+    SCOPED_TRACE(
+        separateAnalyses ? "shared solver, same operation" : "same analysis, two functions"
+    );
+    auto smt = llvm::CreateZ3Solver();
+    DataFlowSolver first(DataFlowConfig().setInterprocedural(false));
+    DataFlowSolver second(DataFlowConfig().setInterprocedural(false));
+    llvm::SmallVector<llvm::SMTExprRef> inputs, inverses, quotients;
+    for (unsigned index = 0; index < 2; ++index) {
+      auto &solver = separateAnalyses && index == 1 ? second : first;
+      if (index == 0 || separateAnalyses) {
+        llzk::dataflow::loadRequiredAnalyses(solver);
+        solver.load<SourceRefAnalysis>();
+        solver.load<IntervalDataFlowAnalysis>(smt, field, false, false);
+        ASSERT_TRUE(succeeded(solver.initializeAndRun(*mod)));
+      }
+      unsigned opIndex = separateAnalyses ? 0 : index;
+      auto getExpr = [&](Value value) -> llvm::SMTExprRef {
+        const auto *lattice = solver.lookupState<IntervalAnalysisLattice>(value);
+        EXPECT_NE(lattice, nullptr);
+        return lattice ? lattice->getValue().getScalarValue().getExpr() : nullptr;
+      };
+      inputs.push_back(getExpr(invOps[opIndex]->getOperand(0)));
+      inverses.push_back(getExpr(invOps[opIndex].getResult()));
+      quotients.push_back(getExpr(divOps[opIndex].getResult()));
+      ASSERT_NE(inputs.back(), nullptr);
+      ASSERT_NE(inverses.back(), nullptr);
+      ASSERT_NE(quotients.back(), nullptr);
+
+      // Bind the symbolic inputs only after analysis, so constant folding cannot hide a collision.
+      auto input = field.felt(static_cast<int>(index) + 1);
+      const auto *expectedInverse = smt->mkBitvector(toAPSInt(field.inv(input)), field.bitWidth());
+      smt->addConstraint(
+          smt->mkEqual(inputs.back(), smt->mkBitvector(toAPSInt(input), field.bitWidth()))
+      );
+      smt->addConstraint(smt->mkEqual(inverses.back(), expectedInverse));
+      smt->addConstraint(smt->mkEqual(quotients.back(), expectedInverse));
+    }
+    EXPECT_FALSE(*inputs[0] == *inputs[1]);
+    EXPECT_FALSE(*inverses[0] == *inverses[1]);
+    EXPECT_FALSE(*quotients[0] == *quotients[1]);
+    EXPECT_EQ(smt->check(), std::optional<bool>(true));
+  }
+}
+
+TEST_F(IntervalAnalysisAPITests, DynamicNonAssertCastsInitializeResultLattices) {
+  auto mod = parseModule(kDynamicNonAssertCastModule);
+  auto structDef = *mod->getOps<StructDefOp>().begin();
+  function::FuncDefOp computeFn = structDef.getComputeFuncOp();
+  ASSERT_TRUE(computeFn != nullptr);
+
+  ModuleAnalysisManager mam(*mod, nullptr);
+  AnalysisManager am = mam;
+  ModuleIntervalAnalysis analysis(mod->getOperation());
+  const Field &field = Field::getField("babybear");
+  analysis.setField(field);
+  analysis.runAnalysis(am);
+
+  unsigned dynamicCastCount = 0;
+  computeFn.walk([&](Operation *op) {
+    bool isDynamicNonAssertCast =
+        (isa<cast::IntToFeltOp>(op) &&
+         llvm::cast<cast::IntToFeltOp>(op).getOverflow() != cast::OverflowSemantics::ASSERT) ||
+        (isa<cast::FeltToIndexOp>(op) &&
+         llvm::cast<cast::FeltToIndexOp>(op).getOverflow() != cast::OverflowSemantics::ASSERT);
+    if (!isDynamicNonAssertCast) {
+      return;
+    }
+
+    ++dynamicCastCount;
+    const IntervalAnalysisLattice *lattice = lookupLattice(analysis, op->getResult(0));
+    ASSERT_NE(lattice, nullptr);
+    const ExpressionValue &value = lattice->getValue().getScalarValue();
+    EXPECT_NE(value.getExpr(), nullptr);
+    EXPECT_EQ(value.getInterval(), Interval::Entire(field));
+    EXPECT_FALSE(value.hasUnreducedInterval());
+  });
+  EXPECT_EQ(dynamicCastCount, 6U);
+}
+
+// Truncation reduces its low-bit result into [0, p). Subsequent unreduced
+// arithmetic and stored member summaries must start from that canonical range.
+TEST_F(IntervalAnalysisAPITests, DynamicTruncationReducesToFieldRange) {
+  auto mod = parseModule(kDynamicNonAssertCastModule);
+  auto structDef = *mod->getOps<StructDefOp>().begin();
+  auto computeFn = structDef.getComputeFuncOp();
+  ASSERT_TRUE(computeFn != nullptr);
+
+  ModuleAnalysisManager mam(*mod, nullptr);
+  AnalysisManager am = mam;
+  ModuleIntervalAnalysis analysis(mod->getOperation());
+  const Field &field = Field::getField("babybear");
+  analysis.setField(field);
+  analysis.setTrackUnreducedIntervals(true);
+  analysis.runAnalysis(am);
+
+  unsigned toFeltCount = 0;
+  computeFn.walk([&](cast::IntToFeltOp op) {
+    ++toFeltCount;
+    SCOPED_TRACE(cast::stringifyOverflowSemantics(op.getOverflow()).str());
+    const auto *lattice = lookupLattice(analysis, op.getResult());
+    ASSERT_NE(lattice, nullptr);
+    const auto &value = lattice->getValue().getScalarValue();
+    EXPECT_NE(value.getExpr(), nullptr);
+    EXPECT_EQ(value.getInterval(), Interval::Entire(field));
+    ASSERT_TRUE(value.hasUnreducedInterval());
+    AssertUnreducedIntervalEq(
+        UnreducedInterval(field.zero(), field.maxVal()), value.getUnreducedInterval()
+    );
+  });
+  EXPECT_EQ(toFeltCount, 3U);
+
+  felt::AddFeltOp sumOp;
+  computeFn.walk([&](felt::AddFeltOp op) { sumOp = op; });
+  ASSERT_TRUE(sumOp != nullptr);
+  const auto *sumLattice = lookupLattice(analysis, sumOp.getResult());
+  ASSERT_NE(sumLattice, nullptr);
+  const auto &sumValue = sumLattice->getValue().getScalarValue();
+  EXPECT_EQ(sumValue.getInterval(), Interval::Entire(field));
+  ASSERT_TRUE(sumValue.hasUnreducedInterval());
+  AssertUnreducedIntervalEq(
+      UnreducedInterval(field.one(), field.prime()), sumValue.getUnreducedInterval()
+  );
+
+  const auto &intervals = analysis.getResult(structDef).getComputeUnreducedIntervals();
+  unsigned memberCount = 0;
+  for (auto member : structDef.getOps<MemberDefOp>()) {
+    ++memberCount;
+    SCOPED_TRACE(member.getName().str());
+    SourceRef ref(
+        llvm::cast<OpResult>(computeFn.getSelfValueFromCompute()), {SourceRefIndex(member)}
+    );
+    const auto *it = intervals.find(ref);
+    ASSERT_NE(it, intervals.end());
+    auto expected = member.getName() == "truncated"
+                        ? UnreducedInterval(field.zero(), field.maxVal())
+                        : UnreducedInterval(field.one(), field.prime());
+    AssertUnreducedIntervalEq(expected, it->second);
+  }
+  EXPECT_EQ(memberCount, 2U);
+}
 
 TEST_F(IntervalAnalysisAPITests, ConstrainIntervalsFindMatchesStoredArrayRefs) {
   auto mod = parseModule(kArrayIntervalModule);
@@ -1207,4 +1586,18 @@ TEST_F(IntervalAnalysisAPITests, ProductFunctionsTrackUnreducedIntervals) {
       UnreducedInterval(field.felt(5), field.maxVal() + field.felt(5)),
       readExpr.getUnreducedInterval()
   );
+}
+
+// Equal intervals must hash identically even when their endpoints use different
+// DynamicAPInt representations (native integers versus 256-bit APInts). Cover
+// both unreduced and field intervals to preserve the equality/hash contract.
+TEST_F(IntervalTests, HashIgnoresIntegerRepresentation) {
+  DynamicAPInt narrow(7), wide(llvm::APInt(256, 7));
+  UnreducedInterval a(narrow, narrow + 1), b(wide, wide + 1);
+  EXPECT_EQ(a, b);
+  EXPECT_EQ(UnreducedInterval::Hash {}(a), UnreducedInterval::Hash {}(b));
+  auto x = Interval::Degenerate(f, narrow);
+  auto y = Interval::Degenerate(f, wide);
+  EXPECT_EQ(x, y);
+  EXPECT_EQ(Interval::Hash {}(x), Interval::Hash {}(y));
 }
