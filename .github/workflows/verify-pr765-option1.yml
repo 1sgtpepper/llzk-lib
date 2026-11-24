@@ -1,0 +1,140 @@
+name: Verify PR 765 Option 1
+
+on:
+  push:
+    branches: [test/pr765-option1-20261124-v2]
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    strategy:
+      fail-fast: false
+      matrix:
+        compiler:
+          - name: GCC
+            derivation: '.#debugGCC'
+          - name: Clang
+            derivation: '.#debugClangCov'
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: cachix/install-nix-action@v31
+        with:
+          install_url: https://releases.nixos.org/nix/nix-2.35.2/install
+          github_access_token: "${{ secrets.GITHUB_TOKEN }}"
+      - name: Set Git credentials
+        run: |
+          git config --global 'url.https://api@github.com/'.insteadOf 'https://github.com/'
+          git config --global 'url.https://ssh@github.com/'.insteadOf 'ssh://git@github.com/'
+          git config --global 'url.https://git@github.com/'.insteadOf 'git@github.com:'
+      - uses: cachix/cachix-action@v17
+        with:
+          name: veridise-public
+          authToken: '${{ secrets.CACHIX_PUBLIC_TOKEN }}'
+      - name: 'Build and test with ${{ matrix.compiler.name }}'
+        run: nix --print-build-logs build '${{ matrix.compiler.derivation }}'
+
+  docs:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: cachix/install-nix-action@v31
+        with:
+          install_url: https://releases.nixos.org/nix/nix-2.35.2/install
+          github_access_token: "${{ secrets.GITHUB_TOKEN }}"
+      - name: Set Git credentials
+        run: |
+          git config --global 'url.https://api@github.com/'.insteadOf 'https://github.com/'
+          git config --global 'url.https://ssh@github.com/'.insteadOf 'ssh://git@github.com/'
+          git config --global 'url.https://git@github.com/'.insteadOf 'git@github.com:'
+      - uses: cachix/cachix-action@v17
+        with:
+          name: veridise-public
+          authToken: '${{ secrets.CACHIX_PUBLIC_TOKEN }}'
+      - name: Build docs
+        run: nix --option sandbox false --print-build-logs build '.#docs'
+
+  nix-check:
+    strategy:
+      fail-fast: false
+      matrix:
+        variant: [debug, release, python]
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: cachix/install-nix-action@v31
+        with:
+          install_url: https://releases.nixos.org/nix/nix-2.35.2/install
+          github_access_token: "${{ secrets.GITHUB_TOKEN }}"
+      - name: Set Git credentials
+        run: |
+          git config --global 'url.https://api@github.com/'.insteadOf 'https://github.com/'
+          git config --global 'url.https://ssh@github.com/'.insteadOf 'ssh://git@github.com/'
+          git config --global 'url.https://git@github.com/'.insteadOf 'git@github.com:'
+      - uses: cachix/cachix-action@v17
+        with:
+          name: veridise-public
+          authToken: '${{ secrets.CACHIX_PUBLIC_TOKEN }}'
+      - name: Build and check install (${{ matrix.variant }})
+        run: nix --print-build-logs build '.#checks.x86_64-linux.llzk-installcheck-${{ matrix.variant }}'
+
+  lint:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: cachix/install-nix-action@v31
+        with:
+          install_url: https://releases.nixos.org/nix/nix-2.35.2/install
+          github_access_token: "${{ secrets.GITHUB_TOKEN }}"
+      - name: Set Git credentials
+        run: |
+          git config --global 'url.https://api@github.com/'.insteadOf 'https://github.com/'
+          git config --global 'url.https://ssh@github.com/'.insteadOf 'ssh://git@github.com/'
+          git config --global 'url.https://git@github.com/'.insteadOf 'git@github.com:'
+      - uses: cachix/cachix-action@v17
+        with:
+          name: veridise-public
+          authToken: '${{ secrets.CACHIX_PUBLIC_TOKEN }}'
+      - name: Check clang-format on modified files
+        run: |
+          nix develop .#debugClang --command clang-format --dry-run --Werror \
+            lib/Dialect/LLZK/IR/Dialect.cpp \
+            lib/Dialect/Polymorphic/IR/Ops.cpp \
+            lib/Dialect/Polymorphic/Transforms/TemplateMonomorphization.cpp \
+            lib/Dialect/Struct/IR/Types.cpp \
+            lib/Util/SymbolHelper.cpp
+      - name: Configure and run clang-tidy on modified lines
+        env:
+          LINE_FILTER: '[{"name":"lib/Dialect/Struct/IR/Types.cpp","lines":[[22,115]]},{"name":"lib/Util/SymbolHelper.cpp","lines":[[540,585]]},{"name":"lib/Dialect/Polymorphic/Transforms/TemplateMonomorphization.cpp","lines":[[115,138]]}]'
+        run: |
+          nix develop .#debugClang --command bash -c '
+            set -euo pipefail
+            cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug -DLLZK_BUILD_DEVTOOLS=ON -DLLZK_VERSION_OVERRIDE="${version:?}"
+            cmake --build build --target llzk-headers
+            clang-tidy -p build \
+              --line-filter="$LINE_FILTER" \
+              --warnings-as-errors="*" \
+              --extra-arg="-I${PWD}/backends/pcl/include" \
+              --extra-arg="-isystem${PWD}/build/backends/pcl/include" \
+              --extra-arg="-I${PWD}/backends/r1cs/include" \
+              --extra-arg="-isystem${PWD}/build/backends/r1cs/include" \
+              --extra-arg="-I${PWD}/backends/zklean/include" \
+              --extra-arg="-isystem${PWD}/build/backends/zklean/include" \
+              lib/Dialect/Struct/IR/Types.cpp \
+              lib/Util/SymbolHelper.cpp \
+              lib/Dialect/Polymorphic/Transforms/TemplateMonomorphization.cpp
+          '
