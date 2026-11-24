@@ -1,0 +1,59 @@
+name: Verify PR 765 Generator Parity and Negative Control
+
+on:
+  push:
+    branches: [test/pr765-parity-only-20261124]
+
+permissions:
+  contents: read
+
+jobs:
+  check-generated-parity:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: cachix/install-nix-action@v31
+        with:
+          install_url: https://releases.nixos.org/nix/nix-2.35.2/install
+          github_access_token: "${{ secrets.GITHUB_TOKEN }}"
+      - name: Set Git credentials
+        run: |
+          git config --global 'url.https://api@github.com/'.insteadOf 'https://github.com/'
+          git config --global 'url.https://ssh@github.com/'.insteadOf 'ssh://git@github.com/'
+          git config --global 'url.https://git@github.com/'.insteadOf 'git@github.com:'
+      - uses: cachix/cachix-action@v17
+        with:
+          name: veridise-public
+          authToken: '${{ secrets.CACHIX_PUBLIC_TOKEN }}'
+      - name: Verify generate-test-checks parity and negative control
+        run: |
+          nix --print-build-logs build --out-link result-release '.#default'
+          nix develop .#debugClang --command bash -c '
+            set -euo pipefail
+            OPT="./result-release/bin/llzk-opt"
+            echo "=== Check fieldless_felt_arguments.llzk parity ==="
+            "$OPT" test/Transforms/TemplateMonomorphization/fieldless_felt_arguments.llzk \
+              --llzk-const-global-propagation --llzk-monomorphize-templates \
+              | python3 scripts/generate-test-checks.py | grep "^// CHECK" > /tmp/fieldless.checks
+            grep "^// CHECK" test/Transforms/TemplateMonomorphization/fieldless_felt_arguments.llzk > /tmp/fieldless.repo
+            diff -u /tmp/fieldless.checks /tmp/fieldless.repo
+
+            echo "=== Negative control: fieldless_felt_arguments fails without monomorphization ==="
+            if "$OPT" test/Transforms/TemplateMonomorphization/fieldless_felt_arguments.llzk \
+              --llzk-const-global-propagation | FileCheck test/Transforms/TemplateMonomorphization/fieldless_felt_arguments.llzk; then
+              echo "ERROR: expected FileCheck failure without monomorphization"
+              exit 1
+            fi
+
+            echo "=== Check struct_params_symbolic_restrictions_pass.llzk parity ==="
+            "$OPT" test/Dialect/Struct/struct_params_symbolic_restrictions_pass.llzk \
+              | python3 scripts/generate-test-checks.py | grep "^// CHECK" > /tmp/sym.checks
+            grep "^// CHECK" test/Dialect/Struct/struct_params_symbolic_restrictions_pass.llzk > /tmp/sym.repo
+            diff -u /tmp/sym.checks /tmp/sym.repo
+
+            echo "=== Check changelog-validator Python/YAML syntax ==="
+            python3 -c "import yaml; d = yaml.safe_load(open(\"changelogs/unreleased/fix__struct-template-argument-restrictions.yaml\")); assert isinstance(d.get(\"fixed\"), list) and len(d[\"fixed\"]) == 2, d"
+          '
