@@ -1,0 +1,114 @@
+name: Verify PR 484 merge
+on:
+  push:
+    branches:
+      - test/pr484-merge-ci-20261127
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    strategy:
+      fail-fast: false
+      matrix:
+        compiler:
+          - name: GCC
+            derivation: '.#debugGCC'
+            report: gcc-report.xml
+          - name: Clang
+            derivation: '.#debugClang'
+            report: ''
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Verify exact candidate code identity
+        run: |
+          set -euo pipefail
+          TARGET=91f4ceee32822e84adea9025af9d81d49dee6f3b
+          git diff --exit-code "$TARGET" -- ':!.github/workflows/ci-pr484-verify.yml'
+          test "$(git merge-base HEAD "$TARGET")" = "$TARGET"
+          echo "Verified candidate SHA: $TARGET"
+      - uses: cachix/install-nix-action@v31
+        with:
+          install_url: https://releases.nixos.org/nix/nix-2.35.2/install
+          github_access_token: "${{ secrets.GITHUB_TOKEN }}"
+      - name: Set Git credentials
+        run: |
+          git config --global 'url.https://api@github.com/'.insteadOf 'https://github.com/'
+          git config --global 'url.https://ssh@github.com/'.insteadOf 'ssh://git@github.com/'
+          git config --global 'url.https://git@github.com/'.insteadOf 'git@github.com:'
+      - uses: cachix/cachix-action@v17
+        with:
+          name: veridise-public
+          skipPush: true
+      - name: 'Build and test with ${{ matrix.compiler.name }}'
+        run: |
+          set -euo pipefail
+          nix --print-build-logs build '${{ matrix.compiler.derivation }}'
+      - name: Upload xUnit report if present
+        if: always() && matrix.compiler.report != ''
+        uses: actions/upload-artifact@v7
+        with:
+          name: "pr484-test-results-${{ matrix.compiler.name }}"
+          path: "result/artifacts/${{ matrix.compiler.report }}"
+          if-no-files-found: ignore
+
+  lint:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: cachix/install-nix-action@v31
+        with:
+          install_url: https://releases.nixos.org/nix/nix-2.35.2/install
+          github_access_token: "${{ secrets.GITHUB_TOKEN }}"
+      - name: Set Git credentials
+        run: |
+          git config --global 'url.https://api@github.com/'.insteadOf 'https://github.com/'
+          git config --global 'url.https://ssh@github.com/'.insteadOf 'ssh://git@github.com/'
+          git config --global 'url.https://git@github.com/'.insteadOf 'git@github.com:'
+      - uses: cachix/cachix-action@v17
+        with:
+          name: veridise-public
+          skipPush: true
+      - name: Run clang-format and generate-test-checks tests
+        run: |
+          set -euo pipefail
+          python3 -m unittest scripts/generate-test-checks.py -v
+          nix develop .#debugClang --command bash -c '
+            set -euo pipefail
+            clang-format --dry-run --Werror \
+              include/llzk/Util/ProductSourceHelper.h \
+              include/llzk/Transforms/LLZKTransformationPasses.td \
+              lib/Transforms/LLZKComputeConstrainToProductPass.cpp \
+              lib/Transforms/LLZKFuseProductControlFlowPass.cpp \
+              unittests/Transforms/FuseProductControlFlowTests.cpp
+          '
+      - name: Configure and run clang-tidy on changed C++ files
+        run: |
+          set -euo pipefail
+          nix develop .#debugClang --command bash -c '
+            set -euo pipefail
+            cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug -DLLZK_BUILD_DEVTOOLS=ON \
+              -DLLZK_VERSION_OVERRIDE="${version:-3.0.0}"
+            cmake --build build --target llzk-headers
+            clang-tidy -p build \
+              --extra-arg=-I$PWD/backends/pcl/include \
+              --extra-arg=-isystem$PWD/build/backends/pcl/include \
+              --extra-arg=-I$PWD/backends/r1cs/include \
+              --extra-arg=-isystem$PWD/build/backends/r1cs/include \
+              --extra-arg=-I$PWD/backends/zklean/include \
+              --extra-arg=-isystem$PWD/build/backends/zklean/include \
+              --warnings-as-errors="*" \
+              lib/Transforms/LLZKFuseProductControlFlowPass.cpp \
+              unittests/Transforms/FuseProductControlFlowTests.cpp \
+              lib/Transforms/LLZKComputeConstrainToProductPass.cpp
+          '
