@@ -1,14 +1,14 @@
-name: Check open issues on origin/main
+name: Check issue 700 probe on origin/main
 on:
   push:
     branches:
-      - test/check-open-issues-20261127
+      - test/check-issue-700-20261127
 
 permissions:
   contents: read
 
 jobs:
-  check-issues:
+  check-700:
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout
@@ -36,70 +36,15 @@ jobs:
         with:
           name: veridise-public
           skipPush: true
-      - name: Build exact upstream main debugGCC
+      - name: Build and run LLZK_Analysis_Tests directly
         run: |
           set -euo pipefail
-          nix --print-build-logs build .#debugGCC
-      - name: Run all 5 issue reproducers against built tools
-        run: |
-          set -euo pipefail
-          OUT="$PWD/issue-evidence"
-          mkdir -p "$OUT"
-          llzk_opt="$PWD/result/bin/llzk-opt"
-          llzk_witgen="$PWD/result/bin/llzk-witgen"
-          llzk_translate="$PWD/result/bin/llzk-translate"
-          split_file=$(find /nix/store -type f -path '*/bin/split-file' -executable -print -quit)
-          test -x "$llzk_opt"
-          test -x "$llzk_witgen"
-          test -x "$llzk_translate"
-          test -n "$split_file"
-
-          cp result/artifacts/gcc-report.xml "$OUT/gcc-report.xml"
-          echo "=== ISSUE #700 (GTest XML record) ==="
-          grep -n -C 3 'Issue700ComparisonPredicateProbe\|eq_vs_ne' "$OUT/gcc-report.xml" || true
-
-          echo "=== ISSUE #726 ==="
-          mkdir -p "$OUT/726"
-          "$split_file" "$PWD/test-repros/issue726.llzk" "$OUT/726"
-          "$llzk_opt" --verify-each -llzk-full-struct-inlining "$OUT/726/candidate.llzk" -o "$OUT/726/candidate.inline.mlir"
-          "$llzk_opt" --verify-each -llzk-full-struct-inlining "$OUT/726/control.llzk" -o "$OUT/726/control.inline.mlir"
-          set +e
-          diff -u "$OUT/726/candidate.inline.mlir" "$OUT/726/control.inline.mlir" > "$OUT/726/inline.diff"
-          echo "726 inline diff exit: $?"
-          grep -n 'tableOffset' "$OUT/726/candidate.inline.mlir" || echo "NO tableOffset in candidate.inline.mlir"
-          "$llzk_witgen" "$OUT/726/candidate.inline.mlir" --inputs "$OUT/726/input.json" --output-scope=full-witness --output-wtns "$OUT/726/candidate.wtns" > "$OUT/726/candidate.witness.json" 2> "$OUT/726/witgen_cand.err"
-          echo "726 candidate witgen exit: $?"
-          "$llzk_witgen" "$OUT/726/control.inline.mlir" --inputs "$OUT/726/input.json" --output-scope=full-witness --output-wtns "$OUT/726/control.wtns" > "$OUT/726/control.witness.json" 2> "$OUT/726/witgen_ctrl.err"
-          echo "726 control witgen exit: $?"
-          diff -u "$OUT/726/candidate.witness.json" "$OUT/726/control.witness.json" > "$OUT/726/witness.diff"
-          echo "726 witness diff exit: $?"
-          "$llzk_opt" --verify-each -llzk-full-r1cs-lowering "$OUT/726/candidate.llzk" -o "$OUT/726/candidate.r1cs.mlir" 2> "$OUT/726/r1cs.err"
-          echo "726 r1cs lowering exit: $?"
-          set -e
-          echo "--- 726 candidate.witness.json ---"
-          cat "$OUT/726/candidate.witness.json" || true
-          echo "--- 726 inline.diff ---"
-          cat "$OUT/726/inline.diff" || true
-          echo "--- 726 r1cs.err ---"
-          cat "$OUT/726/r1cs.err" || true
-
-          echo "=== ISSUE #680 ==="
-          "$llzk_opt" -llzk-duplicate-read-write-elim "$PWD/test-repros/issue680.llzk" > "$OUT/680.mlir" 2> "$OUT/680.err"
-          cat "$OUT/680.mlir"
-
-          echo "=== ISSUE #669 ==="
-          "$llzk_opt" -llzk-duplicate-read-write-elim "$PWD/test-repros/issue669.llzk" > "$OUT/669.mlir" 2> "$OUT/669.err"
-          cat "$OUT/669.mlir"
-
-          echo "=== ISSUE #668 ==="
-          mkdir -p "$OUT/668"
-          "$split_file" "$PWD/test-repros/issue668.llzk" "$OUT/668"
-          "$llzk_witgen" "$OUT/668/test.llzk" --inputs "$OUT/668/input.json" --backend=interpreter > "$OUT/668/out.json" 2> "$OUT/668/err.txt"
-          cat "$OUT/668/out.json"
-      - name: Upload issue evidence
-        if: always()
-        uses: actions/upload-artifact@v7
-        with:
-          name: open-issues-evidence-${{ github.sha }}
-          path: issue-evidence
-          if-no-files-found: error
+          nix develop .#debugGCC --command bash -c '
+            set -euo pipefail
+            cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug -DLLZK_BUILD_DEVTOOLS=ON \
+              -DLLZK_VERSION_OVERRIDE="${version:-3.0.0}"
+            cmake --build build --target LLZK_Analysis_Tests
+            test_bin=$(find build -type f -name LLZK_Analysis_Tests -executable -print -quit)
+            test -x "$test_bin"
+            "$test_bin" --gtest_filter=*Issue700*
+          '

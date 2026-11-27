@@ -17,6 +17,8 @@
 
 #include <llvm/ADT/SmallVector.h>
 
+#include <cstdio>
+
 namespace {
 
 TEST_F(LLZKTest, Issue700ComparisonPredicateProbe) {
@@ -51,9 +53,10 @@ TEST_F(LLZKTest, Issue700ComparisonPredicateProbe) {
       comparisons[0].getResult(), comparisons[3].getResult()
   );
 
-  RecordProperty("same_eq", sameEq ? "true" : "false");
-  RecordProperty("eq_vs_ne", eqVsNe ? "true" : "false");
-  RecordProperty("diff_operand", diffOperand ? "true" : "false");
+  std::printf(
+      "ISSUE_700_PROBE sameEq=%s eqVsNe=%s diffOperand=%s\n",
+      sameEq ? "true" : "false", eqVsNe ? "true" : "false", diffOperand ? "true" : "false"
+  );
 
   EXPECT_TRUE(sameEq);
   EXPECT_FALSE(diffOperand);
